@@ -35,12 +35,12 @@ import logging
 import math
 import re
 from dataclasses import dataclass, field, replace
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from .atomic_io import atomic_write_json
 from .config import DATA_DIR
+from .relogio import agora_iso
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +283,7 @@ class ArquivoDeMarcas:
             return {}
         try:
             dados = json.loads(self.caminho.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError) as exc:
             raise ValueError(f"Arquivo de marcas ilegível ({self.caminho}): {exc}") from exc
         if not isinstance(dados, dict) or dados.get("versao") != VERSAO_DO_ARQUIVO:
             raise ValueError(f"Arquivo de marcas em formato desconhecido: {self.caminho}")
@@ -330,7 +330,7 @@ class ArquivoDeMarcas:
             "livro": livro or anterior.get("livro", ""),
             "amostra": amostra or anterior.get("amostra", ""),
             "recorte": recorte or anterior.get("recorte", ""),
-            "anotado_em": datetime.now().isoformat(timespec="seconds"),
+            "anotado_em": agora_iso(),
         }
         self._escrever()
 

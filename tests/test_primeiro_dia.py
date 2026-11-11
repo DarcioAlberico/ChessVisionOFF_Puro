@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import varredura
 from subprocesso import rodar_python
 
 from chess_diagram_ocr import logging_setup
@@ -49,8 +50,8 @@ class OndeEstaORastroTests(unittest.TestCase):
             RAIZ / "src" / "chess_diagram_ocr" / "qt" / "janela.py",
             RAIZ / "src" / "chess_diagram_ocr" / "qt" / "sessao_da_janela.py",
             RAIZ / "src" / "chess_diagram_ocr" / "qt" / "montagem_da_janela.py",
-            *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
-            *sorted((RAIZ / "src" / "chess_diagram_ocr" / "cli").glob("*.py")),
+            *varredura.fontes(RAIZ / "src" / "chess_diagram_ocr" / "ui", piso=60),
+            *varredura.fontes(RAIZ / "src" / "chess_diagram_ocr" / "cli", piso=40),
         ]
         promessas = [
             f"{caminho.name}:{numero}"

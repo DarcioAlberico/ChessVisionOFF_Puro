@@ -20,12 +20,11 @@ import unittest
 from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, esperar_ate
 
 if TEM_PYQT:
     from PyQt6 import sip
     from PyQt6.QtCore import QObject
-    from PyQt6.QtTest import QTest
 
     from chess_diagram_ocr.qt import marcas, trabalho
     from chess_diagram_ocr.qt.marcas import LeitorDeMarcas
@@ -54,11 +53,7 @@ class LeitorQueMorreAntesDaRespostaTests(unittest.TestCase):
             descartar(dono)
             self.assertTrue(sip.isdeleted(leitor), "o leitor morreu com o dono, antes da resposta")
             self.solta.set()
-            for _ in range(500):
-                QTest.qWait(10)
-                if tarefa not in trabalho._VIVAS:
-                    break
-        self.assertNotIn(tarefa, trabalho._VIVAS, "a tarefa terminou e foi solta")
+            esperar_ate(lambda: tarefa not in trabalho._VIVAS, limite_s=5, o_que="a tarefa terminar e ser solta")
         self.assertEqual(self.excecoes, [], "o slot tocou um leitor apagado")
         self.assertEqual(recebidas, [], "a resposta de um leitor morto não é entregue")
 

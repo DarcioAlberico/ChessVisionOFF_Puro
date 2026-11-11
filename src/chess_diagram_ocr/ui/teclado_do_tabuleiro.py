@@ -8,7 +8,8 @@ só o recorte andava por setas. A régua do passo é **três teclas por casa**, 
   incertas; sem nenhuma, as ocupadas) -- a casa que a pessoa ia conferir de qualquer modo.
   **Depois da última, o `Tab` sai do tabuleiro** (e o `Shift+Tab`, antes da primeira): a lista
   não dá a volta. Entrar pelo teclado já seleciona a primeira (a última, entrando de trás).
-* **Setas** andam uma casa, como no recorte ao lado.
+* **Setas** andam uma casa **na tela**, como no recorte ao lado: com o tabuleiro virado (o
+  diagrama impresso do lado das pretas), a seta para cima continua subindo (`andar_na_tela`).
 * **`k q r b n p`** põem a peça **preta** na casa selecionada; com `Shift`, a **branca**.
   `Delete`/`Backspace` esvaziam; `Espaço`/`Enter` aplicam o pincel da paleta, quando há um.
 
@@ -41,7 +42,7 @@ from dataclasses import dataclass
 
 __all__ = [
     "ACAO_DE_APAGAR", "ACOES_DAS_SETAS", "ANDAR", "APAGAR", "APLICAR", "Acao", "DUVIDOSA", "PECA", "PECAS",
-    "acao_da_tecla", "proxima_duvidosa",
+    "acao_da_tecla", "andar_na_tela", "proxima_duvidosa",
 ]
 
 # Os tipos de ação, como nomes e não como texto de tela: `tests/test_strings.py` varre os
@@ -89,6 +90,26 @@ def acao_da_tecla(tecla: str, *, shift: bool = False) -> Acao | None:
     if len(baixa) == 1 and baixa in PECAS:
         return Acao(PECA, simbolo=baixa.upper() if shift else baixa)
     return None
+
+
+PASSOS_NA_TELA: dict[int, tuple[int, int]] = {-1: (0, -1), 1: (0, 1), -8: (-1, 0), 8: (1, 0)}
+"""O `passo` de `Acao(ANDAR)` como deslocamento (linha, coluna) **na tela**: ±1 é a coluna ao
+lado, ±8 a linha de cima ou de baixo. O número é o do índice num tabuleiro de pé, e é só isso."""
+
+
+def andar_na_tela(linha: int, coluna: int, passo: int) -> tuple[int, int] | None:
+    """A casa da tela a um `passo` de (`linha`, `coluna`), ou `None` na borda (não dá a volta).
+
+    **A conta é na tela, e não no índice** (S-891). Somar ±1 e ±8 ao índice só acerta de pé:
+    virado, a casa de índice +8 fica uma linha **acima** na tela, e a seta para baixo subia. Quem
+    chama traduz o índice com `display_from_index` e volta com `index_from_display` -- a regra
+    do virar mora no modelo do tabuleiro, e aqui só se anda sobre a grade que a pessoa vê.
+    """
+    dl, dc = PASSOS_NA_TELA.get(passo, (0, 0))
+    if (dl, dc) == (0, 0):
+        return None
+    nova = (linha + dl, coluna + dc)
+    return nova if 0 <= nova[0] < 8 and 0 <= nova[1] < 8 else None
 
 
 def proxima_duvidosa(

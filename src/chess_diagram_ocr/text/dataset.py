@@ -49,6 +49,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..atomic_io import atomic_write_stream
 from . import procedencia
 from .classes import NomeDePastaInvalido, char_to_folder, folder_to_char
 from .modelo import LADO
@@ -493,7 +494,7 @@ def split_por_livro(
     *,
     fracoes: tuple[float, float, float] = (0.8, 0.1, 0.1),
     semente: int = 0,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """O split da S-203: **livros inteiros** em validação e teste, e nada de um livro nos dois.
 
     É este split que mede generalização de fonte, e o mecanismo é simples de dizer: uma fonte
@@ -518,6 +519,11 @@ def split_por_livro(
     pequeno não valem o mesmo. Os livros entram em teste até a fração de amostras ser alcançada,
     e depois em validação -- o que garante, por construção, **pelo menos um livro só do teste**
     sempre que houver livro utilizável.
+
+    **Devolve `(lado, aptos)`**: `aptos` marca as amostras que o livro colocou -- as que não
+    são sem-livro nem de grupo atravessado. É a ela que a promessa "livro de um lado só" se
+    aplica, e `livros_em_dois_lados` a recebe para não acusar o grupo que esta mesma regra
+    mandou ao treino de propósito (S-900).
 
     Levanta `BaseVazia` quando não há livro nenhum: quem chama tem de decidir se cai para
     `split_por_grupo` (com a ressalva escrita) ou se para. Decidir aqui esconderia a decisão.
@@ -588,19 +594,20 @@ def split_por_livro(
         do_livro = destino.get(int(livros[posicao]))
         if do_livro is not None:
             lado[posicao] = do_livro
-    return lado
+    return lado, aptos
 
 
-def livros_em_dois_lados(livros: np.ndarray, lado: np.ndarray) -> list[int]:
+def livros_em_dois_lados(livros: np.ndarray, lado: np.ndarray, *, aptos: np.ndarray) -> list[int]:
     """Os livros que aparecem em mais de um lado do split. Vazio é o que a S-203 promete.
 
     Gêmeo de `vazamento`, e existe pelo mesmo motivo: a garantia que ninguém confere é a que
-    quebra calada. O livro `-1` (sem origem) não conta -- ele está inteiro no treino por regra,
-    e checá-lo diria sempre "um lado só" sem provar nada.
+    quebra calada. Só contam as amostras `aptos` que `split_por_livro` devolve: o livro `-1`
+    (sem origem) e o grupo que atravessa livros estão no treino por regra, e contá-los acusaria
+    de vazamento a própria regra (S-900). Um split que não é por livro passa `aptos` vazio.
     """
     culpados: list[int] = []
-    for livro in np.unique(livros[livros >= 0]):
-        if np.unique(lado[livros == livro]).size > 1:
+    for livro in np.unique(livros[aptos]):
+        if np.unique(lado[aptos & (livros == livro)]).size > 1:
             culpados.append(int(livro))
     return culpados
 
@@ -643,23 +650,24 @@ def gravar_cache(caminho: Path, varredura: Varredura) -> None:
     não alcançava o cache, e o comando ia treinar sobre o split defeituoso -- só não foi porque
     a trava de vazamento o barrou.
     """
-    caminho = Path(caminho)
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(
-        caminho,
-        X=varredura.X,
-        y=varredura.y,
-        grupos=varredura.grupos,
-        dims=varredura.dims,
-        # **Os nomes entram; a procedência e o livro, não.** Nome de arquivo é fato da varredura
-        # e não envelhece. Procedência é leitura de um registro que pode mudar entre duas
-        # corridas, e guardá-la aqui criaria exatamente o estado que o parágrafo acima recusa --
-        # um conserto em `data/texto_procedencia.csv` não alcançaria quem lê do cache.
-        nomes=varredura.nomes,
-        pastas=np.array([c.pasta for c in varredura.classes]),
-        caracteres=np.array([c.caractere for c in varredura.classes]),
-        ilegiveis=np.array(varredura.ilegiveis),
-        indecifraveis=np.array(varredura.pastas_indecifraveis),
+    atomic_write_stream(
+        Path(caminho),
+        lambda fluxo: np.savez(
+            fluxo,
+            X=varredura.X,
+            y=varredura.y,
+            grupos=varredura.grupos,
+            dims=varredura.dims,
+            # **Os nomes entram; a procedência e o livro, não.** Nome de arquivo é fato da varredura
+            # e não envelhece. Procedência é leitura de um registro que pode mudar entre duas
+            # corridas, e guardá-la aqui criaria exatamente o estado que o parágrafo acima recusa --
+            # um conserto em `data/texto_procedencia.csv` não alcançaria quem lê do cache.
+            nomes=varredura.nomes,
+            pastas=np.array([c.pasta for c in varredura.classes]),
+            caracteres=np.array([c.caractere for c in varredura.classes]),
+            ilegiveis=np.array(varredura.ilegiveis),
+            indecifraveis=np.array(varredura.pastas_indecifraveis),
+        ),
     )
 
 

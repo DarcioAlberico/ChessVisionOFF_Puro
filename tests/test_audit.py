@@ -789,3 +789,41 @@ class RepresentanteDoGrupoTests(unittest.TestCase):
 
         self.assertEqual(resumo["removed"], removidos)
         self.assertEqual(resumo["by_split"]["test"], {"antes": 2, "removidos": 1, "depois": 1})
+
+
+class ComandoQueCorrigeTests(unittest.TestCase):
+    """O `cvoff-audit` com todas as correções de uma vez, de ponta a ponta (S-863)."""
+
+    def test_todas_as_correcoes_deixam_o_dataset_limpo(self) -> None:
+        import contextlib
+        import io
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fx = Fixture(tmp)
+            fx.add("a.png", LEGAL)
+            fx.add("ilegal.png", FATAL_NO_KINGS)
+            fx.add("turno.png", TURN_FLIP)
+            fx.add("sumiu.png", LEGAL, write_image=False)
+            imagem = _board_image(40)
+            fx.add("f.png", LEGAL_OTHER, image=imagem)
+            fx.add("g.png", LEGAL_OTHER, image=imagem)
+            fx.write()
+            gravar_imagem(fx.samples / "orfa.png", _board_image(77))
+            quarentena = Path(tmp) / "q.csv"
+
+            argv = [
+                "--csv", str(fx.csv), "--samples", str(fx.samples), "--splits", str(Path(tmp) / "nao_ha.csv"),
+                "--quarantine-path", str(quarentena), "--strict",
+                "--fix-side-to-move", "--quarantine", "--dedupe", "--drop-missing", "--prune-orphans",
+            ]
+            with mock.patch.object(cli_audit, "DEFAULT_METRICS_DIR", Path(tmp) / "metricas"),                     contextlib.redirect_stdout(io.StringIO()) as saida:
+                codigo = cli_audit.main(argv)
+
+            self.assertEqual(codigo, 0, saida.getvalue())
+            self.assertIn("Lado a jogar corrigido em 1 rótulos.", saida.getvalue())
+            self.assertIn("→ data/samples/ e labels.csv têm o mesmo conjunto de nomes.", saida.getvalue())
+            depois = audit_dataset(fx.csv, fx.samples)
+            self.assertEqual(depois.violations(), [])
+            self.assertEqual(sorted(depois.orphan_images), [])
+            self.assertIn("ilegal.png", quarentena.read_text(encoding="utf-8"))

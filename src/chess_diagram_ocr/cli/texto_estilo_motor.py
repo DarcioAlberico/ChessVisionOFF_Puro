@@ -41,10 +41,10 @@ from pathlib import Path
 from typing import Any
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR
 from ..logging_setup import configure_logging
 from ..text import rico
-from . import add_dpi_argument, add_verbose, cli_errors
+from . import add_dpi_argument, add_json_argument, add_pdf_dir_argument, add_verbose, cli_errors
+from .texto_estilo_conjunto import folhas_de
 
 logger = logging.getLogger(__name__)
 
@@ -136,13 +136,6 @@ def perdas(contas: dict[str, int]) -> dict[str, float | None]:
     return saida
 
 
-def folhas_de(total: int, quantas: int) -> list[int]:
-    """`quantas` folhas espaçadas pelo livro, longe da capa e do fim -- o protocolo da S-429. Puro."""
-    if total <= 0:
-        return []
-    return sorted({min(total - 1, round(total * k / (quantas + 1))) for k in range(1, quantas + 1)})
-
-
 def _ler(pdf: Path, folha: int, motor: str, dpi: int) -> rico.DocumentoRico:
     from ..text.leitor import ler_pagina
 
@@ -192,11 +185,11 @@ def livros_com_perda(por_livro: dict[str, Any], limiar: float = LIMIAR_DE_PERDA)
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta dos livros (padrao: PDF/).")
+    add_pdf_dir_argument(parser)
     parser.add_argument("--folhas", type=int, default=4, help="Folhas por livro, espacadas (padrao: 4).")
     parser.add_argument("--livros", type=int, default=0, help="Limita a quantos livros (0: todos).")
     add_dpi_argument(parser)
-    parser.add_argument("--json", type=Path, help="Grava o relatorio neste caminho.")
+    add_json_argument(parser)
     add_verbose(parser)
     return parser
 
@@ -206,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     configure_logging(verbose=args.verbose)
     from ..checkpoint import git_commit, git_worktree_dirty
-    from ..text.leitor import _ha_classificador
+    from ..text.recognizer import ModeloInvalido, classificador_configurado
 
     pdfs = sorted(Path(args.pdf_dir).glob("*.pdf"))
     if args.livros:
@@ -214,8 +207,10 @@ def main(argv: list[str] | None = None) -> int:
     if not pdfs:
         print(f"Nenhum PDF em {args.pdf_dir}.")
         return 0
-    if not _ha_classificador():
-        print("Sem o classificador de glifo (models/char_classifier.pt): o glifo e o auto leriam pela camada, e a medida nao diria nada.")
+    try:
+        classificador_configurado()
+    except ModeloInvalido as exc:
+        print(f"Sem o classificador de glifo: o glifo e o auto leriam pela camada, e a medida nao diria nada.\n{exc}")
         return 0
 
     por_livro = medir(pdfs, folhas=args.folhas, dpi=args.dpi, motores=MOTORES_MEDIDOS)

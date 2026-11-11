@@ -34,32 +34,6 @@ if TEM_PYQT:
     from chess_diagram_ocr.ui import tokens
 
 
-class DeclaracaoTests(unittest.TestCase):
-    """A decisão é a mesma dos dois lados, e este módulo não a reescreve.
-
-    Sem `skipUnless`: nada aqui importa PyQt6, e o par que ele confere -- o Tk reexportando o
-    módulo puro -- é o que sustenta o outro lado poder chamá-lo.
-    """
-
-    def test_o_modulo_puro_nao_carrega_tkinter(self) -> None:
-        """É a razão de ele existir: `JanelaDaPaleta` herda de `tk.Toplevel`, e classe-base é
-        avaliada na importação -- então ler o filtro pelo módulo antigo carrega o Tk junto."""
-        import ast
-        from pathlib import Path
-
-        fonte = Path(filtro_de_comandos.__file__).read_text(encoding="utf-8")
-        importados = {
-            no.names[0].name.split(".")[0]
-            for no in ast.walk(ast.parse(fonte))
-            if isinstance(no, ast.Import)
-        } | {
-            (no.module or "").split(".")[0]
-            for no in ast.walk(ast.parse(fonte))
-            if isinstance(no, ast.ImportFrom)
-        }
-        self.assertNotIn("tkinter", importados)
-
-
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class JanelaTests(unittest.TestCase):
     """O diálogo montado sobre o filtro puro."""

@@ -25,6 +25,67 @@ from conftest import DISTRIBUICAO, RAIZ, caminhos_pth_inexistentes
 
 _SONDA = "import chess_diagram_ocr, pathlib; print(pathlib.Path(chess_diagram_ocr.__file__).resolve())"
 
+# **O piso do interpretador (S-830, D5 da solidez: 3.13, e a CI so nele).** O 3.10 saiu de suporte
+# em outubro de 2026, e o bundle do PyInstaller embarca o interpretador: um `.venv` velho gera um
+# `.exe` que distribui Python sem correcao de seguranca. A decisao mora no `requires-python`; este
+# numero e a guarda dela, e os testes abaixo conferem que o resto da configuracao concorda.
+PISO = (3, 13)
+
+
+def _ler_pyproject() -> dict[str, object]:
+    try:  # Python 3.11+ tem no stdlib; 3.10 usa o backport que já é dependência do pytest.
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - só no 3.10
+        import tomli as tomllib  # type: ignore[no-redef]
+
+    return tomllib.loads((RAIZ / "pyproject.toml").read_text(encoding="utf-8"))
+
+
+class PisoDoInterpretadorTests(unittest.TestCase):
+    def test_o_interpretador_que_roda_a_suite_esta_no_piso(self) -> None:
+        """O `.venv` de quem desenvolve é o interpretador que vai dentro do `.exe`.
+
+        É o teste que acusa a máquina que não foi recriada depois da troca de piso: a suíte inteira
+        ainda roda num 3.10, e só esta linha diz que o ambiente ficou para trás.
+        """
+        real = sys.version_info[:2]
+        if real < PISO:
+            piso = ".".join(map(str, PISO))
+            self.fail(
+                f"Este ambiente roda Python {real[0]}.{real[1]}, abaixo do piso {piso} do projeto (S-830).\n"
+                f"    interpretador: {sys.executable}\n"
+                f"Feche o programa e recrie o ambiente a partir deste checkout:\n"
+                f"    cd {RAIZ}\n"
+                f"    uv sync --extra dev --extra onnx --extra ocr --python {piso}"
+            )
+
+    def test_a_configuracao_inteira_declara_o_mesmo_piso(self) -> None:
+        """`requires-python`, `.python-version`, `ruff` e `mypy` dizem a mesma versão.
+
+        Um deles para trás é o defeito que este item fecha: o `.python-version` em 3.10 fazia todo
+        `uv sync` criar um ambiente de 3.10 enquanto a faixa já aceitava 3.13, e o `ruff`/`mypy`
+        mirando a ponta velha recusariam a sintaxe que o piso novo permite.
+        """
+        piso = ".".join(map(str, PISO))
+        config = _ler_pyproject()
+        projeto = config.get("project", {})
+        ferramentas = config.get("tool", {})
+        assert isinstance(projeto, dict) and isinstance(ferramentas, dict)
+
+        declarado = {
+            "requires-python (piso)": str(projeto.get("requires-python", "")).split(",")[0].strip(),
+            ".python-version": (RAIZ / ".python-version").read_text(encoding="utf-8").strip(),
+            "[tool.ruff] target-version": ferramentas.get("ruff", {}).get("target-version"),
+            "[tool.mypy] python_version": ferramentas.get("mypy", {}).get("python_version"),
+        }
+        esperado = {
+            "requires-python (piso)": f">={piso}",
+            ".python-version": piso,
+            "[tool.ruff] target-version": f"py{PISO[0]}{PISO[1]}",
+            "[tool.mypy] python_version": piso,
+        }
+        self.assertEqual(declarado, esperado, f"a configuração tem de declarar o piso {piso} (S-830)")
+
 
 class AmbienteTests(unittest.TestCase):
     def test_o_pacote_instalado_resolve_para_esta_arvore(self) -> None:
@@ -107,13 +168,9 @@ class AmbienteTests(unittest.TestCase):
         É a guarda que faz a suíte sobreviver a um diretório movido. Sem ela, o próximo
         `.pth` obsoleto volta a produzir 33 erros de coleta em vez de uma falha nomeada.
         """
-        try:  # Python 3.11+ tem no stdlib; 3.10 usa o backport que já é dependência do pytest.
-            import tomllib
-        except ModuleNotFoundError:  # pragma: no cover - só no 3.10
-            import tomli as tomllib  # type: ignore[no-redef]
-
-        config = tomllib.loads((RAIZ / "pyproject.toml").read_text(encoding="utf-8"))
-        pytest_ini = config.get("tool", {}).get("pytest", {}).get("ini_options", {})
+        ferramentas = _ler_pyproject().get("tool", {})
+        assert isinstance(ferramentas, dict)
+        pytest_ini = ferramentas.get("pytest", {}).get("ini_options", {})
         self.assertIn(
             "src",
             pytest_ini.get("pythonpath", []),

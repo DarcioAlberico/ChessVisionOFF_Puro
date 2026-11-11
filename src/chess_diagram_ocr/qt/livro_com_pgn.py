@@ -13,7 +13,8 @@ linhas: montar, a tabela de comandos, a chamada em `_chegaram_itens` e a de quan
 - `CONFERE`, `CORRIGIDO` e `SEM_LEITURA`: a posição e o lado a jogar do nó vão ao Resultado como
   edição desfazível (`PainelDeResultado.adotar_do_livro`), com as casas trocadas em roxo e a frase
   «PGN do livro: Chapter 1 · Game 3 · 5.dxc5 -- ...» nos detalhes. A aba Texto recebe a mesma FEN,
-  e é ela que o EPUB/DOCX escreve.
+  e é ela que o EPUB/DOCX escreve. O diagrama em que a pessoa já mexeu fica como ela deixou
+  (S-894): o índice pode chegar depois de ela ter corrigido a página lida antes dele.
 - `DISCORDA`: a leitura fica, e o diagrama entra na Revisão com a FEN do livro como sugestão e o
   motivo escrito. Decidir sozinho trocaria um erro do modelo por um erro de pareamento.
 - `FALTANDO`: o rodapé diz quantos diagramas desta página o PDF perdeu; *Diagramas que faltam no
@@ -64,6 +65,7 @@ from chess_diagram_ocr.pgn_do_livro import IndiceDoLivro
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
 from chess_diagram_ocr.ui import estilos
+from chess_diagram_ocr.ui.livros import mesmo_livro
 
 __all__ = ["COMANDOS", "LivroComPgn", "donos", "itens_da_pagina"]
 
@@ -318,11 +320,14 @@ class LivroComPgn(QObject):
         numero = pagina + 1
         casados = itens_da_pagina(diagramas, [getattr(i, "bbox_pdf", None) for i in itens], numero)
         self._da_pagina = casados
-        adotados, discordam = 0, []
+        adotados, mantidos, discordam = 0, 0, []
         posicoes = [str(item.placement) for item in itens]
         for k, diagrama in casados.items():
             nota = lp.nota_do_diagrama(diagrama, self.indice)
             if diagrama.estado in (lp.CONFERE, lp.CORRIGIDO, lp.SEM_LEITURA):
+                if self._mexido(k, itens[k]):
+                    mantidos += 1
+                    continue
                 campo, lado = diagrama.fen.split()[:2]
                 if self._painel.adotar_do_livro(k, itens[k], campo, lado, nota):
                     adotados += 1
@@ -336,6 +341,8 @@ class LivroComPgn(QObject):
         partes = []
         if adotados:
             partes.append(f"{adotados} diagrama(s) com a posição do PGN do livro")
+        if mantidos:
+            partes.append(f"{mantidos} diagrama(s) já corrigido(s) à mão ficaram como estavam")
         if discordam:
             partes.append(f"{len(discordam)} discorda(m) do PGN ({entraram} novo(s) na Revisão)")
         if faltam:
@@ -343,6 +350,15 @@ class LivroComPgn(QObject):
             partes.append(f"{len(faltam)} diagrama(s) desta página faltam no PDF ({lances})")
         if partes:
             self._dizer("; ".join(partes) + ".")
+
+    def _mexido(self, k: int, item: object) -> bool:
+        """Se a pessoa já mexeu no diagrama `k` do Resultado, e ele ainda é este item (S-894).
+
+        O índice do PGN chega em segundo plano (`_indice_chegou`), e a página lida antes dele pode
+        estar corrigida à mão quando ele chega: adotar o livro ali trocava a correção sem aviso.
+        """
+        modelo = self._painel.modelo
+        return 0 <= k < len(modelo.items) and modelo.items[k] is item and bool(modelo.touched_at(k))
 
     def _para_a_revisao(self, pagina: int, itens: Sequence[Any], discordam: list[tuple[int, lp.DiagramaDoLivro]]) -> int:
         if not discordam or self._revisao is None or self._pdf is None:
@@ -357,7 +373,7 @@ class LivroComPgn(QObject):
         novos = []
         for k, diagrama in discordam:
             item = itens[k]
-            imagem = cache_board_image(item.board_rgb, DEFAULT_CACHE_DIR, self._pdf.name, pagina, k + 1)
+            imagem = cache_board_image(item.board_rgb, DEFAULT_CACHE_DIR, self._pdf, pagina, k + 1)
             novos.append(
                 ReviewItem(
                     pdf_path=str(self._pdf),
@@ -457,7 +473,7 @@ class LivroComPgn(QObject):
             return
         modelo = self._galeria.model
         aberto = modelo.pdf_path
-        if aberto is None or self._pdf is None or Path(aberto).resolve() != Path(self._pdf).resolve() or modelo.is_empty:
+        if not mesmo_livro(aberto, self._pdf) or modelo.is_empty:
             self._dizer("A Galeria ainda não varreu este livro: varra-o antes (Galeria > Varrer o livro).")
             return
         assert self.indice is not None

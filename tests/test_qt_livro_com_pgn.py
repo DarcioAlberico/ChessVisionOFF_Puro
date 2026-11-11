@@ -15,7 +15,7 @@ from unittest import mock
 import chess
 import numpy as np
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, TarefaAdiada, aplicacao, descartar
 
 from chess_diagram_ocr import livro_com_pgn as lp
 
@@ -238,6 +238,141 @@ class LivroComPgnTests(unittest.TestCase):
         assert no is not None
         self.assertEqual(DEPOIS_DE_C5, no.board().board_fen())
         self.assertEqual("dxc5", jogo.end().san(), "a partida vai inteira, e não só até o diagrama")
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class PgnAtrasadoTests(unittest.TestCase):
+    """S-894: o índice do PGN é lido em segundo plano, e a pessoa corrige o diagrama nesse meio-tempo.
+
+    O Resultado é o de verdade, dirigido por `QTest` como a pessoa faria, e a leitura do PGN é a
+    `TarefaAdiada` (S-805): ela roda no `start` e só entrega quando o teste manda -- a janela entre a
+    thread acabar e o sinal dela chegar, que a leitura de 1 s do Harikrishna deixa aberta.
+
+    A leitura do diagrama tem uma casa errada (bispo em b8), e o livro a corrigiria: `CORRIGIDO`,
+    que é adotado. Sem a pessoa no meio, o livro entra; com ela, o que ela fez fica.
+    """
+
+    LIDA = DEPOIS_DE_C5.replace("rnbqkbnr", "rbbqkbnr")
+
+    def setUp(self) -> None:
+        from PyQt6.QtCore import Qt
+
+        from chess_diagram_ocr.qt import livro_com_pgn as fio
+        from chess_diagram_ocr.qt.painel_de_resultado import PainelDeResultado
+
+        self.app = aplicacao()
+        self.Qt = Qt
+        self.pasta = pasta_temporaria(self)
+        self.pdf = _pdf(self.pasta / "livro.pdf")
+        self.pgn = self.pasta / "livro.pgn"
+        self.pgn.write_text(PGN, encoding="utf-8")
+        for remendo in (
+            mock.patch.object(lp, "ARQUIVO_DAS_ASSOCIACOES", self.pasta / "livros_com_pgn.json"),
+            mock.patch.object(fio, "Tarefa", TarefaAdiada),
+        ):
+            remendo.start()
+            self.addCleanup(remendo.stop)
+        TarefaAdiada.pendentes.clear()
+        self.assertTrue(lp.associar(self.pdf, self.pgn))
+
+        self.painel = PainelDeResultado(mock.MagicMock(), csv_de_rotulos=self.pasta / "l.csv")
+        self.addCleanup(descartar, self.painel)
+        self.painel.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.painel.resize(900, 760)
+        self.painel.show()
+        self.janela = QWidget()
+        self.addCleanup(descartar, self.janela)
+        self.ditos: list[str] = []
+        self.livro = LivroComPgn(
+            self.janela,
+            dizer=self.ditos.append,
+            pdf_atual=lambda: self.pdf,
+            itens_atuais=lambda: self.painel.modelo.items,
+            painel=self.painel,
+            revisao=_Revisao(),
+            texto=mock.Mock(),
+            estudo=mock.Mock(),
+            galeria=mock.Mock(),
+            focar=lambda _p: None,
+            ir_para_pagina=lambda _p: None,
+        )
+        # O que `janela._chegaram_itens` faz: o Resultado carrega a página, e o livro é perguntado.
+        from chess_diagram_ocr.service import RecognizedDiagram
+
+        item = RecognizedDiagram(
+            index=0, board_rgb=np.full((64, 64, 3), 200, np.uint8), placement=self.LIDA,
+            min_confidence=0.9, square_confidences=[0.99] * 64, side_to_move="w", bbox_pdf=CAIXA,
+        )
+        self.painel.carregar_pagina([item], chave=str(self.pdf), pagina=0)
+        self.livro.aplicar(0, self.painel.modelo.items)
+        self.app.processEvents()
+        self.assertEqual(1, len(TarefaAdiada.pendentes), "a leitura do PGN não ficou em curso")
+
+    def clicar_casa(self, casa: int) -> None:
+        from PyQt6.QtCore import QPoint
+        from PyQt6.QtTest import QTest
+
+        tabuleiro = self.painel.tabuleiro
+        linha, coluna = tabuleiro.modelo.display_from_index(casa)
+        x0, y0, x1, y1 = tabuleiro.geometria().rect(linha, coluna)
+        QTest.mouseClick(tabuleiro, self.Qt.MouseButton.LeftButton, pos=QPoint(int((x0 + x1) / 2), int((y0 + y1) / 2)))
+        self.app.processEvents()
+
+    def tecla(self, texto: str) -> None:
+        from PyQt6.QtTest import QTest
+
+        modificador = self.Qt.KeyboardModifier.ShiftModifier if texto.isupper() else self.Qt.KeyboardModifier.NoModifier
+        QTest.keyClick(self.painel.tabuleiro, texto, modificador)
+        self.app.processEvents()
+
+    def o_pgn_chega(self) -> None:
+        TarefaAdiada.entregar_todas()
+        self.app.processEvents()
+        self.assertIsNotNone(self.livro.indice, "o índice do PGN não chegou")
+
+    def test_sem_a_pessoa_no_meio_o_livro_entra(self) -> None:
+        """O controle: a entrega atrasada chega ao Resultado, e sem ele os outros dois passariam à toa."""
+        self.o_pgn_chega()
+        self.assertEqual((DEPOIS_DE_C5, "w"), (self.painel.tabuleiro.posicao(), self.painel.modelo.side_at(0)))
+        self.assertIn("PGN do livro", self.painel.detalhes.text())
+
+    def test_a_casa_corrigida_enquanto_o_pgn_e_lido_fica(self) -> None:
+        self.clicar_casa(36)  # o peão de e4
+        self.tecla("N")       # a pessoa diz que é um cavalo
+        corrigida = self.painel.tabuleiro.posicao()
+        self.assertNotEqual(self.LIDA, corrigida, "o clique e a tecla não editaram o tabuleiro")
+
+        self.o_pgn_chega()
+        self.assertEqual(corrigida, self.painel.modelo.fen_at(0), "o PGN do livro apagou a correção")
+        self.assertEqual(corrigida, self.painel.tabuleiro.posicao())
+        self.assertNotIn("PGN do livro", self.painel.detalhes.text())
+        self.assertTrue(self.painel.btn_desfazer.isEnabled(), "a pilha perdeu a edição da pessoa")
+        self.assertIn("1 diagrama(s) já corrigido(s) à mão ficaram como estavam", self.ditos[-1])
+
+    def test_a_vez_escolhida_enquanto_o_pgn_e_lido_fica(self) -> None:
+        """Só a vez, sem mexer em peça: a posição na tela é a leitura, e mesmo assim a pessoa decidiu."""
+        from PyQt6.QtTest import QTest
+
+        pretas = next(b for b in self.painel._lados.buttons() if b.property("lado") == "b")
+        QTest.mouseClick(pretas, self.Qt.MouseButton.LeftButton)
+        self.app.processEvents()
+        self.assertEqual("b", self.painel.modelo.side_at(0))
+
+        self.o_pgn_chega()
+        self.assertEqual((self.LIDA, "b"), (self.painel.modelo.fen_at(0), self.painel.modelo.side_at(0)))
+
+    def test_a_correcao_desfeita_antes_de_o_pgn_chegar_deixa_o_livro_entrar(self) -> None:
+        """Desfeita, a correção deixou de existir (S-888): voltou a leitura, sem marca de mão."""
+        from PyQt6.QtTest import QTest
+
+        self.clicar_casa(36)
+        self.tecla("N")
+        QTest.mouseClick(self.painel.btn_desfazer, self.Qt.MouseButton.LeftButton)
+        self.app.processEvents()
+        self.assertEqual(self.LIDA, self.painel.tabuleiro.posicao())
+
+        self.o_pgn_chega()
+        self.assertEqual(DEPOIS_DE_C5, self.painel.tabuleiro.posicao())
 
 
 if __name__ == "__main__":

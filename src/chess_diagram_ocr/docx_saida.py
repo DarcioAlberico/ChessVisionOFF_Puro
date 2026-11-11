@@ -39,7 +39,6 @@ relação. O teste a roda sobre o que este módulo escreve.
 from __future__ import annotations
 
 import datetime as _dt
-import html as _html
 import io
 import posixpath
 import re
@@ -51,7 +50,7 @@ from pathlib import Path
 
 from chess_diagram_ocr import diagrama_png, diagrama_svg, estudo_paragrafos
 from chess_diagram_ocr.atomic_io import atomic_write_bytes
-from chess_diagram_ocr.epub import PRODUTOR, Metadados
+from chess_diagram_ocr.epub import PRODUTOR, Metadados, metadados_da_folha, metadados_do_estudo, titulo_da_folha
 from chess_diagram_ocr.estudo import Estudo
 from chess_diagram_ocr.text import documento as _documento
 from chess_diagram_ocr.text import exportacao, rico
@@ -237,7 +236,7 @@ class Documento:
         self.corpo.append(
             "<w:p>"
             '<w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r>'
-            f'<w:r><w:instrText xml:space="preserve">{_html.escape(CAMPO_DE_SUMARIO, quote=False)}</w:instrText></w:r>'
+            f'<w:r><w:instrText xml:space="preserve">{exportacao.texto_xml(CAMPO_DE_SUMARIO, quote=False)}</w:instrText></w:r>'
             '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
             f"{run('Índice vazio: clique nele e tecle F9 para o Word montá-lo.')}"
             '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
@@ -384,7 +383,7 @@ def run(
     elif pontilhado:
         propriedades.append('<w:u w:val="dotted"/>')
     rpr = f"<w:rPr>{''.join(propriedades)}</w:rPr>" if propriedades else ""
-    return f'<w:r>{rpr}<w:t xml:space="preserve">{_html.escape(texto, quote=False)}</w:t></w:r>'
+    return f'<w:r>{rpr}<w:t xml:space="preserve">{exportacao.texto_xml(texto, quote=False)}</w:t></w:r>'
 
 
 # ------------------------------------------------------------------------------ o estudo
@@ -399,8 +398,9 @@ def exportar_estudo_docx(
     com_fen: bool = False,
 ) -> Relatorio:
     """Um estudo, um documento. O título do arquivo é o do estudo quando ninguém deu outro."""
-    dados = metadados or Metadados(titulo=estudo_paragrafos.titulo_do_estudo(estudo))
-    return exportar_estudos_docx([estudo], caminho, dados, largura_cm=largura_cm, com_fen=com_fen)
+    return exportar_estudos_docx(
+        [estudo], caminho, metadados_do_estudo(metadados, estudo), largura_cm=largura_cm, com_fen=com_fen
+    )
 
 
 def exportar_estudos_docx(
@@ -466,9 +466,14 @@ def exportar_texto_docx(
     largura_cm: float = LARGURA_PADRAO_CM,
 ) -> Relatorio:
     """Uma folha do livro. `imagens` é `bloco -> PNG` para o diagrama sem posição lida."""
-    dados = metadados or Metadados(titulo=_titulo_do_texto(documento))
     return exportar_textos_docx(
-        [documento], caminho, dados, imagens=imagens, cores=cores, corpos=corpos, largura_cm=largura_cm
+        [documento],
+        caminho,
+        metadados_da_folha(metadados, documento),
+        imagens=imagens,
+        cores=cores,
+        corpos=corpos,
+        largura_cm=largura_cm,
     )
 
 
@@ -560,7 +565,7 @@ def _texto(
                 montador.pedaco(corrida, formatador.run(corrida, pedaco), pedaco)
     montador.fechar()
     if not montador.teve_titulo:
-        doc.corpo.insert(inicio, _paragrafo_de_titulo(_titulo_do_texto(documento)))
+        doc.corpo.insert(inicio, _paragrafo_de_titulo(titulo_da_folha(documento)))
         doc.paragrafos += 1
     return so_marca
 
@@ -642,14 +647,6 @@ def _svg_de_arquivo(fen: str, *, virado: bool = False, largura_cm: float, titulo
     ).encode("utf-8")
 
 
-def _titulo_do_texto(documento: rico.DocumentoRico) -> str:
-    pagina = documento.origem
-    if pagina is None:
-        return "Texto do ChessVisionOFF"
-    origem = Path(pagina.documento or "texto").name
-    return f"{origem} — folha {pagina.pagina + 1}"
-
-
 # ------------------------------------------------------------------------------ as partes
 
 
@@ -717,7 +714,7 @@ def _aplicativo() -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">'
-        f"<Application>{_html.escape(PRODUTOR)}</Application></Properties>"
+        f"<Application>{exportacao.texto_xml(PRODUTOR)}</Application></Properties>"
     )
 
 
@@ -743,18 +740,18 @@ def _nucleo(dados: Metadados) -> str:
     `cp:lastModifiedBy`: um arquivo cujo autor é o nome do exportador atribui a obra a quem não a
     escreveu, e é o Word que mostra esse campo em "Propriedades" e nas colunas do Explorador."""
     agora = dados.modificado or _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    autoria = f"<dc:creator>{_html.escape(dados.autor)}</dc:creator>" if dados.autor else ""
-    editora = f"<cp:category>{_html.escape(dados.editora)}</cp:category>" if dados.editora else ""
-    direitos = f"<dc:description>{_html.escape(dados.direitos)}</dc:description>" if dados.direitos else ""
+    autoria = f"<dc:creator>{exportacao.texto_xml(dados.autor)}</dc:creator>" if dados.autor else ""
+    editora = f"<cp:category>{exportacao.texto_xml(dados.editora)}</cp:category>" if dados.editora else ""
+    direitos = f"<dc:description>{exportacao.texto_xml(dados.direitos)}</dc:description>" if dados.direitos else ""
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         f'<cp:coreProperties xmlns:cp="{NS_CP}" xmlns:dc="{NS_DC}" xmlns:dcterms="{NS_DCTERMS}" xmlns:xsi="{NS_XSI}">'
-        f"<dc:title>{_html.escape(dados.titulo)}</dc:title>"
+        f"<dc:title>{exportacao.texto_xml(dados.titulo)}</dc:title>"
         f"{autoria}{direitos}"
-        f"<dc:language>{_html.escape(dados.idioma)}</dc:language>"
-        f"<cp:lastModifiedBy>{_html.escape(PRODUTOR)}</cp:lastModifiedBy>"
-        f'<dcterms:created xsi:type="dcterms:W3CDTF">{_html.escape(agora)}</dcterms:created>'
-        f'<dcterms:modified xsi:type="dcterms:W3CDTF">{_html.escape(agora)}</dcterms:modified>'
+        f"<dc:language>{exportacao.texto_xml(dados.idioma)}</dc:language>"
+        f"<cp:lastModifiedBy>{exportacao.texto_xml(PRODUTOR)}</cp:lastModifiedBy>"
+        f'<dcterms:created xsi:type="dcterms:W3CDTF">{exportacao.texto_xml(agora)}</dcterms:created>'
+        f'<dcterms:modified xsi:type="dcterms:W3CDTF">{exportacao.texto_xml(agora)}</dcterms:modified>'
         f"{editora}"
         "</cp:coreProperties>"
     )
@@ -802,7 +799,7 @@ def _estilos_xml() -> str:
 
 
 def _atributo(texto: str) -> str:
-    return _html.escape(str(texto), quote=True)
+    return exportacao.texto_xml(str(texto), quote=True)
 
 
 def _extensao(nome: str) -> str:

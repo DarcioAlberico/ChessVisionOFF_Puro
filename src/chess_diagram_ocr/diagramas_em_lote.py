@@ -158,7 +158,6 @@ def gravar_lote(
     """
     comeco = time.perf_counter()
     destino = Path(pasta)
-    nomes = nomes_do_lote(itens, opcoes.formato)
 
     gravados: list[Path] = []
     falhas: list[tuple[str, str]] = []
@@ -166,6 +165,8 @@ def gravar_lote(
     cancelado = False
     try:
         destino.mkdir(parents=True, exist_ok=True)
+        # O que já está na pasta é nome tomado: o lote não apaga o arquivo de outro dia (S-822).
+        ocupados = [caminho.name for caminho in destino.iterdir()]
     except OSError as erro:
         # A pasta é uma falha só, e não uma por item: quinhentas linhas iguais num relatório
         # escondem justamente a linha que diz o que houve.
@@ -176,6 +177,7 @@ def gravar_lote(
             segundos=time.perf_counter() - comeco,
             total=len(itens),
         )
+    nomes = nomes_do_lote(itens, opcoes.formato, ocupados=ocupados)
     for feitos, (item, nome) in enumerate(zip(itens, nomes, strict=True), start=1):
         if cancelar is not None and cancelar.is_set():
             cancelado = True

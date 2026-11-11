@@ -29,7 +29,7 @@ if TEM_PYQT:
     from PyQt6.QtGui import QTextCursor
     from PyQt6.QtTest import QTest
 
-    from chess_diagram_ocr.qt import painel_de_texto, tema
+    from chess_diagram_ocr.qt import tema, texto_leitura
     from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
     from chess_diagram_ocr.text.lingua import LinguaDoLivro
 
@@ -78,18 +78,19 @@ class _Aba(unittest.TestCase):
         self.painel.definir_livro(self.livro, pagina=0)
 
     def escolher(self, motor: str) -> None:
-        caixa = self.painel.escolha_de_motor
+        caixa = self.painel.leitura.escolha_de_motor
         caixa.setCurrentIndex(caixa.findData(motor))
         caixa.activated.emit(caixa.currentIndex())
 
     def ler(self, cruas: Sequence[Any], falso: _Falso | None = None) -> None:
         with (
+            mock.patch.object(leitor, "_reconhecedor_configurado", return_value=mock.MagicMock(name="glifo")),
             mock.patch.object(leitor, "linhas_do_glifo", return_value=(list(cruas), [])),
             mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
             mock.patch("chess_diagram_ocr.text.leitor_de_linha.leitor_padrao", return_value=falso or _Falso()),
         ):
             self.painel.ler()
-            tarefa = self.painel._tarefa
+            tarefa = self.painel.leitura.tarefa
             self.assertIsNotNone(tarefa, "a tarefa não partiu")
             self.assertTrue(tarefa.wait(30_000))  # type: ignore[union-attr]
             self.app.processEvents()
@@ -121,7 +122,7 @@ class ProcedenciaPorPalavraNaTelaTests(_Aba):
         """Até o G102 o `tesseract` não vai ao disco, e a folha reaberta mostra o mesmo texto."""
         self._lida()
         caminho = self.pasta / "folha.cvtxt"
-        self.painel._salvar_documento_em(caminho)
+        self.painel.caderno._salvar_documento_em(caminho)
         bruto = caminho.read_text(encoding="utf-8")
         self.assertNotIn("tesseract", bruto)
         self.assertNotIn("procedencia_em", bruto)
@@ -150,12 +151,12 @@ class CacheDeLeituraNaTelaTests(_Aba):
         return [tesseract.LinhaDoTesseract("the white Nf3 wins a pawn", (0.9,) * 6) for _ in recortes]
 
     def _ler(self) -> pagina.PaginaLida:
-        imagem = painel_de_texto._renderizar(self.livro, 0, dpi=72)
+        imagem = texto_leitura.renderizar(self.livro, 0, dpi=72)
         with (
             mock.patch.object(leitor, "linhas_do_glifo", return_value=(self.boas(), [])),
             mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
         ):
-            return painel_de_texto._ler(self.livro, 0, dpi=72, motor="fusao", imagem_rgb=imagem)
+            return texto_leitura.ler_a_folha(self.livro, 0, dpi=72, motor="fusao", imagem_rgb=imagem)
 
     def test_a_segunda_leitura_nao_abre_processo_e_o_texto_e_o_mesmo(self) -> None:
         primeira = self._ler()
@@ -168,7 +169,7 @@ class CacheDeLeituraNaTelaTests(_Aba):
     def test_o_menu_limpa_e_a_leitura_seguinte_abre_processo(self) -> None:
         self._ler()
         self.painel.executar("limpar_cache_de_leitura")
-        tarefa = self.painel._limpeza_do_cache
+        tarefa = self.painel.leitura._limpeza_do_cache
         self.assertIsNotNone(tarefa)
         self.assertTrue(tarefa.wait(30_000))  # type: ignore[union-attr]
         self.app.processEvents()
@@ -179,7 +180,7 @@ class CacheDeLeituraNaTelaTests(_Aba):
 
     def test_com_o_cache_vazio_o_menu_diz_que_ja_estava(self) -> None:
         self.painel.executar("limpar_cache_de_leitura")
-        self.assertTrue(self.painel._limpeza_do_cache.wait(30_000))  # type: ignore[union-attr]
+        self.assertTrue(self.painel.leitura._limpeza_do_cache.wait(30_000))  # type: ignore[union-attr]
         self.app.processEvents()
         self.assertEqual(self.recados[-1], "O cache de leitura já estava vazio.")
 
@@ -195,12 +196,12 @@ class CacheDeLeituraNaTelaTests(_Aba):
 
 class CaixaDeMotorTests(_Aba):
     def test_os_dois_novos_tem_rotulo_e_nunca_o_identificador_cru(self) -> None:
-        caixa = self.painel.escolha_de_motor
+        caixa = self.painel.leitura.escolha_de_motor
         self.assertEqual(caixa.itemText(caixa.findData("camada_prosa")), "Camada na prosa (livro digital)")
         self.assertEqual(caixa.itemText(caixa.findData("fusao")), "Glifo + Tesseract (experimental)")
 
     def test_o_padrao_nao_mudou(self) -> None:
-        self.assertEqual(self.painel.motor, "auto")
+        self.assertEqual(self.painel.leitura.motor, "auto")
 
     def test_escolher_a_camada_na_prosa_muda_o_texto_na_tela(self) -> None:
         self.escolher("camada_prosa")
@@ -212,7 +213,7 @@ class CaixaDeMotorTests(_Aba):
     def test_escolher_a_fusao_muda_o_texto_na_tela_e_le_na_lingua_escolhida(self) -> None:
         falso = _Falso()
         self.escolher("fusao")
-        caixa = self.painel.escolha_de_lingua
+        caixa = self.painel.leitura.escolha_de_lingua
         caixa.setCurrentIndex(caixa.findData("por"))
         caixa.activated.emit(caixa.currentIndex())
         self.ler(self.boas(), falso)
@@ -220,22 +221,22 @@ class CaixaDeMotorTests(_Aba):
         self.assertEqual(falso.linguas, ["por"])
 
     def test_motor_e_lingua_sobrevivem_a_sessao(self) -> None:
-        self.painel.definir_motor("fusao")
-        self.painel.definir_lingua("deu")
+        self.painel.leitura.definir_motor("fusao")
+        self.painel.leitura.definir_lingua("deu")
         guardado = estado_da_janela.AppState()
         self.painel.anotar_estado(guardado)
         self.assertEqual((guardado.texto_motor, guardado.texto_lingua), ("fusao", "deu"))
         relido = estado_da_janela.state_from_dict(guardado.to_dict())
         self.assertEqual(relido.texto_lingua, "deu")
-        self.painel.definir_motor("glifo")
-        self.painel.definir_lingua("eng")
+        self.painel.leitura.definir_motor("glifo")
+        self.painel.leitura.definir_lingua("eng")
         self.painel.aplicar_estado(relido)
-        self.assertEqual((self.painel.motor, self.painel.lingua), ("fusao", "deu"))
-        self.assertEqual(self.painel.escolha_de_lingua.currentData(), "deu")
+        self.assertEqual((self.painel.leitura.motor, self.painel.leitura.lingua), ("fusao", "deu"))
+        self.assertEqual(self.painel.leitura.escolha_de_lingua.currentData(), "deu")
 
     def test_lingua_desconhecida_e_ignorada(self) -> None:
-        self.painel.definir_lingua("klingon")
-        self.assertEqual(self.painel.lingua, tesseract.LINGUA_PADRAO)
+        self.painel.leitura.definir_lingua("klingon")
+        self.assertEqual(self.painel.leitura.lingua, tesseract.LINGUA_PADRAO)
 
 
 class SeloTests(_Aba):
@@ -273,7 +274,7 @@ class SeloTests(_Aba):
         lida = pagina.PaginaLida(colunas=(pagina.Coluna(indice=0, blocos=(bloco,)),), avisos=(aviso,))
         reaberto = arquivo.de_json(arquivo.para_json(rico.de_pagina(lida)))
         self.painel.desenhar_documento(reaberto)
-        self.painel._atualizar_status()
+        self.painel.vista.atualizar_status()
         self.assertEqual(self.painel.selo_da_folha.text(), "Relida pela reserva.")
 
 
@@ -281,21 +282,21 @@ class LinguaNoCadernoTests(_Aba):
     """Trocar a língua da fusão é pedir a leitura nova, como trocar de motor (S-717)."""
 
     def test_o_motor_gravado_leva_a_lingua_so_na_fusao(self) -> None:
-        self.painel.definir_motor("fusao")
-        self.painel.definir_lingua("por")
-        self.assertEqual(self.painel._motor_gravado(), "fusao:por")
-        self.painel.definir_motor("glifo")
-        self.assertEqual(self.painel._motor_gravado(), "glifo")
+        self.painel.leitura.definir_motor("fusao")
+        self.painel.leitura.definir_lingua("por")
+        self.assertEqual(self.painel.leitura.motor_gravado(), "fusao:por")
+        self.painel.leitura.definir_motor("glifo")
+        self.assertEqual(self.painel.leitura.motor_gravado(), "glifo")
 
     def test_a_folha_lida_em_outra_lingua_nao_abre_do_caderno(self) -> None:
         from chess_diagram_ocr.text import caderno
 
         estado = caderno.EstadoDaFolha(pagina=0, estado=caderno.LIDA, motor="fusao:eng")
-        self.painel.definir_motor("fusao")
-        self.painel.definir_lingua("eng")
-        self.assertTrue(caderno.abre_do_caderno(estado, motor=self.painel._motor_gravado()))
-        self.painel.definir_lingua("por")
-        self.assertFalse(caderno.abre_do_caderno(estado, motor=self.painel._motor_gravado()))
+        self.painel.leitura.definir_motor("fusao")
+        self.painel.leitura.definir_lingua("eng")
+        self.assertTrue(caderno.abre_do_caderno(estado, motor=self.painel.leitura.motor_gravado()))
+        self.painel.leitura.definir_lingua("por")
+        self.assertFalse(caderno.abre_do_caderno(estado, motor=self.painel.leitura.motor_gravado()))
 
 
 class LinguaDoLivroTests(_Aba):
@@ -315,10 +316,10 @@ class LinguaDoLivroTests(_Aba):
             folha.insert_text((60, 60 + 18 * n), self.PROSA_EM_PORTUGUES[:60], fontname="helv", fontsize=9)
         doc.save(self.livro)
         doc.close()
-        self.painel._pasta_de_cadernos = self.pasta / "cadernos"
+        self.painel.caderno._pasta_de_cadernos = self.pasta / "cadernos"
         self.painel.definir_livro(None)
         self.painel.definir_livro(self.livro, pagina=0)
-        self.addCleanup(self.painel.fechar_caderno)
+        self.addCleanup(self.painel.caderno.fechar_caderno)
         self.escolher("fusao")
 
     def _ler_em_portugues(self, falso: _Falso | None = None) -> None:
@@ -328,8 +329,8 @@ class LinguaDoLivroTests(_Aba):
         falso = _Falso(self.PROSA_EM_PORTUGUES)
         self._ler_em_portugues(falso)
         self.assertEqual(falso.linguas, [tesseract.LINGUA_PADRAO])
-        self.assertEqual(self.painel.lingua, "por")
-        self.assertEqual(self.painel.escolha_de_lingua.currentData(), "por")
+        self.assertEqual(self.painel.leitura.lingua, "por")
+        self.assertEqual(self.painel.leitura.escolha_de_lingua.currentData(), "por")
         self.assertTrue(any("Português (detectada" in recado for recado in self.recados), self.recados)
 
     def test_a_segunda_leitura_recebe_a_lingua_detectada(self) -> None:
@@ -340,36 +341,36 @@ class LinguaDoLivroTests(_Aba):
         self.assertEqual(falso.linguas, ["por"])
 
     def test_a_escolhida_a_mao_vence_a_detectada(self) -> None:
-        caixa = self.painel.escolha_de_lingua
+        caixa = self.painel.leitura.escolha_de_lingua
         caixa.setCurrentIndex(caixa.findData("deu"))
         caixa.activated.emit(caixa.currentIndex())
         falso = _Falso(self.PROSA_EM_PORTUGUES)
         self._ler_em_portugues(falso)
         self.assertEqual(falso.linguas, ["deu"])
-        self.assertEqual(self.painel.lingua, "deu")
-        self.assertEqual(self.painel._caderno.lingua().detectada, "por")  # type: ignore[union-attr]
-        self.assertEqual(self.painel._caderno.lingua().manual, "deu")  # type: ignore[union-attr]
+        self.assertEqual(self.painel.leitura.lingua, "deu")
+        self.assertEqual(self.painel.caderno.aberto.lingua().detectada, "por")  # type: ignore[union-attr]
+        self.assertEqual(self.painel.caderno.aberto.lingua().manual, "deu")  # type: ignore[union-attr]
 
     def test_a_lingua_fica_no_caderno_e_volta_com_o_livro(self) -> None:
         self._ler_em_portugues()
         self.painel.definir_livro(None)
-        self.assertEqual(self.painel.lingua, tesseract.LINGUA_PADRAO)
+        self.assertEqual(self.painel.leitura.lingua, tesseract.LINGUA_PADRAO)
         self.painel.definir_livro(self.livro, pagina=0)
-        self.assertEqual(self.painel.lingua, "por")
+        self.assertEqual(self.painel.leitura.lingua, "por")
 
     def test_a_lingua_de_um_livro_nao_passa_para_o_outro(self) -> None:
-        caixa = self.painel.escolha_de_lingua
+        caixa = self.painel.leitura.escolha_de_lingua
         caixa.setCurrentIndex(caixa.findData("rus"))
         caixa.activated.emit(caixa.currentIndex())
         outro = self.pasta / "outro.pdf"
         outro.write_bytes(self.livro.read_bytes() + b"% outro livro")
         self.painel.definir_livro(outro, pagina=0)
-        self.assertEqual(self.painel.lingua, tesseract.LINGUA_PADRAO)
+        self.assertEqual(self.painel.leitura.lingua, tesseract.LINGUA_PADRAO)
         self.painel.definir_livro(self.livro, pagina=0)
-        self.assertEqual(self.painel.lingua, "rus")
+        self.assertEqual(self.painel.leitura.lingua, "rus")
 
     def test_o_estado_da_janela_nao_guarda_a_lingua_do_livro(self) -> None:
-        caixa = self.painel.escolha_de_lingua
+        caixa = self.painel.leitura.escolha_de_lingua
         caixa.setCurrentIndex(caixa.findData("rus"))
         caixa.activated.emit(caixa.currentIndex())
         guardado = estado_da_janela.AppState()
@@ -378,26 +379,26 @@ class LinguaDoLivroTests(_Aba):
 
     def test_o_comando_do_menu_escolhe_e_volta_a_detectar(self) -> None:
         self._ler_em_portugues()
-        with mock.patch("chess_diagram_ocr.qt.painel_de_texto.QInputDialog.getItem", return_value=("Francês", True)):
+        with mock.patch("chess_diagram_ocr.qt.texto_leitura.QInputDialog.getItem", return_value=("Francês", True)):
             self.painel.executar("lingua_do_livro")
-        self.assertEqual(self.painel.lingua, "fra")
-        self.assertEqual(self.painel._caderno.lingua().manual, "fra")  # type: ignore[union-attr]
+        self.assertEqual(self.painel.leitura.lingua, "fra")
+        self.assertEqual(self.painel.caderno.aberto.lingua().manual, "fra")  # type: ignore[union-attr]
         with mock.patch(
-            "chess_diagram_ocr.qt.painel_de_texto.QInputDialog.getItem", return_value=(strings.LINGUA_DETECTADA_PELO_LIVRO, True)
+            "chess_diagram_ocr.qt.texto_leitura.QInputDialog.getItem", return_value=(strings.LINGUA_DETECTADA_PELO_LIVRO, True)
         ):
             self.painel.executar("lingua_do_livro")
-        self.assertEqual(self.painel.lingua, "por")
-        self.assertEqual(self.painel._caderno.lingua().manual, "")  # type: ignore[union-attr]
+        self.assertEqual(self.painel.leitura.lingua, "por")
+        self.assertEqual(self.painel.caderno.aberto.lingua().manual, "")  # type: ignore[union-attr]
 
     def test_cancelar_o_dialogo_nao_muda_nada(self) -> None:
-        with mock.patch("chess_diagram_ocr.qt.painel_de_texto.QInputDialog.getItem", return_value=("Francês", False)):
+        with mock.patch("chess_diagram_ocr.qt.texto_leitura.QInputDialog.getItem", return_value=("Francês", False)):
             self.painel.executar("lingua_do_livro")
-        self.assertEqual(self.painel.lingua, tesseract.LINGUA_PADRAO)
+        self.assertEqual(self.painel.leitura.lingua, tesseract.LINGUA_PADRAO)
 
     def test_disco_recusando_a_lingua_nao_derruba_o_slot(self) -> None:
-        with mock.patch.object(self.painel._caderno, "guardar_lingua", side_effect=OSError("disco cheio")):
-            self.painel._escolher_lingua("por")
-        self.assertEqual(self.painel.lingua, "por")
+        with mock.patch.object(self.painel.caderno.aberto, "guardar_lingua", side_effect=OSError("disco cheio")):
+            self.painel.leitura._escolher_lingua("por")
+        self.assertEqual(self.painel.leitura.lingua, "por")
         self.assertTrue(any("disco cheio" in recado for recado in self.recados), self.recados)
 
     def test_as_dez_folhas_sem_resposta_dizem_que_a_pessoa_escolha(self) -> None:
@@ -405,9 +406,9 @@ class LinguaDoLivroTests(_Aba):
         sem_sentido = pagina.PaginaLida(pagina=9, colunas=(pagina.Coluna(indice=0, blocos=(pagina.BlocoDeTexto.de_linhas(
             [pagina.LinhaLida(texto=" ".join(["xqzw"] * 30), bbox=(0, 0, 9, 9))]
         ),)),))
-        self.painel._lingua_do_livro = LinguaDoLivro(folhas=tuple(range(9)))
-        self.assertEqual(self.painel._anotar_lingua_da_folha(sem_sentido, "").strip(), strings.LINGUA_NAO_DETECTADA)
-        self.assertEqual(self.painel.lingua, tesseract.LINGUA_PADRAO)
+        self.painel.leitura._lingua_do_livro = LinguaDoLivro(folhas=tuple(range(9)))
+        self.assertEqual(self.painel.leitura._anotar_lingua_da_folha(sem_sentido, "").strip(), strings.LINGUA_NAO_DETECTADA)
+        self.assertEqual(self.painel.leitura.lingua, tesseract.LINGUA_PADRAO)
 
     def test_a_camada_com_palavras_e_quem_conta_para_a_lingua(self) -> None:
         """O glifo não tem cirílico: sem a camada, o livro russo com camada ficaria sem resposta."""
@@ -415,14 +416,14 @@ class LinguaDoLivroTests(_Aba):
             [pagina.LinhaLida(texto=" ".join(["xqzw"] * 30), bbox=(0, 0, 9, 9))]
         ),)),))
         russo = "Белый король не может выйти на открытую линию и при этом пешки становятся сильнее после размена ладей на доске " * 2
-        self.painel._anotar_lingua_da_folha(sem_sentido, russo)
-        self.assertEqual(self.painel.lingua, "rus")
+        self.painel.leitura._anotar_lingua_da_folha(sem_sentido, russo)
+        self.assertEqual(self.painel.leitura.lingua, "rus")
 
     def test_a_leitura_de_verdade_leva_a_camada_a_deteccao(self) -> None:
         """Fiação: a folha deste teste é inglês na camada, e o Tesseract de mentira lê português: quem conta é a camada."""
         self.painel.definir_livro(self.livro_em_ingles, pagina=0)
         self._ler_em_portugues()
-        self.assertEqual(self.painel._caderno.lingua().detectada, "eng")  # type: ignore[union-attr]
+        self.assertEqual(self.painel.caderno.aberto.lingua().detectada, "eng")  # type: ignore[union-attr]
 
     def test_o_comando_esta_no_menu_texto(self) -> None:
         from chess_diagram_ocr.ui import menu
@@ -511,7 +512,7 @@ class CorrigirAMarcaNoEditorTests(_Aba):
 
         with tempfile.TemporaryDirectory() as pasta:
             caminho = Path(pasta) / "folha.cvtxt"
-            self.painel._salvar_documento_em(caminho)  # noqa: SLF001
+            self.painel.caderno._salvar_documento_em(caminho)  # noqa: SLF001
             reaberto = arquivo.carregar(caminho)
         texto = reaberto.para_texto()
         return [texto[a:b] for a, b in rico.intervalos_a_revisar(reaberto)]
@@ -605,7 +606,7 @@ class CorrigirAMarcaNoEditorTests(_Aba):
         self._folha("the wbite knight wlns a pawm", (4, 9), (17, 21))
         self._trocar_letra(5, "h")
         caminho = self.pasta / "folha.cvtxt"
-        self.painel._salvar_documento_em(caminho)  # noqa: SLF001
+        self.painel.caderno._salvar_documento_em(caminho)  # noqa: SLF001
         self.painel.desenhar_documento(arquivo.carregar(caminho))
         self._trocar_letra(27, "n")
         self._so_sobra("wlns")

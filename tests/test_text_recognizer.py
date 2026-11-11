@@ -315,5 +315,76 @@ class ComOModeloDeVerdadeTests(unittest.TestCase):
             self.assertGreater(caixa.confidence, 0.0)
 
 
+class GlifoConfiguradoNaPaginaTests(unittest.TestCase):
+    """`ocr.glyph_model` chega à leitura de página (S-847).
+
+    Só o caminho da legenda lia a configuração; a página carregava o `.pt` fixo ao lado do metadado.
+    Quem pôs os pesos noutra pasta e os apontou na configuração lia a folha pela camada, com `auto`,
+    e com `glifo` recebia um erro que mandava configurar o que já estava configurado. O par aqui é de
+    brinquedo, gerado no teste: o real só existe no checkout principal, e o teste pularia no CI.
+    """
+
+    def setUp(self) -> None:
+        import torch
+
+        from chess_diagram_ocr.settings import ENV_OCR_GLYPH_MODEL
+
+        self._dir = TemporaryDirectory()
+        self.addCleanup(self._dir.cleanup)
+        self.addCleanup(mod.limpar_cache)
+        mod.limpar_cache()
+        raiz = Path(self._dir.name)
+        (raiz / "models").mkdir()
+        (raiz / "pesos").mkdir()
+
+        idx = {0: "a", 1: "b", 2: "c"}
+        self.pesos = raiz / "pesos" / "meu_classificador.pt"  # noutra pasta, e com outro nome
+        torch.manual_seed(5)
+        torch.save(mod._construir_rede(len(idx)).state_dict(), self.pesos)
+        meta = raiz / "models" / "char_meta.json"
+        meta.write_bytes(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "idx_to_char": {str(i): c for i, c in idx.items()},
+                    "num_classes": len(idx),
+                    "temperatura": 2.0,
+                    "modelo_sha256": mod.impressao_do_arquivo(self.pesos),
+                    "classes_sha256": mod.impressao_das_classes(idx),
+                    "treinado_em": "2026-01-01T00:00:00",
+                }
+            ).encode()
+        )
+        self.assertFalse((raiz / "models" / "char_classifier.pt").exists(), "o caminho padrão tem de faltar")
+
+        from unittest import mock
+
+        for alvo in (mock.patch.object(mod, "CAMINHO_PADRAO_META", meta), mock.patch.dict("os.environ", {ENV_OCR_GLYPH_MODEL: str(self.pesos)})):
+            alvo.start()
+            self.addCleanup(alvo.stop)
+
+        import fitz
+
+        self.pdf = raiz / "livro.pdf"
+        doc = fitz.open()
+        pagina = doc.new_page(width=300.0, height=400.0)
+        pagina.insert_text((40.0, 60.0), "abc cab bca abc", fontsize=14)
+        pagina.insert_text((40.0, 90.0), "cab abc bca cab", fontsize=14)
+        doc.save(str(self.pdf))
+        doc.close()
+
+    def _procedencias(self, motor: str) -> set[str]:
+        from chess_diagram_ocr.text.leitor import ler_pagina
+
+        pagina = ler_pagina(self.pdf, 0, dpi=150, motor=motor, marcar_negrito=False, marcar_italico=False)  # type: ignore[arg-type]
+        return set(pagina.procedencias())
+
+    def test_auto_le_pelo_glifo_com_os_pesos_da_configuracao(self) -> None:
+        self.assertEqual({"glifo"}, self._procedencias("auto"))
+
+    def test_glifo_explicito_le_com_os_pesos_da_configuracao(self) -> None:
+        self.assertEqual({"glifo"}, self._procedencias("glifo"))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

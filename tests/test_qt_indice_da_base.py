@@ -12,7 +12,8 @@ import time
 import unittest
 from pathlib import Path
 
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, esperar_ate
+from tempo_da_suite import limite
 
 from chess_diagram_ocr.ui.busy import BusyRegistry
 
@@ -53,10 +54,7 @@ class IndexadorDaBaseTests(unittest.TestCase):
 
     def _esperar(self, indexador: IndexadorDaBase | None = None, ate_ms: int = 10_000) -> None:
         alvo = indexador or self.indexador
-        for _ in range(ate_ms // 20):
-            QTest.qWait(20)
-            if not alvo.ocupado:
-                return
+        esperar_ate(lambda: not alvo.ocupado, limite_s=ate_ms / 1000, o_que="o fim do índice")
 
     def test_o_fim_chega_por_sinal_com_o_resultado(self) -> None:
         chegou: list[object] = []
@@ -66,6 +64,21 @@ class IndexadorDaBaseTests(unittest.TestCase):
         self.assertEqual(len(chegou), 1)
         self.assertEqual(self.indexador.resultado.partidas, 2)  # type: ignore[union-attr]
         self.assertTrue(self.indice.exists())
+
+    def test_a_janela_poda_so_a_base_que_saiu_da_pasta(self) -> None:
+        """S-809: o botão da janela é o que a recusa da consulta manda apertar, então ele poda --
+        mas só o que não existe mais no disco; a base que só ficou fora da lista continua."""
+        outra = self.raiz / "outra.pgn"
+        outra.write_text(PGN, encoding="utf-8")
+        sumida = self.raiz / "sumida.pgn"
+        sumida.write_text(PGN, encoding="utf-8")
+        self.indexador.iniciar([self.base, outra, sumida], self.indice)
+        self._esperar()
+        sumida.unlink()
+        self.indexador.iniciar([self.base], self.indice)
+        self._esperar()
+        self.assertEqual(self.indexador.resultado.arquivos_removidos, 1)  # type: ignore[union-attr]
+        self.assertEqual(self.indexador.resultado.partidas, 4, "base.pgn e outra.pgn")  # type: ignore[union-attr]
 
     def test_o_progresso_chega_por_sinal_e_somado_por_mil(self) -> None:
         """O `progress` do índice roda na thread de trabalho; o que a barra recebe já veio pela
@@ -95,7 +108,7 @@ class IndexadorDaBaseTests(unittest.TestCase):
         inicio = time.perf_counter()
         self.indexador.cancelar()
         self._esperar()
-        self.assertLess(time.perf_counter() - inicio, 1.5)
+        self.assertLess(time.perf_counter() - inicio, limite(1.5))
         self.assertTrue(self.indexador.resultado.cancelado)  # type: ignore[union-attr]
 
     def test_a_falha_vira_sinal_e_nao_excecao(self) -> None:
@@ -134,10 +147,7 @@ class DialogoTests(unittest.TestCase):
         self.indice = self.raiz / "indice.sqlite"
 
     def _esperar(self, indexador: IndexadorDaBase, ate_ms: int = 10_000) -> None:
-        for _ in range(ate_ms // 20):
-            QTest.qWait(20)
-            if not indexador.ocupado:
-                return
+        esperar_ate(lambda: not indexador.ocupado, limite_s=ate_ms / 1000, o_que="o fim do índice")
 
     def test_o_dialogo_anda_com_o_indice_e_fecha_no_fim(self) -> None:
         """O valor da barra é lido a cada avanço, e não no fim: no fim o diálogo já foi

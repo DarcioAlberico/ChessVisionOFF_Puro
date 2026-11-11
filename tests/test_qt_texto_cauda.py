@@ -37,15 +37,6 @@ class DeclaracaoTests(unittest.TestCase):
         funcionar, tendo `auto` na mesma caixa."""
         self.assertEqual(texto_declarado.MOTORES[0], "auto")
 
-    def test_o_modulo_puro_nao_carrega_tkinter(self) -> None:
-        import ast
-        from pathlib import Path
-
-        arvore = ast.parse(Path(texto_declarado.__file__).read_text(encoding="utf-8"))
-        nomes = {no.names[0].name.split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.Import)}
-        nomes |= {(no.module or "").split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.ImportFrom)}
-        self.assertNotIn("tkinter", nomes)
-
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class CaudaTests(unittest.TestCase):
@@ -85,6 +76,25 @@ class CaudaTests(unittest.TestCase):
         painel.desfazer()
         self.assertEqual(painel.texto(), "uma frase")
 
+    def test_maiuscula_de_strasse_seleciona_a_palavra_inteira(self) -> None:
+        """`straße` (6) vira `STRASSE` (7), e a seleção acompanha (S-904): o pincel seguinte cai na
+        palavra inteira. A letra fora do BMP antes dela vale duas posições no Qt e uma no documento."""
+        from PyQt6.QtGui import QTextCursor
+
+        for texto, comeco in (("uma straße aqui", 4), ("𝔸 straße aqui", 3)):
+            with self.subTest(texto=texto):
+                painel = self.painel(texto)
+                cursor = painel.editor.textCursor()
+                cursor.setPosition(comeco)
+                cursor.setPosition(comeco + len("straße"), QTextCursor.MoveMode.KeepAnchor)
+                painel.editor.setTextCursor(cursor)
+                painel.maiusculas()
+                self.assertEqual(painel.texto(), texto.replace("straße", "STRASSE"))
+                self.assertEqual(painel.editor.textCursor().selectedText(), "STRASSE")
+                painel.negrito()
+                negritos = [c.texto for c in painel.documento.corridas if c.atributos.negrito]
+                self.assertEqual(negritos, ["STRASSE"])
+
     def test_a_caixa_tem_as_tres_formas(self) -> None:
         for metodo, esperado in (("maiusculas", "UMA FRASE"), ("minusculas", "uma frase"), ("capitular", "Uma Frase")):
             with self.subTest(metodo=metodo):
@@ -98,11 +108,11 @@ class CaudaTests(unittest.TestCase):
         painel = self.painel()
         antes = painel.texto()
         painel.aproximar_texto()
-        self.assertEqual(painel.zoom_da_vista, 1)
+        self.assertEqual(painel.vista.zoom_da_vista, 1)
         self.assertEqual(painel.texto(), antes)
-        self.assertFalse(painel.pode_desfazer, "o zoom não entrou na pilha")
+        self.assertFalse(painel.espelho.pode_desfazer, "o zoom não entrou na pilha")
         painel.zoom_do_texto_normal()
-        self.assertEqual(painel.zoom_da_vista, 0)
+        self.assertEqual(painel.vista.zoom_da_vista, 0)
 
     def test_o_zoom_para_no_limite_e_diz_isso(self) -> None:
         painel = self.painel()
@@ -110,7 +120,7 @@ class CaudaTests(unittest.TestCase):
         painel.estado.connect(vistos.append)
         for _ in range(texto_declarado.ZOOM_MAXIMO + 2):
             painel.aproximar_texto()
-        self.assertEqual(painel.zoom_da_vista, texto_declarado.ZOOM_MAXIMO)
+        self.assertEqual(painel.vista.zoom_da_vista, texto_declarado.ZOOM_MAXIMO)
         self.assertTrue(any("já está no limite" in frase for frase in vistos))
 
     def test_a_quebra_de_linha_alterna(self) -> None:
@@ -188,7 +198,7 @@ class CaudaTests(unittest.TestCase):
         painel.marcar_fora_do_lexico()
         self.assertTrue(painel.editor.extraSelections(), "nada foi marcado")
         self.assertEqual(painel.texto(), antes, "a marcação não tocou o documento")
-        self.assertFalse(painel.pode_desfazer, "e não entrou na pilha")
+        self.assertFalse(painel.espelho.pode_desfazer, "e não entrou na pilha")
 
     def test_limpar_marcas_desliga_a_conferencia(self) -> None:
         """Ela se refaz sozinha depois de cada redesenho enquanto estiver ligada (S-293)."""
@@ -196,7 +206,7 @@ class CaudaTests(unittest.TestCase):
         painel.marcar_fora_do_lexico()
         painel.limpar_marcas_do_lexico()
         self.assertEqual(painel.editor.extraSelections(), [])
-        self.assertFalse(painel._conferindo_lexico)
+        self.assertFalse(painel.correcao.conferindo_lexico)
 
     def test_a_lista_de_figurinas_marca_o_que_o_modelo_nao_le(self) -> None:
         """Um glifo fora do modelo continua inserível -- mas quem o insere precisa saber que a
@@ -221,10 +231,10 @@ class CaudaTests(unittest.TestCase):
         painel.activateWindow()
         painel.alternar_paleta()
         self.app.processEvents()
-        self.assertTrue(painel.paleta_lateral.isVisible())
+        self.assertTrue(painel.correcao.paleta_lateral.isVisible())
         self.assertIs(QApplication.focusWidget(), painel.editor, "o foco saiu do texto")
         painel.alternar_paleta()
-        self.assertFalse(painel.paleta_lateral.isVisible())
+        self.assertFalse(painel.correcao.paleta_lateral.isVisible())
 
     def test_ler_sem_pdf_avisa_no_rodape(self) -> None:
         """Rodapé e não caixa: é um passo que falta, e não uma escolha."""

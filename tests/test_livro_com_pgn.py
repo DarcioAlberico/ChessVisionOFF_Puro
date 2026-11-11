@@ -161,6 +161,38 @@ class CasarTests(unittest.TestCase):
         self.assertEqual(lp.SEM_NO, d.estado)
         self.assertEqual("", d.fen)
 
+    def test_legenda_com_lance_inexistente_cai_na_posicao(self) -> None:
+        """S-879: o OCR troca N por K («3...Kc6»), o rótulo não acha nó, e a posição lida -- que é a
+        do nó 3...Nc6 do capítulo 2 -- ainda decide; antes o diagrama ficava `sem_no`."""
+        lido = _campo("e4", "e6", "d4", "d5", "Nc3", "Nc6")
+        paginas = [_pagina(), _pagina(), _pagina(_imagem(30), _legenda(316, "3...Kc6"))]
+        (d,) = self._casar(paginas, {3: lido})
+        self.assertEqual((lp.CONFERE, "3...Nc6"), (d.estado, self.indice.nos[d.no].rotulo))
+        self.assertEqual("w", d.fen.split()[1])
+
+    def test_legenda_com_lance_inexistente_cai_nos_vizinhos(self) -> None:
+        """A leitura errando uma casa, sem nó exato: cai em `_vizinhos`, como no livro sem legenda."""
+        certo = _campo("e4", "e6", "d4", "d5", "Nc3", "Nc6")
+        uma_casa = certo.replace("r1bqkbnr", "r1bqkbnn")
+        paginas = [_pagina(), _pagina(), _pagina(_imagem(30), _legenda(316, "3...Kc6"))]
+        (d,) = self._casar(paginas, {3: uma_casa})
+        self.assertEqual((lp.CORRIGIDO, "3...Nc6"), (d.estado, self.indice.nos[d.no].rotulo))
+
+    def test_lance_com_promocao_e_lido_inteiro(self) -> None:
+        """«23.e8Q» (sem o `=`, como os livros escrevem) é o nó `23.e8=Q` do PGN, e não `23.e8`."""
+        promocao = IndiceDoLivro(
+            [
+                chess.pgn.read_game(
+                    fluxo_tolerante('[Event "C"]\n[SetUp "1"]\n[FEN "8/4P3/8/8/8/k7/8/K7 w - - 0 23"]\n\n23.e8=Q *\n')
+                )
+            ]
+        )
+        self.assertEqual("23.e8=Q", lance_da_legenda("23.e8Q+"))
+        self.assertEqual("23...exd1=N", lance_da_legenda("23...exd1N"))
+        self.assertEqual("12.Re8", lance_da_legenda("12.Re8N"))  # N de novidade, não de promoção
+        (d,) = lp.casar_livro([(1, _pagina(_imagem(30), _legenda(316, "23.e8Q")))], promocao)
+        self.assertEqual((lp.SEM_LEITURA, "4Q3/8/8/8/8/k7/8/K7 b - - 0 23"), (d.estado, d.fen))
+
     def test_contagem(self) -> None:
         diagramas = self._casar([_pagina(_imagem(30), _legenda(316, "3...c5"), _legenda(452, "4.exd5"))])
         self.assertEqual({lp.SEM_LEITURA: 1, lp.FALTANDO: 1}, lp.contagem(diagramas))

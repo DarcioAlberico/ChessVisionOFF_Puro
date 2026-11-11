@@ -36,12 +36,15 @@ pip install -e ".[dev]"
 Em qualquer um dos casos o pacote `chess_diagram_ocr` fica instalado em modo editavel,
 e os comandos `cvoff-*` passam a existir no PATH do ambiente.
 
-**A faixa de versao mudou (S-436)**: era `==3.10.*` e passou a `>=3.10,<3.14`. O motivo e prazo,
-nao gosto -- o Python 3.10 sai de suporte em outubro de 2026, e o bundle do PyInstaller **embarca
-o interpretador**, de modo que o pino passaria a distribuir um Python sem correcao de seguranca
-para quem baixa o .zip. A CI prova as duas pontas da faixa (3.10 e 3.13); o `.python-version` do
-repositorio continua em 3.10, que e o padrao de quem so roda `uv sync`. Promover o 3.13 a padrao
-Requer Python 3.10, 3.11, 3.12 ou 3.13. Os arquivos de dados (`PDF/`, `data/samples/`) e o checkpoint
+**Requer Python 3.13 (S-830).** O piso subiu de 3.10 para 3.13 e o `.python-version` do
+repositorio diz 3.13, que e o que `uv sync` instala (e baixa, se faltar). O motivo e prazo, nao
+gosto: o Python 3.10 saiu de suporte em outubro de 2026, e o bundle do PyInstaller **embarca o
+interpretador**, de modo que um `.exe` gerado num 3.10 distribuiria um Python sem correcao de
+seguranca para quem baixa o .zip. A CI roda so o 3.13. Um `.venv` criado antes da troca continua
+em 3.10: feche o programa e rode `uv sync --extra dev --python 3.13` (com os mesmos extras de
+antes), e `tests/test_environment.py` reprova ate isso ser feito.
+
+Os arquivos de dados (`PDF/`, `data/samples/`) e o checkpoint
 (`models/piece_classifier.pt`) nao vem no repositorio -- veja
 [Dados e artefatos](#dados-e-artefatos).
 
@@ -175,12 +178,12 @@ O `streamlit` esta no extra `demo` e **nao** vem no ambiente padrao (S-386): ele
 `No module named streamlit` num clone novo.
 
 **Isto nao e uma segunda interface, e sim um exemplo.** Ela abre um PDF, reconhece os
-diagramas e mostra a FEN e a legalidade -- tudo pelo mesmo `OcrService` que o Tkinter usa,
+diagramas e mostra a FEN e a legalidade -- tudo pelo mesmo `OcrService` que a janela PyQt6 usa,
 sem uma linha de reconhecimento propria. Serve para **ver** o resultado e para provar que o
 pipeline nao depende de janela.
 
 O que ela nao tem, e nunca teve: editor de posicao por clique, painel de legalidade com as
-casas culpadas, fila de revisao e aba de dataset. Os quatro sao widgets de Tk, e sao onde
+casas culpadas, fila de revisao e aba de dataset. Os quatro sao widgets da janela PyQt6, e sao onde
 mora o fluxo de valor do produto -- *corrigir, salvar, treinar*. Ate a Fase 10 este README
 a chamava de "interface web alternativa", o que prometia uma paridade que nao existe; a
 S-54 escolheu desfazer a promessa em vez de perseguir ~1 semana de trabalho por um uso
@@ -191,7 +194,7 @@ remoto que ninguem pediu ainda.
 Depois da instalacao, **48 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
-usados estao abaixo; `--help` lista o resto.
+usados estao no bloco abaixo, com exemplos; a lista inteira vem logo depois dele.
 
 ```bash
 # Treino. Usa data/splits.csv: treina no split 'train', valida em 'val',
@@ -486,6 +489,61 @@ cvoff-texto-transcrever
 cvoff-texto-transcrever --pngs data/faixas_para_transcrever
 ```
 
+Todos os comandos, na ordem de `[project.scripts]`, com o modulo de cada um. O bloco sai
+do `pyproject.toml` e e conferido por `tests/test_docs.py` (S-831): comando novo sem linha
+aqui reprova a suite, e a falha imprime o bloco certo.
+
+<!-- comandos: gerado de [project.scripts], conferido por tests/test_docs.py -->
+- `cvoff-train` -- `chess_diagram_ocr.cli.train`
+- `cvoff-infer` -- `chess_diagram_ocr.cli.infer`
+- `cvoff-export` -- `chess_diagram_ocr.cli.export_pgn`
+- `cvoff-batch` -- `chess_diagram_ocr.cli.batch`
+- `cvoff-audit` -- `chess_diagram_ocr.cli.audit`
+- `cvoff-census` -- `chess_diagram_ocr.cli.census`
+- `cvoff-eval` -- `chess_diagram_ocr.cli.evaluate`
+- `cvoff-field` -- `chess_diagram_ocr.cli.field`
+- `cvoff-migrate-labels` -- `chess_diagram_ocr.cli.migrate_labels`
+- `cvoff-provenance` -- `chess_diagram_ocr.cli.provenance`
+- `cvoff-games` -- `chess_diagram_ocr.cli.games`
+- `cvoff-review` -- `chess_diagram_ocr.cli.review`
+- `cvoff-sides` -- `chess_diagram_ocr.cli.sides`
+- `cvoff-experiment` -- `chess_diagram_ocr.cli.experiment`
+- `cvoff-gallery` -- `chess_diagram_ocr.cli.gallery`
+- `cvoff-scan` -- `chess_diagram_ocr.cli.scan`
+- `cvoff-export-onnx` -- `chess_diagram_ocr.cli.export_onnx`
+- `cvoff-texto-status` -- `chess_diagram_ocr.cli.text_status`
+- `cvoff-texto-placar` -- `chess_diagram_ocr.cli.texto_placar`
+- `cvoff-texto-transcrever` -- `chess_diagram_ocr.cli.texto_transcrever`
+- `cvoff-texto-ordem` -- `chess_diagram_ocr.cli.texto_ordem`
+- `cvoff-texto-colunas` -- `chess_diagram_ocr.cli.texto_colunas`
+- `cvoff-texto-inventario` -- `chess_diagram_ocr.cli.texto_inventario`
+- `cvoff-editor-inventario` -- `chess_diagram_ocr.cli.editor_inventario`
+- `cvoff-texto-train` -- `chess_diagram_ocr.cli.texto_train`
+- `cvoff-texto-export-onnx` -- `chess_diagram_ocr.cli.texto_export_onnx`
+- `cvoff-texto-conflitos` -- `chess_diagram_ocr.cli.texto_conflitos`
+- `cvoff-texto-variantes` -- `chess_diagram_ocr.cli.texto_variantes`
+- `cvoff-texto-grade` -- `chess_diagram_ocr.cli.texto_grade`
+- `cvoff-texto-vertical` -- `chess_diagram_ocr.cli.texto_vertical`
+- `cvoff-texto-duas-linhas` -- `chess_diagram_ocr.cli.texto_duas_linhas`
+- `cvoff-texto-colados` -- `chess_diagram_ocr.cli.texto_colados`
+- `cvoff-texto-linha` -- `chess_diagram_ocr.cli.texto_linha`
+- `cvoff-texto-placar-final` -- `chess_diagram_ocr.cli.texto_placar_final`
+- `cvoff-texto-pagina` -- `chess_diagram_ocr.cli.texto_pagina`
+- `cvoff-texto-correcoes` -- `chess_diagram_ocr.cli.texto_correcoes`
+- `cvoff-texto-lexico` -- `chess_diagram_ocr.cli.texto_lexico`
+- `cvoff-texto-custo` -- `chess_diagram_ocr.cli.texto_custo`
+- `cvoff-texto-semelhanca` -- `chess_diagram_ocr.cli.texto_semelhanca`
+- `cvoff-texto-lado` -- `chess_diagram_ocr.cli.texto_lado`
+- `cvoff-texto-estilo-motor` -- `chess_diagram_ocr.cli.texto_estilo_motor`
+- `cvoff-texto-flutuante` -- `chess_diagram_ocr.cli.texto_flutuante`
+- `cvoff-livro-com-pgn` -- `chess_diagram_ocr.cli.livro_com_pgn`
+- `cvoff-texto-estilo-conjunto` -- `chess_diagram_ocr.cli.texto_estilo_conjunto`
+- `cvoff-texto-estilo-classificador` -- `chess_diagram_ocr.cli.texto_estilo_classificador`
+- `cvoff-texto-pesquisavel` -- `chess_diagram_ocr.cli.texto_pesquisavel`
+- `cvoff-texto-paragrafo` -- `chess_diagram_ocr.cli.texto_paragrafo`
+- `cvoff-texto-prosa` -- `chess_diagram_ocr.cli.texto_prosa`
+<!-- fim dos comandos -->
+
 Os scripts `train_model.py`, `infer_pdf.py` e `export_pdf_pgn.py` na raiz continuam
 funcionando como invocadores equivalentes (`uv run python infer_pdf.py ...`).
 
@@ -722,7 +780,7 @@ sozinha -- adotar a leitura dela e um clique seu, e a procedencia registra que v
 Le o texto **em volta do diagrama** nas paginas que nao tem camada de texto. Medido em
 2026-08-14, quando o acervo tinha 27 livros: **7 deles sao scan puro** e saem inteiros como
 `[SideToMoveSource "default"]`, mesmo quando a pagina tem `LAS BLANCAS JUEGAN PRIMERO`
-impresso no topo. (Hoje o acervo tem 45 PDFs; os 18 que entraram depois nao foram
+impresso no topo. (Hoje o acervo tem 58 PDFs; os 31 que entraram depois nao foram
 classificados, e por isso o denominador aqui continua 27.) Outros 5 livros tem
 camada de texto que falha em parte das paginas.
 
@@ -1078,6 +1136,7 @@ src/chess_diagram_ocr/
   service.py            camada de servico: o pipeline de OCR, sem dependencia de UI
   settings.py           preferencias do usuario (endpoint remoto, motor de analise)
   alinhamento.py       regua de alinhamento do recorte: onde o damero ideal encaixa, em pixel (S-526)
+  arquivo_do_dono.py    leitura travada: arquivo do dono que nao le nao e gravado por cima (S-812)
   atomic_io.py          escrita de arquivo que nao deixa arquivo pela metade
   audit.py              auditoria do dataset: legalidade, duplicatas, orfaos
   augment.py            aumento de dados do treino: jitter, afim e ruido, com probabilidade
@@ -1091,7 +1150,7 @@ src/chess_diagram_ocr/
   dataset.py            dataset de treino, cache limitado e amostrador por tabuleiro
   dataset_browser.py    listar, filtrar, recorrigir e remover amostras
   decode.py             decodificacao sujeita as regras do xadrez
-  desenho_de_diagrama.py  o diagrama desenhado de novo (fonte Merida ou PNGs das pecas) para substituir no PDF
+  desenho_de_diagrama.py  o diagrama desenhado de novo (fonte Merida ou PNGs das pecas), em PNG
   detection_census.py   censo da deteccao: quantos diagramas cada regra achou, por livro
   diagrama_png.py       o diagrama em PNG a partir da FEN, com as pecas de assets/ (S-543)
   diagrama_svg.py       o diagrama vetorial a partir da FEN, com as pecas do python-chess (S-542)
@@ -1111,6 +1170,7 @@ src/chess_diagram_ocr/
   export_checkpoint.py  parcial da exportacao, para cancelar e retomar
   fen_utils.py          conversao de FEN e checagem de legalidade
   field_eval.py         metricas sobre paginas reais anotadas: recall, precisao, exportacao
+  fontes_de_xadrez.py   que fonte desenha tabuleiro, que fonte desenha figurina, e o rotulo de eixo: a regra unica da legenda e da admissao (S-836)
   gallery.py            as anotacoes de exportacao de cada diagrama do livro
   gallery_scan.py       o indice da galeria: varre o livro e guarda o que achou
   games_cache.py        cache das posicoes da base, para a busca por posicao nao reler tudo
@@ -1133,18 +1193,17 @@ src/chess_diagram_ocr/
   ocr_caption.py        a legenda impressa lida da faixa abaixo do diagrama
   onnx_export.py        exportacao ONNX e conferencia de paridade com o torch
   orientation.py        a cascata de regras que decide a orientacao do diagrama
+  origem_do_texto.py    de onde veio um texto lido (camada, OCR de terceiros, glifo) e o escopo de pagina do lado a jogar
   pdf_io.py             render de paginas de PDF (PyMuPDF)
-  pdf_substituicao.py   as operacoes de escrita no PDF: apagar, substituir o diagrama, link do lichess
   pdf_text.py           legenda e metadados da camada de texto do PDF
   pdf_to_pgn.py         varredura de PDF e exportacao PGN
   pgn_do_livro.py       o PGN que vem com o livro: leitura tolerante e o indice da arvore por lance e por posicao (S-585)
   placar.py             o placar do treino: por livro e por sessao, em tres baldes (S-541)
-  preprocess.py         o recorte do tabuleiro virando as 64 casas que o modelo le, e o caminho de pagina de scan (S-547)
-  procedencias.py       de onde veio cada amostra, e o que isso permite fazer com ela
   processo_de_trabalho.py  o filho que rasteriza, le o CSV e detecta, porque o PyMuPDF e o Python seguram o GIL
   provenance.py         o registro de procedencia gravado ao lado de cada rotulo
   proveniencia.py       o sidecar .proveniencia.jsonl ao lado do PGN: retangulo, hash, confiancas, reparos e veredito por diagrama (A11)
   pgn_revisado.py       a decisao da fila de revisao de volta ao .pgn ja exportado, com copia
+  relogio.py            a hora gravada com fuso, e a leitura da antiga sem fuso como hora local (S-908)
   review_queue.py       fila de revisao ordenada por valor de informacao
   revisao_arquivo.py    o baralho da repeticao espacada no disco, um para o acervo (S-540)
   revisao_espacada.py   a repeticao espacada dos estudos e das taticas: FSRS e a agenda (S-540)
@@ -1256,7 +1315,7 @@ por tamanho ou por direito autoral:
 | Caminho | Conteudo | Por que fora |
 |---|---|---|
 | `PDF/` | livros de origem | material protegido por direito autoral |
-| `data/samples/` | 5.768 PNGs de tabuleiros, 5,0 GB | tamanho |
+| `data/samples/` | 20.758 PNGs de tabuleiros, 17,1 GB | tamanho |
 | `models/*.pt` | checkpoint treinado, ~8,7 MB | binario que muda a cada treino |
 | `PGN/` | saida gerada | reproduzivel a partir dos PDFs |
 | `pgn_database/` | sua base de partidas em PGN (as duas gigabases medidas aqui tem 18,9 GB) | material de terceiro, e o GitHub recusa acima de 100 MB |
@@ -1292,9 +1351,11 @@ tanto o item entregue sem secao quanto a secao no arquivo errado fazem a suite f
 | S-522 a S-526 | [docs/SPEC_REVISAO_EXTERNA_2.md](docs/SPEC_REVISAO_EXTERNA_2.md) |
 | S-500 a S-506, S-527 a S-580 | [docs/SPEC_SUITE.md](docs/SPEC_SUITE.md) |
 | S-581 a S-584 | [docs/PLANO_COLUNAS_SOLUCOES.md](docs/PLANO_COLUNAS_SOLUCOES.md) |
+| S-585 a S-598 | [docs/ROADMAP_PDF_COM_PGN.md](docs/ROADMAP_PDF_COM_PGN.md) |
 | S-599 | [docs/PLANO_FAIXAS_REVERSAS.md](docs/PLANO_FAIXAS_REVERSAS.md) |
 | S-601 a S-668 | [docs/SPEC_MESA_DE_TEXTO.md](docs/SPEC_MESA_DE_TEXTO.md) |
 | S-700 a S-772 | [docs/SPEC_TEXTO_PRECISO.md](docs/SPEC_TEXTO_PRECISO.md) |
+| S-800 a S-910 | [docs/SPEC_SOLIDEZ.md](docs/SPEC_SOLIDEZ.md) |
 
 A faixa da `ANALISE_DETECCAO` nao e contigua de proposito: **item de deteccao mora com os
 outros de deteccao**, e nao com o numero vizinho. Foi assim que a S-143 entrou ali, ao lado da
@@ -1466,6 +1527,13 @@ criterio de aceite dele. A tabela acima e sobre a spec.
   ouro-teste, aberto uma vez, e a suite irma na mesma regua. Os portoes de 2026-11-06, com o codigo
   congelado, estao em `docs/metrics/texto_prosa_portoes_20261106.json`: fusao 2,11% e glifo 4,87% no
   ouro-teste, contra 0,15% do Tesseract nas linhas certas. O G102 nao passou, e o padrao continua o glifo
+- [docs/ROADMAP_SOLIDEZ.md](docs/ROADMAP_SOLIDEZ.md) -- **Fases 110 a 121** (S-800 a S-910), a
+  revisao do programa inteiro em 2026-11-08: as seis premissas que geravam a maior parte dos 117
+  achados (arquivo que nao le tratado como vazio, resultado assincrono marcado so pela pagina, copia
+  para manter igual, mensagem usada como dado, relogio que decide, falta de borda de excecao), as
+  medicoes de complexidade, duplicacao e cobertura, e a ordem das fases
+- [docs/SPEC_SOLIDEZ.md](docs/SPEC_SOLIDEZ.md) -- especificacao das Fases 110 a 121, item a item: o
+  problema com a evidencia, a causa, a solucao, o teste que falha primeiro e o criterio de aceite
 - [docs/BASELINE.md](docs/BASELINE.md) -- o numero de referencia sobre recortes rotulados
   (0,9906 exata por tabuleiro) e como reproduzi-lo. Para o numero sobre paginas reais, que e
   outro e bem mais baixo, `cvoff-field` e `docs/metrics/field_*.json`

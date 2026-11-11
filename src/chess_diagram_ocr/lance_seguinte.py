@@ -38,6 +38,7 @@ import numpy as np
 
 from .config import PIECE_CLASSES
 from .fen_utils import check_position, fen_from_class_indices
+from .semantics import compose_fen
 from .text.notacao import (
     RESULTADOS,
     RETICENCIA,
@@ -129,8 +130,13 @@ def _lances_impressos(tokens: list[str]) -> int:
 
 
 def _tabuleiro(placement: str, turn: chess.Color, fullmove: int) -> chess.Board | None:
+    """A posição lida, com o roque que ela permite (`semantics.compose_fen`, S-880).
+
+    Era ` - - 0 N` fixo: depois de `1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5` o `4.O-O` impresso não existia, e o
+    reparo saía procurando trocas à toa. As táticas já montavam a FEN assim; agora são uma decisão só.
+    """
     try:
-        board = chess.Board(f"{placement} {'w' if turn == chess.WHITE else 'b'} - - 0 {max(1, fullmove)}")
+        board = chess.Board(compose_fen(placement, turn, fullmove=fullmove))
     except ValueError:
         return None
     return board

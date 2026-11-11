@@ -25,14 +25,26 @@ from qt_app import MOTIVO, TEM_PYQT, aplicacao, assentado, descartar, pixels_dif
 from chess_diagram_ocr.ui import estilos, folha, pele, tipografia, tokens
 from chess_diagram_ocr.ui import folha_de_estilo as folha_de_estilo_pura
 
-FOLHA_DO_MAIN = (
-    "cobra o desenho da folha de estilo do `main` (S-441 a S-553: a moldura derivada da superfície, "
-    "o anel de foco de 1 px na cor da letra, o indicador chato com ponto), e o merge do religa "
-    "ficou com a folha da F9 (`ui/folha_de_estilo.py`) -- decisão do PR do merge. Os dois defeitos "
-    "que estes testes acharam na folha da F9 estão consertados e têm guarda própria em "
-    "`MarcadoEFocoNaFolhaTests` (S-555, S-556)"
+CONTROLES_COM_ANEL = (
+    "QPushButton",
+    "QToolButton",
+    "QComboBox",
+    "QLineEdit",
+    "QTextEdit",
+    "QPlainTextEdit",
+    "QAbstractSpinBox",
+    "QListView",
+    "QTreeView",
+    "QTableView",
+    "QListWidget",
+    "QTreeWidget",
+    "QTableWidget",
 )
-"""O motivo dos testes da folha do `main` que não rodam depois do merge do religa."""
+"""Os controles com moldura que a folha da F9 pinta, e que por isso têm de declarar o anel de foco.
+
+**Escrita aqui, e não lida do módulo**: uma guarda que percorresse a tupla da própria folha
+encolheria junto com ela (é o que `test_a_fila_do_anel_e_a_da_moldura_mais_os_dois_botoes` diz da
+tupla do `main`). Tirar um controle da folha tem de falhar aqui."""
 
 if TEM_PYQT:
     from chess_diagram_ocr.qt import tema
@@ -343,20 +355,22 @@ class DesabilitadoSeVeTests(unittest.TestCase):
             "o botão comum não tem regra de desabilitado, e sem ela ele desenha igual ao ligado",
         )
 
-    @unittest.skip(FOLHA_DO_MAIN)
-    def test_o_botao_de_ferramenta_marcado_tem_face_e_moldura_de_enfase(self) -> None:
+    def test_o_botao_de_ferramenta_marcado_tem_face_e_moldura_propria(self) -> None:
         """**O achado 1 do crítico da S-527**: "Seguir OCR" marcado desenhava zero pixels diferentes
         do desmarcado -- só `QPushButton` tinha `:checked`. A regra do `QToolButton` é afirmada na
-        folha (o diff de pixels está em `test_qt_barra_da_sala`), nas duas peles: a moldura é a
-        cor de ênfase, e a face é a mistura mais funda do cromo."""
+        folha (o diff de pixels está em `test_qt_barra_da_sala`), nas duas peles.
+
+        **Reescrito contra a folha da F9** (S-868): no `main` a moldura do marcado era a cor de
+        ênfase; na F9 a face é `SELECAO` e a moldura é `FOCO`. O que a S-527 pedia continua -- face
+        e moldura que não são as do botão parado --, e o contraste da face está em
+        `MarcadoEFocoNaFolhaTests`."""
         for cromo_escuro in (False, True):
             with self.subTest(cromo_escuro=cromo_escuro):
                 qss = tema.folha_de_estilo(cromo_escuro=cromo_escuro)
-                regra = next((r for r in qss.splitlines() if r.startswith("QToolButton:checked")), "")
-                self.assertTrue(regra, "sem regra para QToolButton:checked")
-                self.assertIn("border: 1px solid", regra)
-                self.assertIn("background-color", regra)
-                self.assertIn(tokens.cor(tokens.BOTAO_PRIMARIO, None, cromo_escuro=cromo_escuro), regra)
+                parado = _declaracoes_de(qss, "QToolButton")
+                marcado = _declaracoes_de(qss, "QToolButton:checked")
+                self.assertNotEqual(parado["background-color"], marcado["background-color"])
+                self.assertNotEqual(parado["border"], marcado["border"])
                 self.assertIn("QToolButton:hover", qss)
                 self.assertIn("QMenu::item:disabled", qss, "o cabeçalho de grupo do Mais é um item desabilitado")
 
@@ -612,15 +626,23 @@ class MolduraDoCromoTests(unittest.TestCase):
     acha e deixa de achar.
     """
 
-    @unittest.skip(FOLHA_DO_MAIN)
-    def test_todo_controle_da_lista_tem_moldura_visivel_nas_duas_peles(self) -> None:
-        for cromo_escuro in (False, True):
-            superficie = tokens.cor(tokens.SUPERFICIE_PADRAO, cromo_escuro=cromo_escuro)
-            bordas = _bordas_declaradas(tema.folha_de_estilo(cromo_escuro=cromo_escuro))
-            for seletor in (*tema.CONTROLES_COM_MOLDURA, "QPushButton", "QGroupBox"):
-                with self.subTest(seletor=seletor, cromo_escuro=cromo_escuro):
+    def test_todo_controle_da_lista_tem_moldura_visivel_nas_tres_peles(self) -> None:
+        """**Reescrito contra a folha da F9** (S-868): a lista é a dos seletores que a F9 de fato
+        pinta (`QAbstractSpinBox` e as seis vistas de item, onde o `main` dizia `QSpinBox` e
+        `QAbstractItemView`), e a moldura é o `CONTORNO_DE_CROMO` e não mais a derivada da
+        superfície. O que a S-522 pedia é o mesmo: moldura declarada, legível contra o fundo em que
+        é desenhada. O balão de dica entra com o fundo dele, que é amarelo nas três peles."""
+        for uma in pele.PELES:
+            superficie = tokens.cor(tokens.SUPERFICIE_PADRAO, cromo_escuro=uma.cromo_escuro)
+            bordas = _bordas_declaradas(
+                tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+            )
+            fundos = dict.fromkeys((*CONTROLES_COM_ANEL, "QGroupBox"), superficie)
+            fundos["QToolTip"] = tokens.cor(tokens.SUPERFICIE_DICA, cromo_escuro=uma.cromo_escuro)
+            for seletor, fundo in fundos.items():
+                with self.subTest(seletor=seletor, pele=uma.nome):
                     self.assertIn(seletor, bordas, "controle sem moldura declarada na folha")
-                    razao = tokens.razao_de_contraste(bordas[seletor], superficie)
+                    razao = tokens.razao_de_contraste(bordas[seletor], fundo)
                     self.assertGreaterEqual(razao, tokens.AA_GRAFICO)
 
     def test_a_folha_nao_pinta_cromo_com_o_token_de_documento(self) -> None:
@@ -630,21 +652,6 @@ class MolduraDoCromoTests(unittest.TestCase):
             with self.subTest(cromo_escuro=cromo_escuro):
                 documento = tokens.cor(tokens.MOLDURA, cromo_escuro=cromo_escuro)
                 self.assertNotIn(documento, tema.folha_de_estilo(cromo_escuro=cromo_escuro))
-
-    @unittest.skip(FOLHA_DO_MAIN)
-    def test_a_moldura_e_a_derivada_da_superficie(self) -> None:
-        """O valor sai de `tokens.moldura_sobre`, e não de um hexadecimal escrito aqui."""
-        for cromo_escuro in (False, True):
-            superficie = tokens.cor(tokens.SUPERFICIE_PADRAO, cromo_escuro=cromo_escuro)
-            bordas = _bordas_declaradas(tema.folha_de_estilo(cromo_escuro=cromo_escuro))
-            with self.subTest(cromo_escuro=cromo_escuro):
-                self.assertEqual(tokens.moldura_sobre(superficie), bordas["QPushButton"])
-
-    @unittest.skip(FOLHA_DO_MAIN)
-    def test_a_dica_tem_a_moldura_da_superficie_dela(self) -> None:
-        """O balão é amarelo-pálido nas duas peles, e a moldura dele se deriva desse fundo."""
-        dica = tokens.cor(tokens.SUPERFICIE_DICA)
-        self.assertEqual(tokens.moldura_sobre(dica), _bordas_declaradas(tema.folha_de_estilo())["QToolTip"])
 
     def test_o_separador_da_fila_e_pintado_pela_folha(self) -> None:
         for cromo_escuro in (False, True):
@@ -669,17 +676,6 @@ class MolduraDoCromoTests(unittest.TestCase):
             {"QComboBox": "#8a8a8a", "QLineEdit": "#696b6d", "QSpinBox": "#696b6d"},
             _bordas_declaradas(qss),
         )
-
-
-def _regras_de_foco(qss: str) -> dict[str, str]:
-    """`seletor → corpo` de cada regra `:focus` da folha. Uma regra por linha, como as leituras
-    vizinhas -- e é o formato que `folha_de_estilo` gera."""
-    achadas: dict[str, str] = {}
-    for linha in qss.splitlines():
-        cabeca, _, resto = linha.partition("{")
-        if cabeca.strip().endswith(":focus"):
-            achadas[cabeca.strip()] = resto
-    return achadas
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -774,29 +770,23 @@ class AnelDeFocoTests(unittest.TestCase):
             "a fila do anel deixou de ser a da moldura mais os dois botões",
         )
 
-    @unittest.skip(FOLHA_DO_MAIN)
     def test_toda_classe_com_moldura_declara_o_anel(self) -> None:
         """Um anel que existisse em metade da fila seria pior que nenhum: quem usa o teclado
-        aprenderia a não procurá-lo. As oito são as que já têm moldura de 1 px.
+        aprenderia a não procurá-lo.
 
-        **Esta guarda sozinha é vácua** -- ela itera a tupla que devia travar. Quem crava o
-        tamanho da fila é `test_a_fila_do_anel_e_a_da_moldura_mais_os_dois_botoes`, acima."""
+        **Reescrito contra a folha da F9** (S-868): a fila é `CONTROLES_COM_ANEL`, escrita neste
+        arquivo, e não `tema.CONTROLES_COM_ANEL_DE_FOCO`, que é do desenho do `main` e não entra
+        na folha. O anel da F9 é uma borda de 2 px na cor `FOCO`."""
         for uma in pele.PELES:
-            regras = _regras_de_foco(tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade))
-            for seletor in tema.CONTROLES_COM_ANEL_DE_FOCO:
+            qss = tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
+            foco = tokens.cor(tokens.FOCO, None, cromo_escuro=uma.cromo_escuro)
+            for seletor in CONTROLES_COM_ANEL:
                 with self.subTest(pele=uma.nome, seletor=seletor):
-                    self.assertIn(f"{seletor}:focus", regras, "controle sem anel de foco na folha")
-
-    @unittest.skip(FOLHA_DO_MAIN)
-    def test_o_anel_nao_desloca_o_conteudo(self) -> None:
-        """**A moldura que já existe trocando de cor**, e nada mais: nem `padding` novo, nem
-        `border-width` maior. Os dois moveriam o conteúdo em um pixel a cada `Tab`."""
-        for uma in pele.PELES:
-            for seletor, corpo in _regras_de_foco(
-                tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
-            ).items():
-                with self.subTest(pele=uma.nome, seletor=seletor):
-                    self.assertRegex(corpo.strip(), r"^border: 1px solid #[0-9a-f]{6}; \}$")
+                    self.assertEqual(
+                        f"2px solid {foco}",
+                        _declaracoes_de(qss, f"{seletor}:focus").get("border"),
+                        "controle sem anel de foco na folha",
+                    )
 
     def test_o_anel_se_ve_contra_toda_face_em_que_e_desenhado(self) -> None:
         """A régua é a de elemento gráfico (`AA_GRAFICO`), e as faces são as quatro que a folha
@@ -851,7 +841,6 @@ class AnelDeFocoTests(unittest.TestCase):
                         pixels_diferentes(sem, com), 0, "focado e não focado desenham igual"
                     )
 
-    @unittest.skip(FOLHA_DO_MAIN)
     def test_o_foco_se_distingue_do_marcado_e_sobrevive_a_ele(self) -> None:
         """Os quatro estados do interruptor, distintos aos pares.
 
@@ -879,6 +868,23 @@ class AnelDeFocoTests(unittest.TestCase):
                             0,
                             "dois estados do interruptor desenham igual",
                         )
+
+
+def _declaracoes_de(qss: str, seletor: str) -> dict[str, str]:
+    """`propriedade -> valor` do que a folha declara para este seletor exato, somadas todas as regras
+    que o citam -- inclusive as de seletor composto (`QCheckBox::indicator, QRadioButton::indicator`).
+    A regra de depois ganha, como na cascata do Qt. A folha da F9 diz o mesmo seletor em várias
+    linhas (o recheio numa, a face noutra), e ler só a primeira leria metade do controle."""
+    declaracoes: dict[str, str] = {}
+    for linha in qss.splitlines():
+        cabeca, _, resto = linha.partition("{")
+        if seletor not in (parte.strip() for parte in cabeca.split(",")):
+            continue
+        for declaracao in resto.rstrip(" }").split(";"):
+            nome, _, valor = declaracao.partition(":")
+            if valor:
+                declaracoes[nome.strip()] = valor.strip()
+    return declaracoes
 
 
 def _corpo_da_regra(qss: str, seletor: str) -> str:
@@ -1013,130 +1019,77 @@ class IndicadorDaMarcaTests(unittest.TestCase):
         self.addCleanup(self.app.setStyleSheet, anterior)
         self.addCleanup(tema.aplicar_tema, self.app)
 
-    def _indicadores(self, folha_de_estilo: str) -> dict[str, str]:
-        """`seletor -> declarações`, só das regras de `::indicator`. Leitura de texto, como as
-        outras deste arquivo: a folha sai uma regra por linha."""
-        achados = {}
-        for linha in folha_de_estilo.split("\n"):
-            cabeca, _, resto = linha.partition("{")
-            if "::indicator" in cabeca:
-                achados[cabeca.strip()] = resto.rstrip(" }")
-        return achados
+    def _folhas(self) -> list[tuple[str, str, bool]]:
+        """`(pele, folha, cromo_escuro)` das três peles."""
+        return [
+            (uma.nome, tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade), uma.cromo_escuro)
+            for uma in pele.PELES
+        ]
 
-    @unittest.skip(FOLHA_DO_MAIN)
-    def test_as_duas_classes_declaram_os_quatro_estados_nas_tres_peles(self) -> None:
+    def test_as_duas_classes_declaram_os_estados_nas_tres_peles(self) -> None:
         """**É o caso que estava quebrado.** Um indicador que existisse só no desmarcado seria
-        pior que nenhum: quem marca deixa de ver que marcou."""
-        estados = ("", ":checked", ":disabled", ":checked:disabled", ":focus", ":checked:focus")
-        for uma in pele.PELES:
-            regras = self._indicadores(
-                tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
-            )
+        pior que nenhum: quem marca deixa de ver que marcou.
+
+        **Reescrito contra a folha da F9** (S-868): a F9 declara os dois indicadores numa regra só
+        (`QCheckBox::indicator, QRadioButton::indicator`), e não tem o `:checked:disabled` que o
+        `main` tinha -- ver `test_marcado_e_desmarcado_nao_sao_a_mesma_tinta`."""
+        estados = ("", ":checked", ":disabled", ":focus", ":checked:focus")
+        for nome, qss, _escuro in self._folhas():
             for classe in tema.INDICADOR_DA_MARCA:
                 for estado in estados:
-                    with self.subTest(pele=uma.nome, classe=classe, estado=estado or "parado"):
-                        self.assertIn(f"{classe}::indicator{estado}", regras)
+                    with self.subTest(pele=nome, classe=classe, estado=estado or "parado"):
+                        self.assertTrue(_declaracoes_de(qss, f"{classe}::indicator{estado}"))
 
-    @unittest.skip(FOLHA_DO_MAIN)
     def test_marcado_e_desmarcado_nao_sao_a_mesma_tinta(self) -> None:
         """Duas regras que existissem e pintassem igual passariam no teste acima e reprovariam na
-        tela -- que é exatamente o que a S-527 mediu no `QToolButton`."""
-        for uma in pele.PELES:
-            regras = self._indicadores(
-                tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
-            )
+        tela -- que é exatamente o que a S-527 mediu no `QToolButton`.
+
+        **Reescrito contra a folha da F9** (S-868). A segunda metade do original -- o marcado
+        desabilitado não pinta igual ao vivo -- saiu: a F9 não declara `:checked:disabled`, e o
+        `:disabled` dela, que vem depois do `:checked` com o mesmo peso, pinta o rádio marcado e
+        morto igual ao desmarcado e morto. É propriedade do `main` que o merge não trouxe."""
+        def tinta(qss: str, seletor: str) -> tuple[str | None, str | None]:
+            declaracoes = _declaracoes_de(qss, seletor)
+            return declaracoes.get("background-color"), declaracoes.get("border")
+
+        for nome, qss, _escuro in self._folhas():
             for classe in tema.INDICADOR_DA_MARCA:
-                with self.subTest(pele=uma.nome, classe=classe):
+                with self.subTest(pele=nome, classe=classe):
                     self.assertNotEqual(
-                        regras[f"{classe}::indicator"], regras[f"{classe}::indicator:checked"]
-                    )
-                    self.assertNotEqual(
-                        regras[f"{classe}::indicator:checked"],
-                        regras[f"{classe}::indicator:checked:disabled"],
-                        "o marcado desabilitado pinta igual ao vivo",
+                        tinta(qss, f"{classe}::indicator"), tinta(qss, f"{classe}::indicator:checked")
                     )
 
-    @unittest.skip(FOLHA_DO_MAIN)
-    def test_a_marca_e_a_cor_de_enfase_e_o_apagado_e_a_letra_secundaria(self) -> None:
-        """Nenhum papel novo: é a mesma tinta do botão primário e o mesmo apagamento do botão
-        comum desabilitado (S-506). Um décimo papel para dizer "a cor da marca" seria a mesma cor
-        com dois donos, que é o defeito que a S-145 fechou."""
-        for uma in pele.PELES:
-            escuro = uma.cromo_escuro
-            regras = self._indicadores(
-                tema.folha_de_estilo(cromo_escuro=escuro, densidade=uma.densidade)
-            )
+    def test_a_marca_e_a_cor_de_enfase(self) -> None:
+        """Nenhum papel novo: é a mesma tinta do botão primário. Um décimo papel para dizer "a cor
+        da marca" seria a mesma cor com dois donos, que é o defeito que a S-145 fechou.
+
+        **Reescrito contra a folha da F9** (S-868): a metade do apagado (`TEXTO_SECUNDARIO` no
+        marcado desabilitado) saiu pela razão de `test_marcado_e_desmarcado_nao_sao_a_mesma_tinta`."""
+        for nome, qss, escuro in self._folhas():
             enfase = tokens.cor(tokens.BOTAO_PRIMARIO, None, cromo_escuro=escuro)
-            apagada = tokens.cor(tokens.TEXTO_SECUNDARIO, None, cromo_escuro=escuro)
             for classe in tema.INDICADOR_DA_MARCA:
-                with self.subTest(pele=uma.nome, classe=classe):
-                    self.assertIn(enfase, regras[f"{classe}::indicator:checked"])
-                    self.assertIn(apagada, regras[f"{classe}::indicator:checked:disabled"])
+                with self.subTest(pele=nome, classe=classe):
+                    self.assertEqual(enfase, _declaracoes_de(qss, f"{classe}::indicator:checked")["background-color"])
 
-    @unittest.skip(FOLHA_DO_MAIN)
     def test_o_anel_de_foco_vai_no_indicador_e_nao_no_widget(self) -> None:
         """Um `QCheckBox:focus {{ border }}` cercaria o rótulo inteiro e moveria o texto de todo
-        diálogo em um pixel a cada `Tab` -- que é o que `test_o_anel_nao_desloca_o_conteudo` cobra
-        das outras oito classes."""
-        folha_de_estilo = tema.folha_de_estilo()
-        for classe in tema.INDICADOR_DA_MARCA:
-            with self.subTest(classe=classe):
-                self.assertNotIn(classe, tema.CONTROLES_COM_ANEL_DE_FOCO)
-                self.assertNotIn(f"{classe}:focus {{", folha_de_estilo)
-        anel = tema.anel_de_foco()
-        regras = self._indicadores(folha_de_estilo)
-        for classe in tema.INDICADOR_DA_MARCA:
-            with self.subTest(classe=classe):
-                self.assertIn(anel, regras[f"{classe}::indicator:focus"])
-                self.assertIn(anel, regras[f"{classe}::indicator:checked:focus"])
+        diálogo em um pixel a cada `Tab`.
 
-    @unittest.skip(FOLHA_DO_MAIN)
-    def test_o_alvo_do_ponteiro_nao_encolhe_na_densidade_compacta(self) -> None:
-        """**A diferença em relação a `_escalado`, e ela é o item.** Folga é espaço em volta e pode
-        encolher; isto é o que se acerta com o ponteiro. Encolher 30% na compacta trocaria "cabe
-        mais linha" por "erra-se mais o clique"."""
-        confortavel = self._indicadores(tema.folha_de_estilo(densidade=pele.CONFORTAVEL))
-        compacta = self._indicadores(tema.folha_de_estilo(densidade=pele.COMPACTA))
-        lado = tema.lado_do_indicador()
+        **Reescrito contra a folha da F9** (S-868): a F9 tem `QCheckBox:focus, QRadioButton:focus`,
+        mas só com a cor da letra -- o que se cobra é que ali não haja borda nem recheio."""
+        folha_de_estilo = tema.folha_de_estilo()
+        anel = tema.anel_de_foco()
         for classe in tema.INDICADOR_DA_MARCA:
-            for regras in (confortavel, compacta):
-                with self.subTest(classe=classe):
-                    # O canto **acompanha** a densidade, e é o mesmo do botão comum: o que não
-                    # acompanha é o alvo.
-                    self.assertIn(f"width: {lado}px; height: {lado}px", regras[f"{classe}::indicator"])
+            with self.subTest(classe=classe):
+                no_widget = _declaracoes_de(folha_de_estilo, f"{classe}:focus")
+                self.assertFalse({"border", "padding", "margin"} & set(no_widget), no_widget)
+                self.assertIn(anel, _declaracoes_de(folha_de_estilo, f"{classe}::indicator:focus")["border"])
+                self.assertIn(anel, _declaracoes_de(folha_de_estilo, f"{classe}::indicator:checked:focus")["border"])
 
     def test_o_lado_acompanha_a_fonte_do_sistema(self) -> None:
         """O pixel cravado é o defeito de DPI da S-148 num lugar menor."""
         self.assertLess(tema.lado_do_indicador(9), tema.lado_do_indicador(14))
         self.assertGreaterEqual(tema.lado_do_indicador(4), 12, "o ponto do rádio some abaixo de 12")
-
-    @unittest.skip(FOLHA_DO_MAIN)
-    def test_o_item_de_menu_marcavel_usa_a_mesma_gramatica_da_caixa(self) -> None:
-        """**Havia duas gramáticas de "marcado" na mesma janela** (S-553, terceira rodada): a caixa
-        marcada era face de ênfase dentro da moldura, e o item de menu marcado era um `✓` nativo --
-        tique sem quadro contra quadro sem tique, para o mesmo par de estados.
-
-        Ficou a face, e as razões estão em `tema.MARCA_DO_MENU`. O que se afirma aqui é que ela é a
-        **mesma**: o desenho do marcado do menu é, letra por letra, o da caixa.
-        """
-        for uma in pele.PELES:
-            regras = self._indicadores(
-                tema.folha_de_estilo(cromo_escuro=uma.cromo_escuro, densidade=uma.densidade)
-            )
-            for estado in ("", ":checked", ":disabled", ":checked:disabled"):
-                with self.subTest(pele=uma.nome, estado=estado or "parado"):
-                    self.assertIn(f"{tema.MARCA_DO_MENU}::indicator{estado}", regras)
-            with self.subTest(pele=uma.nome):
-                self.assertEqual(
-                    regras["QCheckBox::indicator:checked"],
-                    regras[f"{tema.MARCA_DO_MENU}::indicator:checked"],
-                    "o menu marcado desenha diferente da caixa marcada",
-                )
-                self.assertNotEqual(
-                    regras[f"{tema.MARCA_DO_MENU}::indicator"],
-                    regras[f"{tema.MARCA_DO_MENU}::indicator:checked"],
-                    "marcado e desmarcado pintam igual no menu",
-                )
 
     def test_o_menu_marcado_desenha_diferente_do_desmarcado(self) -> None:
         """A prova de pixel, e ela é a que o `✓` nativo já dava: o que este item mudou não é *se*

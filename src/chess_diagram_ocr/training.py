@@ -23,9 +23,9 @@ import random
 import threading
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 import numpy as np
 import torch
@@ -37,7 +37,14 @@ from .audit import duplicate_groups_touching, read_label_rows
 from .augment import DEFAULT_AUGMENT, AugmentConfig, build_augmentations, build_marca
 from .calibration import expected_calibration_error, fit_temperature, negative_log_likelihood
 from .checkpoint import Checkpoint, check_compatible, git_commit, load_checkpoint, save_checkpoint
-from .config import BOARDS_PER_CHUNK, DEFAULT_BOARD_CACHE_SIZE, PIECE_CLASSES, VAL_BOARD_CACHE_SIZE
+from .config import (
+    BOARDS_PER_CHUNK,
+    DEFAULT_BOARD_CACHE_SIZE,
+    DEFAULT_FIELD_SET,
+    DEFAULT_PDF_DIR,
+    PIECE_CLASSES,
+    VAL_BOARD_CACHE_SIZE,
+)
 from .dataset import (
     EMPTY_LABEL,
     BoardFenDataset,
@@ -50,7 +57,8 @@ from .dataset import (
 from .fen_utils import labels_from_fen
 from .labels import DatasetEntry, filenames_with_provenance, label_origins
 from .model import DEFAULT_ARCH, ArchConfig, build_model, count_parameters
-from .splits import Split, ensure_splits, groups_by_origin, load_splits, save_splits, splits_hash
+from .proveniencia import hash_do_arquivo
+from .splits import Split, ensure_splits, groups_by_origin, load_splits, splits_hash
 
 logger = logging.getLogger(__name__)
 
@@ -282,6 +290,7 @@ def resolve_splits(
     splits_path: Path,
     *,
     assign_new: bool = True,
+    pdf_dir: Path = DEFAULT_PDF_DIR,
 ) -> dict[str, Split]:
     """Mapa de splits do `labels.csv`, atribuindo split às amostras novas (S-56).
 
@@ -318,23 +327,26 @@ def resolve_splits(
     # partições. O de origem vê, e é exato, mas só alcança as amostras com procedência.
     origens = label_origins(Path(csv_path))
     grupos = list(duplicate_groups_touching(Path(samples_dir), linhas, novos)) if novos else []
-    grupos += groups_by_origin(origens)
+    # S-844: o mesmo PDF sob dois nomes é um livro só; a chave de origem é o conteúdo.
+    grupos += groups_by_origin(origens, identidade_dos_livros((pdf for pdf, _p, _d in origens.values()), pdf_dir))
     # A procedência que escolhe quem o `--dedupe` mantém é a mesma que dá a chave de split ao
     # grupo (S-452). Sem passá-la aqui, os dois lados voltariam a escolher representantes
     # diferentes -- e "quem representa este grupo" tem de ter uma resposta só.
+    #
+    # C15 do ciclo 2 OCR/UI: um rótulo tirado de uma página do conjunto de campo nunca cai
+    # em `train` -- o campo mede, nunca alimenta (a regra de `CORPUS.md` 5.3 e do C6). Vai
+    # para `test`, que também é retido; e é dito, porque o sorteio o teria posto em `train`.
+    # Decidido **antes** de gravar, e gravado uma vez (S-838).
+    de_campo = pin_field_pages(novos, Path(csv_path))
     mapa = ensure_splits(
-        nomes, splits_path, groups=grupos, with_provenance=filenames_with_provenance(origens)
+        nomes, splits_path, groups=grupos, with_provenance=filenames_with_provenance(origens), forced=de_campo
     )
 
     if novos:
-        # C15 do ciclo 2 OCR/UI: um rótulo tirado de uma página do conjunto de campo nunca cai
-        # em `train` -- o campo mede, nunca alimenta (a regra de `CORPUS.md` 5.3 e do C6). Vai
-        # para `test`, que também é retido; e é dito, porque o sorteio o teria posto em `train`.
-        movidos = pin_field_pages(mapa, novos, Path(csv_path), splits_path)
-        if movidos:
+        if de_campo:
             logger.warning(
                 "%d rótulo(s) novo(s) vêm de página do conjunto de campo e foram para `test`, "
-                "não para o sorteio: %s", len(movidos), ", ".join(sorted(movidos)))
+                "não para o sorteio: %s", len(de_campo), ", ".join(sorted(de_campo)))
         distribuicao = Counter(mapa[nome] for nome in novos if nome in mapa)
         logger.info(
             "%d amostra(s) sem split receberam um agora: %s. Antes da S-56 elas ficavam "
@@ -345,36 +357,74 @@ def resolve_splits(
     return mapa
 
 
+def identidade_dos_livros(nomes: Iterable[str], pdf_dir: Path) -> dict[str, str]:
+    """`{source_pdf: SHA-256 do conteúdo}` dos PDFs que estão em `pdf_dir` (S-844, D2 opção a).
+
+    A fronteira em que o nome do livro vira identidade: o `labels.csv` grava o **nome** do
+    arquivo (S-19), e o acervo tem o mesmo arquivo sob nomes diferentes. Nome cujo PDF não está
+    na pasta fica de fora, e `groups_by_origin` o trata pelo nome, como antes. Custa ler os
+    PDFs citados uma vez por treino: 22 livros, 480 MB, 0,4 s nesta máquina em 2026-11-09.
+    """
+    identidades: dict[str, str] = {}
+    ausentes: set[str] = set()
+    for nome in {nome for nome in nomes if nome}:
+        conteudo = hash_do_arquivo(Path(pdf_dir) / nome)
+        if conteudo:
+            identidades[nome] = conteudo
+        else:
+            ausentes.add(nome)
+    if ausentes:
+        logger.info(
+            "%d livro(s) do labels.csv fora de %s: agrupados pelo nome, não pelo conteúdo (S-844).",
+            len(ausentes),
+            pdf_dir,
+        )
+    return identidades
+
+
 def field_pages_beside(csv_path: Path) -> set[tuple[str, int]]:
-    """`{(livro, página base 0)}` do `field_set.jsonl` ao lado do `labels.csv`, ou vazio."""
-    caminho = Path(csv_path).parent / "field_set.jsonl"
+    """`{(chave do nome do livro, página base 0)}` do `field_set.jsonl` ao lado do `labels.csv`.
+
+    Vazio quando não há arquivo. **Ilegível levanta (S-838):** antes era um aviso no log e
+    `set()`, e as amostras novas sorteavam split sem a guarda -- uma página de campo caía em
+    `train` e, registrada, nunca mais saía de lá. Sem saber quais páginas são de campo, nenhuma
+    amostra nova recebe partição, e o treino não começa.
+    """
+    caminho = Path(csv_path).parent / DEFAULT_FIELD_SET.name
     if not caminho.is_file():
         return set()
+    from .field_eval import load_field_set, name_keys
+
     try:
-        from .field_eval import load_field_set
+        paginas = load_field_set(caminho)
+    except (OSError, ValueError) as exc:
+        raise ValueError(
+            f"{caminho} ilegível ({exc}). Sem ele não há como saber se um rótulo novo vem de "
+            "página do conjunto de campo, que nunca vai para o treino; os rótulos novos ficam sem "
+            "partição e o treino não começa até o arquivo ser consertado (S-838)."
+        ) from exc
+    return {(chave, int(page.page)) for page in paginas if page.diagrams for chave in name_keys(page.pdf)}
 
-        return {(page.pdf, int(page.page)) for page in load_field_set(caminho) if page.diagrams}
-    except Exception:  # noqa: BLE001 - um conjunto de campo ilegível não pode parar o treino
-        logger.warning("field_set.jsonl ilegível; a guarda de página de campo não rodou.", exc_info=True)
-        return set()
 
-
-def pin_field_pages(
-    mapa: dict[str, Split], novos: Sequence[str], csv_path: Path, splits_path: Path,
-) -> list[str]:
-    """Move para `test` os rótulos **novos** cuja página está no conjunto de campo (C15).
+def pin_field_pages(novos: Sequence[str], csv_path: Path) -> dict[str, Split]:
+    """`{rótulo novo: "test"}` para os **novos** cuja página está no conjunto de campo (C15).
 
     Só os novos: a fronteira das amostras já registradas nunca muda (S-07). `source_page` do
     `labels.csv` é base 1 (a janela), o campo é base 0 -- a armadilha da fase 3, convertida aqui
-    como em `labels.pages_with_training_samples`. Regrava o arquivo quando moveu alguma.
+    como em `labels.pages_with_training_samples`. O livro casa por `field_eval.name_keys`, a
+    mesma regra de "mesmo nome" da medição (S-838). Não grava: o resultado vai para
+    `ensure_splits` como `forced`, e o arquivo é gravado uma vez.
     """
+    if not novos:
+        return {}
     paginas = field_pages_beside(csv_path)
-    if not paginas or not novos:
-        return []
+    if not paginas:
+        return {}
+    from .field_eval import name_keys
     from .labels import LabelStore
 
     por_nome = {entry.filename: entry for entry in LabelStore(Path(csv_path)).read()}
-    movidos: list[str] = []
+    fixados: dict[str, Split] = {}
     for nome in novos:
         entry = por_nome.get(nome)
         if entry is None or not entry.source_pdf.strip():
@@ -383,12 +433,9 @@ def pin_field_pages(
             pagina = int(float(entry.source_page)) - 1
         except (TypeError, ValueError):
             continue
-        if (entry.source_pdf.strip(), pagina) in paginas and mapa.get(nome) != "test":
-            mapa[nome] = "test"
-            movidos.append(nome)
-    if movidos:
-        save_splits(splits_path, mapa)
-    return movidos
+        if any((chave, pagina) in paginas for chave in name_keys(entry.source_pdf.strip())):
+            fixados[nome] = "test"
+    return fixados
 
 
 def _split_square_indices_by_board(dataset: BoardFenDataset, val_ratio: float, seed: int) -> tuple[list[int], list[int]]:
@@ -760,9 +807,9 @@ def labels_hash(entries: Iterable[DatasetEntry]) -> str:
 def _optim_metadata(optim: OptimPlan, arch: ArchConfig) -> dict[str, Any]:
     """Os hiperparâmetros que reproduzem o número, prefixados para não colidir (S-105).
 
-    `asdict(optim)` traria `augment` como dicionário aninhado e `class_weights`/`seed`
-    duplicados -- os três já estão nos metadados com nome próprio desde a S-27 e a S-40.
-    O que faltava são estes quatro, e é neles que `--lr 1e-4` e `--lr 1e-3` diferem.
+    `asdict(optim)` traria `class_weights`/`seed` duplicados -- os dois já estão nos metadados
+    com nome próprio desde a S-27. O que faltava são estes quatro, e é neles que `--lr 1e-4` e
+    `--lr 1e-3` diferem. O regime de aumento entra aqui inteiro, e não só pela letra (S-839).
 
     **E o lote tem duas unidades desde a S-62b (S-372).** A cabeça por tabuleiro monta o
     `DataLoader` com `boards_per_batch` e ignora `batch_size`; a cabeça por janela faz o
@@ -782,6 +829,13 @@ def _optim_metadata(optim: OptimPlan, arch: ArchConfig) -> dict[str, Any]:
         # sao a mesma coisa **ate** o dia em que o otimizador mudar, e ai o segundo continua
         # verdadeiro sobre os checkpoints antigos e o primeiro nao diz nada sobre nenhum.
         "optimizer": "adam",
+        # Sem isto, "o modelo A e melhor que o B" pode estar comparando dois regimes de
+        # aumento -- a mesma armadilha que a S-27 fechou para arquitetura e semente (S-40).
+        # A letra e o nome curto; o dicionario e o regime inteiro, e e dele que
+        # `augment.regime_of_checkpoint` reconstroi o retreino (S-839): `hatch=0.9` e
+        # `hatch=0.3` saem os dois `augh`.
+        "augment_version": optim.augment.version,
+        "augment": asdict(optim.augment),
     }
 
 
@@ -842,6 +896,115 @@ class BestEpochPolicy:
         return 0.0 if self.best_metric == float("-inf") else self.best_metric
 
 
+@dataclass(frozen=True)
+class Datasets:
+    """Os conjuntos de `Trainer.prepare` e a partição das casas entre treino e validação (S-858).
+
+    `val` é `None` quando não há arquivo de splits: aí a validação é um pedaço sorteado de
+    `train`, e `val_indices` são casas de `train` -- por isso `val_source`.
+    """
+
+    train: BoardFenDataset
+    val: BoardFenDataset | None
+    train_indices: list[int]
+    val_indices: list[int]
+    splits_map: dict[str, Split] | None
+
+    @property
+    def val_source(self) -> BoardFenDataset:
+        return self.val if self.val is not None else self.train
+
+    @property
+    def train_board_ids(self) -> set[int]:
+        return {self.train.index_map[index][0] for index in self.train_indices}
+
+    @property
+    def train_entries(self) -> list[DatasetEntry]:
+        """Os tabuleiros de treino em ordem: é sobre eles que pesos e `labels_hash` são contados."""
+        return [self.train.entries[i] for i in sorted(self.train_board_ids)]
+
+
+def _cache_por_processo(cache_size: int, workers: int) -> int:
+    """O teto do cache de tabuleiros de cada processo do carregador.
+
+    Com num_workers > 0 o cache e por processo: o teto vale W+1 vezes, e o criterio de
+    aceite da S-26 (< 2 GiB por epoca) e sobre o treino inteiro, nao sobre o pai.
+
+    **Piso na janela do amostrador (C4 do ciclo 2 OCR/UI).** Dividir 128 por 5 dava 25
+    tabuleiros por processo para uma janela de BOARDS_PER_CHUNK = 64: cada worker
+    percorre a janela inteira, o cache virava quase so falta e cada casa reabria o PNG
+    de 800x800. Medido nesta maquina com 4 workers e o aumento `mhsp`: 10,1 min por
+    epoca com 25, 3,2 min com 64 -- "o disco e ~7% da epoca" (BoardGroupedSampler) so
+    vale com o cache >= a janela. Sao 64 x 1,83 MiB = 117 MiB por processo, 5 processos
+    = 586 MiB, dentro do criterio.
+    """
+    if workers and cache_size:
+        return max(BOARDS_PER_CHUNK, cache_size // (workers + 1))
+    return cache_size
+
+
+class ExtrasDoCarregador(TypedDict, total=False):
+    """O que os `DataLoader` de treino e de validação recebem igual, conforme os workers."""
+
+    num_workers: int
+    persistent_workers: bool
+    prefetch_factor: int
+
+
+def _loader_extra(workers: int) -> ExtrasDoCarregador:
+    extra: ExtrasDoCarregador = {"num_workers": workers}
+    if workers:
+        extra["persistent_workers"] = True
+        extra["prefetch_factor"] = 2
+    return extra
+
+
+def _aumentos(augment: AugmentConfig, arch: ArchConfig) -> tuple[ImageChannelsOnly, ImageChannelsOnly | None]:
+    """O aumento e a marca de casa do treino, os mesmos para as duas cabeças.
+
+    O guarda de `ImageChannelsOnly` os torna transparentes quando nao ha canal de coordenada
+    para proteger.
+    """
+    aumento = ImageChannelsOnly(build_train_transform(augment), arch.image_channels)
+    marca_de_casa = build_marca(augment)
+    marca = ImageChannelsOnly(marca_de_casa, arch.image_channels) if marca_de_casa is not None else None
+    return aumento, marca
+
+
+def _metadado_base(plan: TrainingPlan, datasets: Datasets, *, has_val_loader: bool, commit: str) -> dict[str, Any]:
+    """O que o checkpoint diz do treino antes da primeira época (S-27, S-105, S-841, C16)."""
+    optim, arch = plan.optim, plan.model
+    splits_map, val_dataset = datasets.splits_map, datasets.val
+    return {
+        "arch_version": arch.version,
+        "class_names": list(PIECE_CLASSES),
+        "seed": optim.seed,
+        "class_weights": optim.class_weights,
+        # C16: um checkpoint treinado com ruído de rótulo (sabotagem) ou com os corrigidos
+        # à mão repetidos tem de dizê-lo, pela mesma razão do `augment_version`.
+        "label_noise": float(optim.label_noise),
+        "corrected_repeat": int(optim.corrected_repeat),
+        # Os hiperparametros de otimizacao, inteiros (S-105). Sem eles, `--lr 1e-4` e
+        # `--lr 1e-3` produziam dois arquivos indistinguiveis pelos metadados -- e ha 17
+        # checkpoints em `models/` e nove treinos comparados no EXPERIMENTS_FASE7.
+        **_optim_metadata(optim, arch),
+        "split_hash": splits_hash(splits_map) if splits_map else "",
+        # **Qual particao** e **qual verdade** sao perguntas diferentes, e ate aqui so a
+        # primeira tinha resposta: as 468 amostras de correcao humana da S-107 entraram
+        # sem que o `split_hash` mudasse.
+        "labels_hash": labels_hash(datasets.train_entries),
+        "splits_path": str(plan.data.splits_path) if plan.data.splits_path else "",
+        "dataset_size": len(datasets.train.entries),
+        # S-841: o que a carga descartou, por motivo. Sem split o `val` é um pedaço do
+        # mesmo dataset, e os descartes dele já estão em `descartes`.
+        "descartes": datasets.train.descartes,
+        "val_descartes": val_dataset.descartes if val_dataset is not None else {},
+        "val_size": len(val_dataset.entries) if val_dataset is not None else len(datasets.val_indices) // 64,
+        "git_commit": commit,
+        "best_metric_name": "val_board_exact_acc" if has_val_loader else "train_loss",
+    }
+
+
 class Trainer:
     """O treino em etapas nomeadas, cada uma chamável sozinha (S-47).
 
@@ -895,72 +1058,22 @@ class Trainer:
     # ------------------------------------------------------------------ prepare
 
     def prepare(self) -> None:
-        """Datasets, loaders, amostrador, pesos, critério e otimizador."""
-        data, optim, output = self.plan.data, self.plan.optim, self.plan.output
-        arch = self.plan.model
+        """Datasets, loaders, amostrador, pesos, critério e otimizador.
+
+        A ordem das etapas é a dos sorteios (ver a classe): a semente, os conjuntos, o modelo,
+        e só depois o que sorteia com gerador próprio.
+        """
+        data, optim, arch = self.plan.data, self.plan.optim, self.plan.model
 
         set_seed(optim.seed)
         workers = resolve_num_workers(data.num_workers)
-        splits_map = (
-            resolve_splits(data.csv_path, data.samples_dir, data.splits_path, assign_new=data.assign_splits)
-            if data.splits_path is not None
-            else None
-        )
+        per_process_cache = _cache_por_processo(data.cache_size, workers)
+        datasets = self._resolver_datasets(per_process_cache)
+        dataset = datasets.train
 
-        # Com num_workers > 0 o cache e por processo: o teto vale W+1 vezes, e o criterio de
-        # aceite da S-26 (< 2 GiB por epoca) e sobre o treino inteiro, nao sobre o pai.
-        #
-        # **Piso na janela do amostrador (C4 do ciclo 2 OCR/UI).** Dividir 128 por 5 dava 25
-        # tabuleiros por processo para uma janela de BOARDS_PER_CHUNK = 64: cada worker
-        # percorre a janela inteira, o cache virava quase so falta e cada casa reabria o PNG
-        # de 800x800. Medido nesta maquina com 4 workers e o aumento `mhsp`: 10,1 min por
-        # epoca com 25, 3,2 min com 64 -- "o disco e ~7% da epoca" (BoardGroupedSampler) so
-        # vale com o cache >= a janela. Sao 64 x 1,83 MiB = 117 MiB por processo, 5 processos
-        # = 586 MiB, dentro do criterio.
-        per_process_cache = data.cache_size
-        if workers and data.cache_size:
-            per_process_cache = max(BOARDS_PER_CHUNK, data.cache_size // (workers + 1))
-
-        common = {"cache_size": per_process_cache, "arch": arch}
-        if splits_map:
-            dataset = BoardFenDataset(data.csv_path, data.samples_dir, split="train", splits=splits_map, **common)  # type: ignore[arg-type]
-            val_dataset: BoardFenDataset | None = BoardFenDataset(
-                data.csv_path,
-                data.samples_dir,
-                split="val",
-                splits=splits_map,
-                arch=arch,
-                # Validacao e sequencial: um cache do tamanho do treino dobraria a memoria
-                # residente para uma taxa de acerto que 4 tabuleiros ja entregam.
-                cache_size=VAL_BOARD_CACHE_SIZE,
-            )
-            logger.info(
-                "Split persistido em uso: %d tabuleiros de treino, %d de validação. Teste reservado.",
-                len(dataset.entries),
-                len(val_dataset.entries) if val_dataset else 0,
-            )
-        else:
-            dataset = BoardFenDataset(data.csv_path, data.samples_dir, **common)  # type: ignore[arg-type]
-            val_dataset = None
-            logger.warning(
-                "Sem arquivo de splits: a validação será sorteada e mudará quando o dataset crescer. "
-                "Passe splits_path para uma métrica estável (S-07)."
-            )
-
-        if len(dataset) == 0:
-            raise ValueError("Dataset vazio. Salve exemplos corrigidos antes de treinar.")
-
-        if val_dataset is not None:
-            train_indices = list(range(len(dataset)))
-            val_indices = list(range(len(val_dataset)))
-        else:
-            train_indices, val_indices = _split_square_indices_by_board(
-                dataset, val_ratio=data.val_ratio, seed=optim.seed
-            )
-
-        self.dataset, self.val_dataset = dataset, val_dataset
+        self.dataset, self.val_dataset = dataset, datasets.val
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = build_model(arch, pretrained=output.pretrained).to(self.device)
+        self.model = build_model(arch, pretrained=self.plan.output.pretrained).to(self.device)
 
         logger.info(
             "Treinando em %s | arquitetura %s (%s parâmetros) | %d tabuleiros, %d casas | "
@@ -976,137 +1089,184 @@ class Trainer:
             optim.class_weights,
         )
 
-        loader_extra: dict[str, Any] = {"num_workers": workers}
-        if workers:
-            loader_extra["persistent_workers"] = True
-            loader_extra["prefetch_factor"] = 2
+        self._sabotagem_de_rotulos(datasets)
+        repetidos = self._tabuleiros_repetidos(datasets)
+        carregadores = self._carregadores_por_tabuleiro if arch.head == "board" else self._carregadores_por_janela
+        self.train_loader, self.val_loader = carregadores(datasets, repetidos, _loader_extra(workers))
+        self._criterio_e_otimizador(datasets.train_entries)
 
-        val_source = val_dataset if val_dataset is not None else dataset
-        train_board_ids = {dataset.index_map[index][0] for index in train_indices}
-        if optim.label_noise > 0.0:
-            # C16: a sabotagem toca só os tabuleiros de treino; `val_dataset` é outro objeto e,
-            # sem arquivo de splits, a validação sorteada fica fora de `train_board_ids`.
-            dataset.label_overrides = ruido_de_cor(
-                dataset, train_board_ids, optim.label_noise, seed=optim.seed)
-            logger.warning(
-                "SABOTAGEM (C16): ruído de rótulo X<->x em %d casa(s) de treino (%.0f %% das ocupadas).",
-                len(dataset.label_overrides), 100.0 * optim.label_noise,
-            )
-        repetidos: set[int] = set()
-        if optim.corrected_repeat > 1:
-            repetidos = set(tabuleiros_de_rota_humana(dataset.entries)) & train_board_ids
-            logger.info(
-                "C16: %d tabuleiro(s) de rota humana repetidos x%d por época.",
-                len(repetidos), optim.corrected_repeat,
-            )
-        # Um so aumento para os dois caminhos: o guarda de `ImageChannelsOnly` o torna
-        # transparente quando nao ha canal de coordenada para proteger.
-        aumento = ImageChannelsOnly(build_train_transform(optim.augment), arch.image_channels)
-        marca_de_casa = build_marca(optim.augment)
-        marca = ImageChannelsOnly(marca_de_casa, arch.image_channels) if marca_de_casa is not None else None
+        self.metadata_base = _metadado_base(
+            self.plan, datasets, has_val_loader=self.val_loader is not None, commit=git_commit()
+        )
+        self.run.best_metric_name = str(self.metadata_base["best_metric_name"])
+        self.policy = BestEpochPolicy(
+            self.run.best_metric_name, float("-inf"), patience=optim.patience
+        )
 
-        if arch.head == "board":
-            # A cabeca da S-62b decide as 64 casas juntas, entao a unidade de amostragem passa
-            # a ser o tabuleiro -- e com ela cai o `BoardGroupedSampler`, que existia para
-            # aproximar isso sem pagar o preco. Um lote e N tabuleiros por construcao.
-            val_board_ids = sorted({val_source.index_map[index][0] for index in val_indices})
-            unidades = sorted(train_board_ids)
-            for board in sorted(repetidos):
-                unidades.extend([board] * (optim.corrected_repeat - 1))
-            self.train_loader = DataLoader(
-                BoardUnitDataset(dataset, unidades, transform=aumento, marca=marca),
-                batch_size=optim.boards_per_batch,
-                shuffle=True,
-                generator=torch.Generator().manual_seed(optim.seed),
-                **loader_extra,
+    def _resolver_datasets(self, per_process_cache: int) -> Datasets:
+        """Os splits gravados, quando há arquivo deles; senão a validação sorteada (S-07)."""
+        data, arch = self.plan.data, self.plan.model
+        splits_map = (
+            resolve_splits(data.csv_path, data.samples_dir, data.splits_path, assign_new=data.assign_splits)
+            if data.splits_path is not None
+            else None
+        )
+
+        val_dataset: BoardFenDataset | None = None
+        if splits_map:
+            dataset = BoardFenDataset(
+                data.csv_path, data.samples_dir, split="train", splits=splits_map,
+                cache_size=per_process_cache, arch=arch,
             )
-            self.val_loader = (
-                DataLoader(
-                    BoardUnitDataset(val_source, val_board_ids),
-                    batch_size=optim.boards_per_batch,
-                    shuffle=False,
-                    **loader_extra,
-                )
-                if val_board_ids
-                else None
+            val_dataset = BoardFenDataset(
+                data.csv_path,
+                data.samples_dir,
+                split="val",
+                splits=splits_map,
+                arch=arch,
+                # Validacao e sequencial: um cache do tamanho do treino dobraria a memoria
+                # residente para uma taxa de acerto que 4 tabuleiros ja entregam.
+                cache_size=VAL_BOARD_CACHE_SIZE,
             )
             logger.info(
-                "Cabeça por tabuleiro (S-62b): %d tabuleiro(s) por lote, %d casas por passo. "
-                "O amostrador por janela da S-26 não é usado neste regime.",
-                optim.boards_per_batch,
-                optim.boards_per_batch * 64,
+                "Split persistido em uso: %d tabuleiros de treino, %d de validação. Teste reservado.",
+                len(dataset.entries),
+                len(val_dataset.entries),
             )
         else:
-            train_ds = TransformSubset(Subset(dataset, train_indices), transform=aumento, marca=marca)
-            grupos = board_groups(dataset.index_map, train_indices)
-            if repetidos:
-                # O grupo de um tabuleiro de rota humana entra k vezes na lista do amostrador:
-                # as mesmas 64 posições do `Subset`, sorteadas de novo dentro de outra janela.
-                extras = [
-                    grupo for grupo in grupos
-                    if dataset.index_map[train_indices[grupo[0]]][0] in repetidos
-                ]
-                for _ in range(optim.corrected_repeat - 1):
-                    grupos.extend(list(grupo) for grupo in extras)
-            sampler = BoardGroupedSampler(grupos, shuffle=True, seed=optim.seed)
-            self.train_loader = DataLoader(
-                train_ds,
-                batch_size=optim.batch_size,
-                sampler=sampler,
-                generator=torch.Generator().manual_seed(optim.seed),
+            dataset = BoardFenDataset(data.csv_path, data.samples_dir, cache_size=per_process_cache, arch=arch)
+            logger.warning(
+                "Sem arquivo de splits: a validação será sorteada e mudará quando o dataset crescer. "
+                "Passe splits_path para uma métrica estável (S-07)."
+            )
+
+        if len(dataset) == 0:
+            raise ValueError("Dataset vazio. Salve exemplos corrigidos antes de treinar.")
+
+        if val_dataset is not None:
+            train_indices = list(range(len(dataset)))
+            val_indices = list(range(len(val_dataset)))
+        else:
+            train_indices, val_indices = _split_square_indices_by_board(
+                dataset, val_ratio=data.val_ratio, seed=self.plan.optim.seed
+            )
+        return Datasets(dataset, val_dataset, train_indices, val_indices, splits_map)
+
+    def _sabotagem_de_rotulos(self, datasets: Datasets) -> None:
+        """C16: a sabotagem toca só os tabuleiros de treino.
+
+        `val_dataset` é outro objeto e, sem arquivo de splits, a validação sorteada fica fora de
+        `train_board_ids`.
+        """
+        optim = self.plan.optim
+        if optim.label_noise <= 0.0:
+            return
+        dataset = datasets.train
+        dataset.label_overrides = ruido_de_cor(dataset, datasets.train_board_ids, optim.label_noise, seed=optim.seed)
+        logger.warning(
+            "SABOTAGEM (C16): ruído de rótulo X<->x em %d casa(s) de treino (%.0f %% das ocupadas).",
+            len(dataset.label_overrides), 100.0 * optim.label_noise,
+        )
+
+    def _tabuleiros_repetidos(self, datasets: Datasets) -> set[int]:
+        """C16: os tabuleiros de treino de rota humana, que o carregador repete por época."""
+        optim = self.plan.optim
+        if optim.corrected_repeat <= 1:
+            return set()
+        repetidos = set(tabuleiros_de_rota_humana(datasets.train.entries)) & datasets.train_board_ids
+        logger.info(
+            "C16: %d tabuleiro(s) de rota humana repetidos x%d por época.",
+            len(repetidos), optim.corrected_repeat,
+        )
+        return repetidos
+
+    def _carregadores_por_tabuleiro(
+        self, datasets: Datasets, repetidos: set[int], loader_extra: ExtrasDoCarregador
+    ) -> tuple[DataLoader, DataLoader | None]:
+        """A cabeca da S-62b decide as 64 casas juntas, entao a unidade de amostragem e o tabuleiro.
+
+        Com ela cai o `BoardGroupedSampler`, que existia para aproximar isso sem pagar o
+        preco. Um lote e N tabuleiros por construcao.
+        """
+        optim = self.plan.optim
+        aumento, marca = _aumentos(optim.augment, self.plan.model)
+        val_board_ids = sorted({datasets.val_source.index_map[index][0] for index in datasets.val_indices})
+        unidades = sorted(datasets.train_board_ids)
+        for board in sorted(repetidos):
+            unidades.extend([board] * (optim.corrected_repeat - 1))
+        train_loader = DataLoader(
+            BoardUnitDataset(datasets.train, unidades, transform=aumento, marca=marca),
+            batch_size=optim.boards_per_batch,
+            shuffle=True,
+            generator=torch.Generator().manual_seed(optim.seed),
+            **loader_extra,
+        )
+        val_loader = (
+            DataLoader(
+                BoardUnitDataset(datasets.val_source, val_board_ids),
+                batch_size=optim.boards_per_batch,
+                shuffle=False,
                 **loader_extra,
             )
+            if val_board_ids
+            else None
+        )
+        logger.info(
+            "Cabeça por tabuleiro (S-62b): %d tabuleiro(s) por lote, %d casas por passo. "
+            "O amostrador por janela da S-26 não é usado neste regime.",
+            optim.boards_per_batch,
+            optim.boards_per_batch * 64,
+        )
+        return train_loader, val_loader
 
-            # Sem shuffle e sem amostrador: a ordem sequencial ja e por tabuleiro, e a acuracia
-            # exata por tabuleiro depende disso (ver `evaluate_validation`).
-            val_ds: Subset | None = Subset(val_source, val_indices) if val_indices else None
-            self.val_loader = (
-                DataLoader(val_ds, batch_size=optim.batch_size, shuffle=False, **loader_extra)
-                if val_ds is not None
-                else None
-            )
+    def _carregadores_por_janela(
+        self, datasets: Datasets, repetidos: set[int], loader_extra: ExtrasDoCarregador
+    ) -> tuple[DataLoader, DataLoader | None]:
+        """A cabeca por casa: o `BoardGroupedSampler` sorteia janelas de tabuleiros inteiros (S-26)."""
+        optim = self.plan.optim
+        dataset, train_indices = datasets.train, datasets.train_indices
+        aumento, marca = _aumentos(optim.augment, self.plan.model)
+        train_ds = TransformSubset(Subset(dataset, train_indices), transform=aumento, marca=marca)
+        grupos = board_groups(dataset.index_map, train_indices)
+        if repetidos:
+            # O grupo de um tabuleiro de rota humana entra k vezes na lista do amostrador:
+            # as mesmas 64 posições do `Subset`, sorteadas de novo dentro de outra janela.
+            extras = [
+                grupo for grupo in grupos
+                if dataset.index_map[train_indices[grupo[0]]][0] in repetidos
+            ]
+            for _ in range(optim.corrected_repeat - 1):
+                grupos.extend(list(grupo) for grupo in extras)
+        sampler = BoardGroupedSampler(grupos, shuffle=True, seed=optim.seed)
+        train_loader = DataLoader(
+            train_ds,
+            batch_size=optim.batch_size,
+            sampler=sampler,
+            generator=torch.Generator().manual_seed(optim.seed),
+            **loader_extra,
+        )
 
-        weights = class_weights_for([dataset.entries[i] for i in sorted(train_board_ids)], optim.class_weights)
+        # Sem shuffle e sem amostrador: a ordem sequencial ja e por tabuleiro, e a acuracia
+        # exata por tabuleiro depende disso (ver `evaluate_validation`).
+        val_ds: Subset | None = Subset(datasets.val_source, datasets.val_indices) if datasets.val_indices else None
+        val_loader = (
+            DataLoader(val_ds, batch_size=optim.batch_size, shuffle=False, **loader_extra)
+            if val_ds is not None
+            else None
+        )
+        return train_loader, val_loader
+
+    def _criterio_e_otimizador(self, train_entries: list[DatasetEntry]) -> None:
+        optim = self.plan.optim
+        weights = class_weights_for(train_entries, optim.class_weights)
         if weights is not None:
             logger.info(
                 "Pesos de classe: %s",
                 ", ".join(f"{name}={value:.2f}" for name, value in zip(PIECE_CLASSES, weights.tolist(), strict=True)),
             )
         self.criterion = nn.CrossEntropyLoss(weight=weights.to(self.device) if weights is not None else None)
-        self.cpu_criterion = nn.CrossEntropyLoss(weight=weights if weights is not None else None)
+        self.cpu_criterion = nn.CrossEntropyLoss(weight=weights)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=optim.lr)
-
-        self.metadata_base = {
-            "arch_version": arch.version,
-            "class_names": list(PIECE_CLASSES),
-            "seed": optim.seed,
-            "class_weights": optim.class_weights,
-            # Sem isto, "o modelo A e melhor que o B" pode estar comparando dois regimes de
-            # aumento -- a mesma armadilha que a S-27 fechou para arquitetura e semente (S-40).
-            "augment_version": optim.augment.version,
-            # C16: um checkpoint treinado com ruído de rótulo (sabotagem) ou com os corrigidos
-            # à mão repetidos tem de dizê-lo, pela mesma razão do `augment_version`.
-            "label_noise": float(optim.label_noise),
-            "corrected_repeat": int(optim.corrected_repeat),
-            # Os hiperparametros de otimizacao, inteiros (S-105). Sem eles, `--lr 1e-4` e
-            # `--lr 1e-3` produziam dois arquivos indistinguiveis pelos metadados -- e ha 17
-            # checkpoints em `models/` e nove treinos comparados no EXPERIMENTS_FASE7.
-            **_optim_metadata(optim, arch),
-            "split_hash": splits_hash(splits_map) if splits_map else "",
-            # **Qual particao** e **qual verdade** sao perguntas diferentes, e ate aqui so a
-            # primeira tinha resposta: as 468 amostras de correcao humana da S-107 entraram
-            # sem que o `split_hash` mudasse.
-            "labels_hash": labels_hash([dataset.entries[i] for i in sorted(train_board_ids)]),
-            "splits_path": str(data.splits_path) if data.splits_path else "",
-            "dataset_size": len(dataset.entries),
-            "val_size": len(val_dataset.entries) if val_dataset is not None else len(val_indices) // 64,
-            "git_commit": git_commit(),
-            "best_metric_name": "val_board_exact_acc" if self.val_loader is not None else "train_loss",
-        }
-        self.run.best_metric_name = str(self.metadata_base["best_metric_name"])
-        self.policy = BestEpochPolicy(
-            self.run.best_metric_name, float("-inf"), patience=optim.patience
-        )
 
     # ------------------------------------------------------------------- resume
 

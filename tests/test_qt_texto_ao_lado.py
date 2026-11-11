@@ -120,15 +120,15 @@ class AoLadoNaTelaTests(unittest.TestCase):
 
         from test_qt_texto_caderno import _TarefaNaHora
 
-        from chess_diagram_ocr.qt import painel_de_texto
+        from chess_diagram_ocr.qt import texto_leitura
 
         self.painel.definir_texto_ao_lado(True)
         destino = pasta_temporaria(self) / "folha.html"
         with (
-            mock.patch.object(painel_de_texto, "Tarefa", _TarefaNaHora),
-            mock.patch.object(painel_de_texto.QFileDialog, "getSaveFileName", return_value=(str(destino), "")),
+            mock.patch.object(texto_leitura, "Tarefa", _TarefaNaHora),
+            mock.patch.object(texto_leitura.QFileDialog, "getSaveFileName", return_value=(str(destino), "")),
         ):
-            self.painel._exportar(".html")
+            self.painel.leitura.exportar(".html")
         conteudo = destino.read_text(encoding="utf-8")
         self.assertEqual(conteudo.count('class="diagrama ao-lado"'), 2)
 

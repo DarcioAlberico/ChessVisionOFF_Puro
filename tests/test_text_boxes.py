@@ -330,9 +330,9 @@ class JanelaDosPingosTests(unittest.TestCase):
             y = 30 + linha * 40
             for coluna in range(12):
                 x = 20 + coluna * 24
-                caixas.append(Caixa(x, y, x + 14, y + 26, 0.0))
+                caixas.append(Caixa(x, y, x + 14, y + 26))
         # o pingo do `i` da terceira linha, sobre a segunda haste dela
-        caixas.append(Caixa(46, 30 + 2 * 40 - 8, 52, 30 + 2 * 40 - 2, 0.0))
+        caixas.append(Caixa(46, 30 + 2 * 40 - 8, 52, 30 + 2 * 40 - 2))
         return caixas
 
     def test_o_pingo_continua_indo_para_a_haste_certa(self) -> None:

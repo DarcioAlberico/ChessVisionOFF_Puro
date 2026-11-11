@@ -41,6 +41,7 @@ from PyQt6.QtWidgets import (
 )
 
 from chess_diagram_ocr import settings as preferencias
+from chess_diagram_ocr.arquivo_do_dono import Lida
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.ui import configuracoes, espaco, estilos, folha_de_estilo
@@ -48,8 +49,6 @@ from chess_diagram_ocr.ui import configuracoes, espaco, estilos, folha_de_estilo
 __all__ = ["DialogoDeConfiguracoes", "abrir"]
 
 TITULO = "Configurações"
-ABA_DO_LEITOR_LOCAL = "remote_fen"
-"""A seção `local_reader` não tem aba própria; ver `configuracoes.ABAS`."""
 
 
 class DialogoDeConfiguracoes(QDialog):
@@ -61,7 +60,9 @@ class DialogoDeConfiguracoes(QDialog):
         *,
         configuracao: preferencias.Settings | None = None,
         ao_salvar: Callable[[preferencias.Settings], None] | None = None,
+        travada: str = "",
     ) -> None:
+        """`travada` é a frase da leitura travada (S-812): com ela, *Salvar* fica desligado."""
         super().__init__(pai)
         self.setWindowTitle(TITULO)
         self.resize(640, 420)
@@ -84,12 +85,11 @@ class DialogoDeConfiguracoes(QDialog):
             formularios[secao] = formulario
             self.abas.addTab(pagina, titulo)
         for campo in configuracoes.CAMPOS:
-            secao = ABA_DO_LEITOR_LOCAL if campo.secao == "local_reader" else campo.secao
             controle = self._controle(campo)
             self._controles[campo.chave] = controle
             rotulo = QLabel(campo.rotulo, self)
             rotulo.setBuddy(controle)
-            formularios[secao].addRow(rotulo, controle)
+            formularios[campo.secao].addRow(rotulo, controle)
 
         self.lbl_onde = QLabel(
             f"Gravado em {preferencias.DEFAULT_SETTINGS_PATH}. Vale a partir do próximo uso: "
@@ -117,6 +117,9 @@ class DialogoDeConfiguracoes(QDialog):
         self.botoes.rejected.connect(self.reject)
         self.btn_padroes.clicked.connect(lambda _marcado=False: self.preencher(preferencias.Settings()))
         fora.addWidget(self.botoes)
+        if travada:
+            self.lbl_onde.setText(travada)
+            self.btn_salvar.setEnabled(False)
 
         self.preencher(self._inicial)
 
@@ -242,11 +245,20 @@ class _CampoDeCaminho(QWidget):
 def abrir(pai: QWidget | None, *, dizer: Callable[[str], None] | None = None) -> DialogoDeConfiguracoes:
     """Le o arquivo, abre a janela e grava ao salvar. Devolve o dialogo (modal por `exec`)."""
 
+    leitura = preferencias.ler_arquivo(preferencias.DEFAULT_SETTINGS_PATH)
+    travada = "" if isinstance(leitura, Lida) else leitura.mensagem
+
     def gravar(novo: preferencias.Settings) -> None:
-        preferencias.save_settings(preferencias.DEFAULT_SETTINGS_PATH, novo)
+        if not isinstance(leitura, Lida):  # Salvar está desligado; ver `travada`
+            return
+        preferencias.save_settings(leitura.com(leitura.valor.com(novo)))
         if dizer is not None:
             dizer(f"Configurações gravadas em {preferencias.DEFAULT_SETTINGS_PATH.name}.")
 
-    dialogo = DialogoDeConfiguracoes(pai, configuracao=preferencias.load_settings(), ao_salvar=gravar)
+    # **A camada de arquivo, e não a efetiva (S-811).** O diálogo edita o que está gravado: com a
+    # efetiva, o `CVOFF_*` desta sessão ia para o arquivo na primeira gravação.
+    dialogo = DialogoDeConfiguracoes(
+        pai, configuracao=leitura.valor.preferencias, ao_salvar=gravar, travada=travada
+    )
     dialogo.exec()
     return dialogo

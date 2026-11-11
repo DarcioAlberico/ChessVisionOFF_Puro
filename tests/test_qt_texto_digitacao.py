@@ -33,7 +33,7 @@ if TEM_PYQT:
     from test_qt_janela import _JanelaComLivro
 
     from chess_diagram_ocr.qt import dialogos, tema
-    from chess_diagram_ocr.qt import painel_de_texto as qt_texto
+    from chess_diagram_ocr.qt import texto_espelho as qt_texto
     from chess_diagram_ocr.qt.painel_de_texto import OBJETO, PainelDeTexto
 else:  # pragma: no cover - sem o PyQt6 as classes pulam, mas precisam de uma base para existir
     _JanelaComLivro = unittest.TestCase
@@ -90,13 +90,13 @@ class _Folha(unittest.TestCase):
 
     def cursor_em(self, deslocamento: int) -> None:
         cursor = self.editor.textCursor()
-        cursor.setPosition(self.painel._mapa.posicao(deslocamento))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(deslocamento))
         self.editor.setTextCursor(cursor)
 
     def selecionar(self, inicio: int, fim: int) -> None:
         cursor = self.editor.textCursor()
-        cursor.setPosition(self.painel._mapa.posicao(inicio))
-        cursor.setPosition(self.painel._mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
+        cursor.setPosition(self.painel.espelho.mapa.posicao(inicio))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
         self.editor.setTextCursor(cursor)
 
     def digitar(self, texto: str) -> None:
@@ -122,7 +122,7 @@ class _Folha(unittest.TestCase):
         """Toda letra do documento está, pelo mapa, na mesma letra do widget."""
         tela = qt_texto._texto_da_tela(self.editor.document())
         for deslocamento, letra in enumerate(self.painel.texto()):
-            posicao = self.painel._mapa.posicao(deslocamento)
+            posicao = self.painel.espelho.mapa.posicao(deslocamento)
             self.assertEqual(tela[posicao], letra, f"o mapa escorregou no deslocamento {deslocamento}")
 
 
@@ -133,7 +133,7 @@ class DigitarEntraNoDocumentoTests(_Folha):
         """**Sem redesenho por tecla**: refazer o `QTextDocument` inteiro, com as miniaturas, é o
         que o portão de bloqueio da thread da janela reprovaria a cada letra."""
         self.cursor_em(self.onde("c4.") + 2)
-        with mock.patch.object(self.painel, "_desenhar", wraps=self.painel._desenhar) as desenho:
+        with mock.patch.object(self.painel.espelho, "desenhar", wraps=self.painel.espelho.desenhar) as desenho:
             self.digitar(" e Nf3")
         self.assertIn("vai para c4 e Nf3.", self.painel.texto())
         desenho.assert_not_called()
@@ -171,9 +171,9 @@ class DigitarEntraNoDocumentoTests(_Folha):
         self.cursor_em(self.onde("Depois"))
         self.digitar("Logo")
         cursor = QTextCursor(self.editor.document())
-        cursor.setPosition(self.painel._mapa.posicao(self.onde("Logo")) + 1)
+        cursor.setPosition(self.painel.espelho.mapa.posicao(self.onde("Logo")) + 1)
         nova = next(c for c in self.painel.documento.corridas if c.texto == "Logo")
-        esperado = qt_texto.formato_de(nova, base=self.painel._base).foreground().color().name()
+        esperado = qt_texto.formato_de(nova, base=self.painel.espelho.base).foreground().color().name()
         self.assertEqual(cursor.charFormat().foreground().color().name(), esperado)
 
     def test_escrever_por_cima_do_negrito_devolve_negrito(self) -> None:
@@ -255,7 +255,7 @@ class GravarEExportarTests(_Folha):
         destino = self.pasta / "folha.txt"
         with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(destino), "")):
             self.painel.salvar()
-        tarefa = self.painel._tarefa
+        tarefa = self.painel.leitura.tarefa
         self.assertIsNotNone(tarefa, "a exportação não partiu")
         self.assertTrue(tarefa.wait(10_000))  # type: ignore[union-attr]
         self.app.processEvents()
@@ -271,11 +271,11 @@ class DesfazerADigitacaoTests(_Folha):
         antes = self.painel.texto()
         self.cursor_em(self.onde("c4.") + 2)
         self.digitar(" cavalo")
-        self.assertEqual(len(self.painel._historico), 1, "cada letra virou um passo")
+        self.assertEqual(len(self.painel.espelho._historico), 1, "cada letra virou um passo")
         self.tecla(Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
         self.assertEqual(self.painel.texto(), antes)
         self.assertTelaIgualAoDocumento()
-        self.assertFalse(self.painel.pode_desfazer)
+        self.assertFalse(self.painel.espelho.pode_desfazer)
         self.tecla(Qt.Key.Key_Y, Qt.KeyboardModifier.ControlModifier)
         self.assertIn("c4 cavalo.", self.painel.texto())
 
@@ -298,9 +298,9 @@ class DesfazerADigitacaoTests(_Folha):
         self.painel.negrito()
         self.cursor_em(self.onde("Tres ") + 5)
         self.digitar("quatro ")  # depois de uma ferramenta
-        self.assertEqual(len(self.painel._historico), 5)
+        self.assertEqual(len(self.painel.espelho._historico), 5)
         passos: list[tuple[str, bool]] = []
-        while self.painel.pode_desfazer:
+        while self.painel.espelho.pode_desfazer:
             self.painel.desfazer()
             negrito = any(c.atributos.negrito for c in self.painel.documento.corridas)
             passos.append((self.painel.texto(), negrito))
@@ -337,7 +337,7 @@ class ForaDoPlanoBasicoTests(_Folha):
 
         tela = qt_texto._texto_da_tela(self.editor.document())
         for deslocamento, letra in enumerate(self.painel.texto()):
-            posicao = self.painel._mapa.posicao(deslocamento)
+            posicao = self.painel.espelho.mapa.posicao(deslocamento)
             largura = 2 if ord(letra) > 0xFFFF else 1
             self.assertEqual(qt_texto._do_qt(tela[posicao : posicao + largura]), letra, f"o mapa escorregou em {deslocamento}")
         self.assertEqual(divergencias(self.painel), [])
@@ -414,8 +414,8 @@ class MarcaDoDiagramaTests(_Folha):
         Lida como apagar e escrever, a marca voltaria como texto comum e o diagrama sumiria."""
         origem = self.onde("bispo")
         destino = self.onde("Depois")
-        de, ate = self.painel._mapa.posicao(origem), self.painel._mapa.posicao(origem + 6)
-        para = self.painel._mapa.posicao(destino)
+        de, ate = self.painel.espelho.mapa.posicao(origem), self.painel.espelho.mapa.posicao(origem + 6)
+        para = self.painel.espelho.mapa.posicao(destino)
         # O que o `QTextEdit` faz ao soltar: um bloco de edição que tira a seleção e insere texto puro.
         cursor = QTextCursor(self.editor.document())
         cursor.beginEditBlock()
@@ -449,7 +449,7 @@ class AlteracoesPorGravarTests(_Folha):
         with mock.patch.object(QFileDialog, "getSaveFileName", return_value=(str(self.pasta / "f.cvtxt"), "")):
             self.painel.salvar_documento_como()
         self.assertFalse(self.painel.tem_alteracoes)
-        self.assertTrue(self.painel.pode_desfazer, "gravar não esvazia a pilha")
+        self.assertTrue(self.painel.espelho.pode_desfazer, "gravar não esvazia a pilha")
         self.digitar("y")
         self.assertTrue(self.painel.tem_alteracoes)
 
@@ -463,7 +463,7 @@ class AlteracoesPorGravarTests(_Folha):
             self.painel.ler()
         pergunta.assert_called_once()
         self.assertIn("foi editado e não foi gravado", pergunta.call_args.args[2])
-        self.assertIsNone(self.painel._tarefa, "a leitura partiu mesmo com a resposta Não")
+        self.assertIsNone(self.painel.leitura.tarefa, "a leitura partiu mesmo com a resposta Não")
         self.assertTrue(self.painel.texto().startswith("x"))
 
     def test_sem_tela_ler_de_novo_nao_descarta(self) -> None:
@@ -471,32 +471,34 @@ class AlteracoesPorGravarTests(_Folha):
         self.painel.definir_livro(self.pasta / "livro.pdf", pagina=0)
         self.cursor_em(0)
         self.digitar("x")
-        with self.assertLogs("chess_diagram_ocr.qt.painel_de_texto", level="WARNING"):
+        with self.assertLogs("chess_diagram_ocr.qt.texto_caderno", level="WARNING"):
             self.painel.ler()
-        self.assertIsNone(self.painel._tarefa)
+        self.assertIsNone(self.painel.leitura.tarefa)
 
     def test_o_digitado_durante_a_leitura_nao_some_quando_ela_chega(self) -> None:
         """A pergunta de `ler` foi sobre o texto de antes; o que se escreveu esperando a folha
         não foi confirmado por ninguém."""
-        self.painel._documento_ao_ler = self.painel.documento  # a leitura partiu
+        self.painel.definir_livro(Path(_pagina().documento), pagina=0)  # o livro da folha que chega
+        self.painel.leitura._documento_ao_ler = self.painel.documento  # a leitura partiu
         self.cursor_em(0)
         self.digitar("Esperando ")
         with mock.patch.object(dialogos, "ha_quem_responda", return_value=True), mock.patch.object(
             QMessageBox, "question", return_value=QMessageBox.StandardButton.No
         ):
-            self.painel._leitura_terminou(_pagina())
+            self.painel.leitura._leitura_terminou(_pagina())
         self.assertTrue(self.painel.texto().startswith("Esperando "))
-        self.assertIn("ficou de lado", self.recados[-1])
+        self.assertIn("ficou de lado: o texto editado durante a leitura", self.recados[-1])
 
     def test_sem_edicao_durante_a_leitura_a_folha_chega_sem_segunda_pergunta(self) -> None:
         """A pergunta de `ler` já foi respondida: sem tecla no meio, a folha lida só chega."""
         self.cursor_em(0)
+        self.painel.definir_livro(Path(_pagina().documento), pagina=0)  # o livro da folha que chega
         self.digitar("x")  # editado antes; `ler` perguntou e a pessoa mandou descartar
-        self.painel._documento_ao_ler = self.painel.documento  # a leitura partiu
+        self.painel.leitura._documento_ao_ler = self.painel.documento  # a leitura partiu
         with mock.patch.object(dialogos, "ha_quem_responda", return_value=True), mock.patch.object(
             QMessageBox, "question"
         ) as pergunta:
-            self.painel._leitura_terminou(_pagina())
+            self.painel.leitura._leitura_terminou(_pagina())
         pergunta.assert_not_called()
         self.assertEqual(self.painel.texto(), rico.de_pagina(_pagina()).para_texto())
         self.assertFalse(self.painel.tem_alteracoes)
@@ -548,7 +550,7 @@ class FecharAJanelaComTextoTests(_JanelaComLivro):
     def test_sem_tela_o_fechamento_segue_e_fica_no_log(self) -> None:
         """Os arneses de `caissa.ui.audit.*` fecham a janela sob `offscreen`: pergunta ali trava."""
         self.digitar("Notas da folha")
-        with self.assertLogs("chess_diagram_ocr.qt.painel_de_texto", level="WARNING"):
+        with self.assertLogs("chess_diagram_ocr.qt.texto_caderno", level="WARNING"):
             self.assertTrue(self.fechar())
 
 
@@ -566,9 +568,9 @@ class EditorNaoAcumulaDocumentosTests(_Folha):
 class MapaTrocarTests(unittest.TestCase):
     """`_Mapa.trocar`, a conta sem widget: o que muda depois da troca anda igual nas duas coordenadas."""
 
-    def mapa(self) -> qt_texto._Mapa:
+    def mapa(self) -> qt_texto.Mapa:
         # Documento "abcdefgh", com dois caracteres de desenho (uma miniatura) entre "d" e "e".
-        mapa = qt_texto._Mapa()
+        mapa = qt_texto.Mapa()
         mapa.registrar(0, 0, 4)
         mapa.registrar(4, 6, 4)
         return mapa

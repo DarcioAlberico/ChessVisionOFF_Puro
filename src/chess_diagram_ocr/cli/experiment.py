@@ -11,7 +11,7 @@ from ..config import PROJECT_ROOT
 from ..experiments import default_grid, markdown_table, run_variant, save_results
 from ..logging_setup import configure_logging, default_log_file
 from ..splits import load_splits
-from . import EXIT_BAD_INPUT, add_dataset_arguments, add_verbose, cli_errors
+from . import EXIT_BAD_INPUT, add_dataset_arguments, add_json_argument, add_verbose, cli_errors, fronteira
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Grade de experimentos de arquitetura (S-29).")
     add_dataset_arguments(parser)
     parser.add_argument("--workdir", type=Path, default=DEFAULT_WORKDIR, help="Onde ficam os checkpoints da grade.")
-    parser.add_argument("--json", type=Path, default=DEFAULT_JSON, help="Onde gravar o resultado da grade.")
+    add_json_argument(parser, default=DEFAULT_JSON, help="Onde gravar o resultado da grade.")
     parser.add_argument("--epochs", type=int, default=4, help="Epocas por variante. Iguais para todas, por justica.")
     parser.add_argument("--seed", type=int, default=42, help="Semente das operações aleatórias, igual para toda a grade.")
     parser.add_argument("--batch-size", type=int, default=128, help="Casas por lote (cabeça por janela).")
@@ -40,7 +40,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
 
-    splits = load_splits(args.splits)
+    with fronteira(f"--splits {args.splits}"):
+        splits = load_splits(args.splits)
     if not splits:
         print(f"Arquivo de splits vazio ou ausente: {args.splits}")
         return EXIT_BAD_INPUT

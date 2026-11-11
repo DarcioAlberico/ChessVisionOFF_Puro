@@ -22,13 +22,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-from ..games_cache import (
-    DEFAULT_STORE_PATH,
-    database_fingerprint,
-    same_database,
-    stored_summary,
-)
+from ..games_cache import DEFAULT_STORE_PATH, stored_summary
 from ..games_db import database_paths
+from . import formato
 
 __all__ = ["cache_note", "describe_size", "store_path_for"]
 
@@ -39,10 +35,10 @@ def describe_size(caminho: Path) -> str:
     except OSError:
         return "ausente"
     if bytes_ >= 1_000_000_000:
-        return f"{bytes_ / 1e9:.1f} GB".replace(".", ",")
+        return f"{formato.decimal(bytes_ / 1e9, 1)} GB"
     if bytes_ >= 1_000_000:
-        return f"{bytes_ / 1e6:.0f} MB"
-    return f"{bytes_ / 1e3:.0f} kB"
+        return f"{formato.decimal(bytes_ / 1e6, 0)} MB"
+    return f"{formato.decimal(bytes_ / 1e3, 0)} kB"
 
 
 def _mesmo_conjunto(um: Sequence[Path], outro: Sequence[Path]) -> bool:
@@ -63,7 +59,7 @@ def store_path_for(
     compõem.
 
     **O nome sai dos nomes, e não do fingerprint.** Tamanho entra na guarda de dentro do cache
-    (é ela que descarta quando um `.pgn` cresce); se entrasse também no caminho, um arquivo que
+    (é ela que deixa de responder quando um `.pgn` cresce); se entrasse também no caminho, um arquivo que
     crescesse viraria um cache novo e abandonaria o anterior no disco sem ninguém para apagá-lo.
     """
     padrao = list(default_bases) if default_bases is not None else database_paths()
@@ -78,20 +74,21 @@ def store_path_for(
 def cache_note(bases: Sequence[Path], *, store_path: Path | None = None) -> str:
     """O que o cache deste conjunto tem hoje, e o que a próxima busca fará com ele.
 
-    Lê o cache **em modo leitura** (`stored_summary`): abrir pela porta normal já descartaria o
-    que esta frase existe para avisar que vai ser descartado.
+    Lê o cache **em modo leitura** (`stored_summary`). Desde a S-806 nada é descartado ao abrir: o
+    que é de outro conjunto de arquivos fica guardado e só não responde por este.
     """
     if not bases:
         return "Nenhuma base marcada: as buscas não têm onde procurar."
     caminho = store_path if store_path is not None else store_path_for(bases)
-    marca, linhas = stored_summary(caminho)
-    if not linhas:
+    valem, guardadas = stored_summary(caminho, database=list(bases))
+    if valem:
+        return f"{valem} posição(ões) já respondidas continuam valendo — a busca só pergunta o que faltar."
+    if not guardadas:
         return "Sem respostas guardadas para este conjunto: a primeira busca por posição lê os arquivos inteiros."
-    if same_database(marca, database_fingerprint(bases)):
-        return f"{linhas} posição(ões) já respondidas continuam valendo — a busca só pergunta o que faltar."
     return (
-        f"As {linhas} posição(ões) guardadas foram respondidas por outro conjunto de arquivos e "
-        "serão descartadas na próxima busca por posição: a contagem de uma base não vale para outra."
+        f"As {guardadas} posição(ões) guardadas foram respondidas por outro conjunto de arquivos e não valem "
+        "para este: a contagem de uma base não vale para outra. Elas continuam guardadas, e voltam a valer "
+        "com aquele conjunto."
     )
 
 

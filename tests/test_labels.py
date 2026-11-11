@@ -14,13 +14,14 @@ uma sexta em `review_queue.rare_classes_from_labels`, que ninguém tinha listado
 
 from __future__ import annotations
 
-import inspect
 import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import pandas as pd
+import varredura
 
 from chess_diagram_ocr import labels as labels_module
 from chess_diagram_ocr.labels import (
@@ -163,6 +164,15 @@ class MutationTests(unittest.TestCase):
     def test_append_preserva_a_ordem(self) -> None:
         self.store.append(entry("d.png"))
         self.assertEqual([e.filename for e in self.store.read()], ["a.png", "b.png", "c.png", "d.png"])
+
+    def test_append_recusa_nome_repetido(self) -> None:
+        """S-820: duas linhas com o mesmo `filename` apontam para um PNG só -- uma delas mente."""
+        antes = self.csv.read_bytes()
+
+        with self.assertRaisesRegex(ValueError, "b.png"):
+            self.store.append(entry("b.png"))
+
+        self.assertEqual(self.csv.read_bytes(), antes)
 
     def test_update_devolve_falso_para_quem_nao_existe(self) -> None:
         self.assertFalse(self.store.update("z.png", fen=LEGAL))
@@ -380,7 +390,7 @@ class SinglePortTests(unittest.TestCase):
         podia ser gravado com `to_csv` direto no destino.
         """
         raiz = SRC.parents[1]
-        return [*sorted(SRC.rglob("*.py")), raiz / "app_pyqt.py", raiz / "examples" / "streamlit_demo.py"]
+        return [*varredura.fontes(SRC, recursivo=True, piso=300), raiz / "app_pyqt.py", raiz / "examples" / "streamlit_demo.py"]
 
     def test_nenhum_modulo_fora_daqui_le_ou_escreve_o_csv_de_rotulos(self) -> None:
         culpados: list[str] = []
@@ -465,6 +475,7 @@ class LabelRouteTests(unittest.TestCase):
             {"from_net": True},
             {"from_queue": True},
             {"from_dataset": True},
+            {"from_book": True},
             {"read_placement": self.LIDO, "saved_placement": self.CORRIGIDO},
         ]
         for kwargs in combinacoes:
@@ -498,9 +509,19 @@ class LabelOriginsTests(unittest.TestCase):
             self.assertEqual(labels_module.label_origins(caminho), {"a.png": ("", "", "")})
 
     def test_passa_pela_porta_unica_do_labels_csv(self) -> None:
-        """S-51: nada lê o `labels.csv` fora do `LabelStore`, nem o agrupamento novo."""
-        origem = inspect.getsource(labels_module.label_origins)
-        self.assertIn("LabelStore", origem)
+        """S-51: nada lê o `labels.csv` fora do `LabelStore`, nem o agrupamento novo.
+
+        Conta a passagem pela leitura do `LabelStore` (S-870): era uma busca do nome no fonte
+        da função, e um comentário com ele bastava para passar uma leitura por `csv` direto.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = self._grava(tmp, [{"filename": "a.png", "source_pdf": "livro.pdf", "source_page": "41"}])
+            ler = labels_module.LabelStore.read
+            with mock.patch.object(labels_module.LabelStore, "read", autospec=True, side_effect=ler) as lida:
+                origens = labels_module.label_origins(caminho)
+            self.assertEqual(origens, {"a.png": ("livro.pdf", "41", "")})
+            self.assertEqual(lida.call_count, 1)
+            self.assertEqual(lida.call_args.args[0].path, caminho)
 
 
 class SavedDiagramsByPageTests(unittest.TestCase):

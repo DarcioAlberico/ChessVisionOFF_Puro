@@ -95,7 +95,7 @@ class SequenciaDaPaletaTests(_Aba):
 
 class MostradorDeCorpoTests(_Aba):
     def test_selecao_mista_diz_meia_risca_e_nao_um_numero(self) -> None:
-        caixa = self.painel.caixa_de_corpo
+        caixa = self.painel.ferramentas.caixa_de_corpo
         caixa.setValue(caixa.minimum())
         self.assertEqual(caixa.text().strip(), texto_declarado.ROTULO_DO_CORPO_MISTO)
 

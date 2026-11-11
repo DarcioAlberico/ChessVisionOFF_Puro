@@ -27,14 +27,17 @@ import logging
 import os
 import shutil
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import chess
 import chess.engine
 
 logger = logging.getLogger(__name__)
+
+_Resposta = TypeVar("_Resposta")
 
 ENV_ENGINE_PATH = "CVOFF_ENGINE_PATH"
 
@@ -404,6 +407,28 @@ class EngineAnalyzer:
             self.close()
             self.path = Path(caminho)
 
+    def _perguntar(self, pergunta: Callable[[chess.engine.SimpleEngine], _Resposta]) -> _Resposta:
+        """Abre o motor se preciso e manda um `go`. Falha do motor vira `RuntimeError`.
+
+        **O motor que caiu é esquecido, e a próxima pergunta o reabre** (S-875). Um processo que
+        morre no meio do `go` levanta `EngineTerminatedError`; sem largar a referência, `start()`
+        saía cedo diante do motor morto e toda análise seguinte falhava com "engine event loop
+        dead" -- a sala, o treino e a análise da partida ficavam sem motor até trocar o binário.
+        Fechar o `SimpleEngine` morto só desliga o laço de eventos dele; não fala com o processo.
+        """
+        with self._lock:
+            self.start()
+            motor = self._engine
+            assert motor is not None
+            try:
+                return pergunta(motor)
+            except chess.engine.EngineTerminatedError as exc:
+                motor.close()
+                self._engine = None
+                raise RuntimeError(f"O motor de análise falhou: {exc}") from exc
+            except chess.engine.EngineError as exc:
+                raise RuntimeError(f"O motor de análise falhou: {exc}") from exc
+
     def __enter__(self) -> EngineAnalyzer:
         self.start()
         return self
@@ -433,16 +458,8 @@ class EngineAnalyzer:
             else chess.engine.Limit(time=(movetime_ms or self.movetime_ms) / 1000.0)
         )
         inicio = time.monotonic()
-        with self._lock:
-            self.start()
-            assert self._engine is not None
-            try:
-                info = self._engine.analyse(board, limite)
-            except chess.engine.EngineError as exc:
-                raise RuntimeError(f"O motor de análise falhou: {exc}") from exc
-
+        info = self._perguntar(lambda motor: motor.analyse(board, limite))
         return _avaliacao_de(board, info, elapsed_s=time.monotonic() - inicio)
-
 
     def mate_in(self, board: chess.Board, lances: int, *, time_s: float = 3.0) -> Evaluation:
         """``go mate N`` com teto de tempo (C12 do ciclo 2 OCR/UI).
@@ -455,13 +472,7 @@ class EngineAnalyzer:
 
         limite = chess.engine.Limit(mate=max(1, int(lances)), time=max(0.1, float(time_s)))
         inicio = time.monotonic()
-        with self._lock:
-            self.start()
-            assert self._engine is not None
-            try:
-                info = self._engine.analyse(board, limite)
-            except chess.engine.EngineError as exc:
-                raise RuntimeError(f"O motor de análise falhou: {exc}") from exc
+        info = self._perguntar(lambda motor: motor.analyse(board, limite))
         return _avaliacao_de(board, info, elapsed_s=time.monotonic() - inicio)
 
     def analyse_multi(
@@ -487,14 +498,7 @@ class EngineAnalyzer:
         """
         quantas = max(1, int(count) or self.multipv or 3)
         limite = chess.engine.Limit(time=(movetime_ms or self.movetime_ms) / 1000.0)
-        with self._lock:
-            self.start()
-            assert self._engine is not None
-            try:
-                infos = self._engine.analyse(board, limite, multipv=quantas)
-            except chess.engine.EngineError as exc:
-                raise RuntimeError(f"O motor de análise falhou: {exc}") from exc
-
+        infos = self._perguntar(lambda motor: motor.analyse(board, limite, multipv=quantas))
         avaliacoes = [_avaliacao_de(board, info) for info in infos]
         return avaliacoes or [_avaliacao_de(board, {})]
 

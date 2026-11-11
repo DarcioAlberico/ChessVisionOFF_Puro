@@ -94,7 +94,7 @@ class BuscaCurtaTests(unittest.TestCase):
                 if id(abaixo) not in usada and em._casam(acima, abaixo, self.ESCALA):
                     usada.update({id(acima), id(abaixo)})
                     uniao[id(acima)] = Caixa(
-                        min(acima.x1, abaixo.x1), acima.y1, max(acima.x2, abaixo.x2), abaixo.y2, acima.angulo
+                        min(acima.x1, abaixo.x1), acima.y1, max(acima.x2, abaixo.x2), abaixo.y2
                     )
                     absorvida.add(id(abaixo))
                     break

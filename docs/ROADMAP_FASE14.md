@@ -19,7 +19,7 @@ decisão, as duas do dono do acervo. Está assim, por medição e não por impre
 |---|---|---|
 | 0, 1, 3, 4, 5 | ✅ | — |
 | 2 | ✅ | critério de saída **fechado em 22/08**: 41 livros, 20.089 páginas, 3 h 25 min, e **0 posições ilegais** em 29.322 exportadas |
-| 6 | ⚠ | `app_tkinter.py` em 1.850 contra o alvo de 600 (S-31 aberta, com catraca; +65 nas S-324 a S-226, +81 na Fase 37, +21 na S-445, +10 na S-448 e, no `main`, +4 na S-512, +8 nas S-518/S-519, +17 na S-523 e +86 com o duplo clique e a detecção ao virar a página (S-68), cada subida com o motivo no `test_packaging`; o corte do Tk da S-506 trocou o arquivo vigiado pelo `qt/janela.py`, o placar caiu de 2.327 para 1.196, voltou a 1.776 com o que o corte tinha deixado sem chamador e foi a 1.810 com o duplo clique que leva o diagrama à sala de estudo; 1.944 com o passo 15 da OCR_UI, 1.984 com o trilho de páginas do passo 17 e 1.967 com as abas do diagrama viradas modos da aba `Livro`, no ramo `passo-17-trilho`; 1.979 com o estado «corrigido» das caixas da página, passo 13; 2.226 no merge do religa com o `main`, 2026-10-01, que soma as duas contas; *em 2026-11-06 o `app_tkinter.py` não existe mais, o `qt/janela.py` tem 1.850 linhas, no teto de `tests/test_packaging.py`, depois de três extrações puras para `qt/sessao_da_janela.py` e `qt/montagem_da_janela.py`, e a S-31 segue aberta: o que sobrou para as 600, e por quê, está na S-136*) |
+| 6 | ⚠ | `qt/janela.py` em 1.856 contra o alvo de 600 (S-31 aberta, com catraca; no `app_tkinter.py` de antes do corte, +65 na S-324 e nas S-221 a S-226, +81 na Fase 37, +21 na S-445, +10 na S-448 e, no `main`, +4 na S-512, +8 nas S-518/S-519, +17 na S-523 e +86 com o duplo clique e a detecção ao virar a página (S-68), cada subida com o motivo no `test_packaging`; o corte do Tk da S-506 trocou o arquivo vigiado pelo `qt/janela.py`, o placar caiu de 2.327 para 1.196, voltou a 1.776 com o que o corte tinha deixado sem chamador e foi a 1.810 com o duplo clique que leva o diagrama à sala de estudo; 1.944 com o passo 15 da OCR_UI, 1.984 com o trilho de páginas do passo 17 e 1.967 com as abas do diagrama viradas modos da aba `Livro`, no ramo `passo-17-trilho`; 1.979 com o estado «corrigido» das caixas da página, passo 13; 2.226 no merge do religa com o `main`, 2026-10-01, que soma as duas contas; 2.311 em 2026-11-09, com a revisão da solidez; 1.856 na integração de 2026-11-11, depois de três extrações puras para `qt/sessao_da_janela.py` e `qt/montagem_da_janela.py`, e a S-31 segue aberta: o que sobrou para as 600, e por quê, está na S-136) |
 | 7 a 13 | ✅ código completo | a 7 registra critério não atingido, com a razão medida |
 | **14 — a régua** | ✅ | S-99 fechada em 22/08: 66 páginas, `comparable` 96, faixa 0,60–0,80 com **6 de 5**. A régua achou o primeiro **exportado e errado** do projeto |
 | **15 — dataset e treino** | ✅ | S-108 fechada em 21/08: 80 rótulos, dedupe registrado, controle e tratamento medidos. Promover segue sendo decisão sua |
@@ -397,7 +397,7 @@ a condição de qualquer medição, a segunda porque cada dia de uso acrescenta 
 
 ---
 
-## Fase 14 — A régua ⚠ **código completo; o critério depende de anotação humana**
+## Fase 14 — A régua ✅ **critério fechado em 22/08 (S-99)**
 
 > O projeto não sabe se lê certo, e as duas réguas estão contaminadas pelo que deveriam julgar.
 
@@ -488,7 +488,7 @@ melhorá-la.
 
 ---
 
-## Fase 15 — O dataset e o treino que não mentem ⚠ **código completo; o critério depende de uma decisão sua**
+## Fase 15 — O dataset e o treino que não mentem ✅ **critério fechado em 21/08 (S-108)**
 
 *Estado em 2026-11-06: a decisão foi tomada e está abaixo (não promover, 2026-08-16 e 2026-08-18).
 O piso de `dataset_size` também passou: o `models/piece_classifier.pt` em produção declara **15.431**
@@ -911,7 +911,7 @@ tirou **444 linhas de 382 grupos** e está registrado em `docs/metrics/dedupe_20
 Os **444 órfãos** de hoje são o outro lado dessa remoção: o dedupe tira a linha do CSV e deixa o
 PNG no disco, e de fato **nenhum** órfão tem nome posterior a 2026-08-21 — tudo que o app gravou
 depois entrou rotulado. O teto de 10% da S-63 deixou de ser violado; o PNG sumido e as 3 triplas
-seguem de pé, e seguem sem gate, porque a S-102 continua aberta.
+seguiam de pé, e seguiam sem gate, porque a S-102 ainda estava aberta naquele dia; ela fechou depois (15.2, ✅).
 
 ---
 

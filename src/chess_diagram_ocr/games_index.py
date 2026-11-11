@@ -69,7 +69,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .config import DATA_DIR
+from .config import DATA_DIR, PGN_DATABASE_DIR
 from .eco import classificar_lances, codigo_do_header, lances_do_movetext
 from .games_db import (
     _ABRE_CABECALHO,
@@ -84,10 +84,12 @@ from .games_db import (
     decodificar_linha,
     eh_comprimida,
     existe_base,
+    impressao_da_base,
     nome_da_base,
     occupancy,
     surname,
     tamanho_da_base,
+    uri_somente_leitura,
 )
 from .pdf_text import fold
 from .ui.busca_de_partidas import Filtro
@@ -367,10 +369,11 @@ def index_fingerprint(databases: Path | Sequence[Path]) -> str:
     ficou incompleto: ele não sabe as partidas do arquivo novo, e responder sem elas seria
     dizer "a base não tem" sobre um arquivo que ninguém indexou (S-93).
 
-    O nome é o de `nome_da_base` -- `base.zip/membro.pgn` para um membro de `.zip` --, e o
-    tamanho é o do disco, comprimido se for o caso (S-531).
+    Cada pedaço é a `impressao_da_base` (S-807), a mesma que o cache de posições usa: nome
+    qualificado pelo `.zip`, tamanho do disco, e `?` quando o tamanho não lê -- que não casa
+    com índice nenhum, porque offsets de uma base que não se lê não se conferem.
     """
-    return "|".join(f"{nome_da_base(caminho)}:{tamanho_da_base(caminho)}" for caminho in as_databases(databases))
+    return "|".join(str(impressao_da_base(caminho)) for caminho in as_databases(databases))
 
 
 def _connect(path: Path) -> sqlite3.Connection:
@@ -379,18 +382,20 @@ def _connect(path: Path) -> sqlite3.Connection:
 
 
 def _versao_gravada(path: Path) -> str | None:
-    """A versão declarada num índice existente, ou `None` se não dá para ler."""
+    """A versão declarada num índice existente; `None` para um banco sem tabela nenhuma.
+
+    **Levanta `sqlite3.Error` quando não leu (S-808)**, em vez de devolver `None`: era o `None` de
+    "não consegui ler" que `_abrir_para_escrita` lia como "outro formato", e apagava. Um `meta` sem a
+    linha de versão é lido como `""` -- uma versão que não é esta.
+    """
+    conexao = sqlite3.connect(uri_somente_leitura(path), uri=True)
     try:
-        conexao = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    except sqlite3.Error:
-        return None
-    try:
+        if conexao.execute("SELECT count(*) FROM sqlite_master").fetchone()[0] == 0:
+            return None
         linha = conexao.execute("SELECT value FROM meta WHERE key = 'version'").fetchone()
-    except sqlite3.Error:
-        return None
     finally:
         conexao.close()
-    return None if linha is None else str(linha[0])
+    return "" if linha is None else str(linha[0])
 
 
 _VERSOES_QUE_SO_GANHAM_ARVORE = frozenset({"5"})
@@ -410,10 +415,23 @@ def _abrir_para_escrita(path: Path) -> sqlite3.Connection:
     Um índice de outra versão é apagado e refeito -- é o que `--build-index` sempre significou
     para ele --, e o `.parcial` de uma versão anterior interrompida vai junto. A exceção é a
     versão que só perdeu árvores: ver `_VERSOES_QUE_SO_GANHAM_ARVORE`.
+
+    **Só apaga quando leu uma versão, e ela é outra (S-808).** Um índice cuja versão não se lê --
+    disco com defeito, arquivo que não é SQLite, a URI que não abria com `#` no caminho -- levanta
+    `IndiceIndisponivel` e fica onde está: ele é construído de 8,6 GB de PGN, e "não consegui ler"
+    não é razão para jogar fora o que talvez esteja inteiro.
     """
     path.with_suffix(path.suffix + ".parcial").unlink(missing_ok=True)
-    gravada = _versao_gravada(path) if path.exists() else None
-    if path.exists() and gravada != str(INDEX_VERSION):
+    gravada: str | None = None
+    if path.exists():
+        try:
+            gravada = _versao_gravada(path)
+        except sqlite3.Error as exc:
+            raise IndiceIndisponivel(
+                f"O índice por nome em {path} não pôde ser lido ({exc}) e não foi apagado. Confira o "
+                "arquivo; se ele não servir mais, apague-o e rode cvoff-games --build-index de novo."
+            ) from exc
+    if gravada is not None and gravada != str(INDEX_VERSION):
         if gravada in _VERSOES_QUE_SO_GANHAM_ARVORE:
             logger.info("O índice em %s é da versão %s: as árvores que faltam são criadas no fim da rodada.", path, gravada)
         else:
@@ -598,6 +616,7 @@ def build_index(
     *,
     progress: Progresso | None = None,
     cancel: threading.Event | None = None,
+    podar: bool = False,
 ) -> Indexacao:
     """Põe o índice em dia com as bases: relê só o que mudou, e diz quanto foi (S-87/S-532).
 
@@ -619,7 +638,16 @@ def build_index(
     | mesmo tamanho, mesma cabeça, mesma cauda | **pulado**; só o `mtime` é atualizado se mudou |
     | cresceu, mesma cabeça, e a cauda antiga ainda está no mesmo lugar | lido **a partir do tamanho antigo** -- é o PGN em que se anexa |
     | qualquer outra diferença, ou base comprimida que mudou | as partidas dele saem e ele é relido inteiro |
-    | não está mais na lista | as partidas dele saem do índice |
+    | não está na lista desta rodada | **fica** como está (S-809) |
+    | não está na lista, não existe mais na pasta, e `podar` | as partidas dele saem do índice |
+
+    **Uma rodada com parte das bases acrescenta e atualiza; não poda (S-809).** Ela apagava toda
+    base fora da lista desta rodada -- e com um `--database X` explícito, ou com uma base que
+    `_bases()` tirou por estar ausente naquele instante, horas de indexação iam embora. Só sai a
+    base cujo arquivo não existe mais na pasta das bases (`PGN_DATABASE_DIR`, ou a de uma base
+    desta rodada), e só quando se pede (`cvoff-games --build-index --podar`). A marca gravada no fim
+    é a do **manifesto inteiro** (`_marca_do_manifesto`): o índice declara tudo o que guarda, e a
+    consulta só o aceita para esse conjunto.
 
     **Uma transação por lote, e não mais por arquivo** (S-533, r2). Era por arquivo, e a gigabase
     **é** um arquivo: cancelar no nono minuto desfazia os nove, e a rodada seguinte relia 8,6 GB
@@ -650,8 +678,9 @@ def build_index(
         conexao.execute("DELETE FROM meta WHERE key = 'database'")
         conexao.commit()
 
+        pastas = {PGN_DATABASE_DIR, *(arquivo_fisico(base).parent for base in bases)}
         for nome, registro in list(manifesto.items()):
-            if nome in atuais:
+            if nome in atuais or not podar or any(existe_base(pasta / nome) for pasta in pastas):
                 continue
             conexao.execute("DELETE FROM games WHERE file = ?", (registro.id,))
             conexao.execute("DELETE FROM files WHERE id = ?", (registro.id,))
@@ -760,7 +789,7 @@ def build_index(
             # numa grande foram derrubados; e depois de uma cancelada podem ter ficado de fora.
             for indice, colunas in _INDICES_DE_BUSCA:
                 conexao.execute(f"CREATE INDEX IF NOT EXISTS {indice} ON {colunas}")
-            conexao.execute("INSERT OR REPLACE INTO meta VALUES ('database', ?)", (index_fingerprint(bases),))
+            conexao.execute("INSERT OR REPLACE INTO meta VALUES ('database', ?)", (_marca_do_manifesto(manifesto),))
             conexao.commit()
         total = sum(registro.games for registro in manifesto.values())
     finally:
@@ -785,6 +814,19 @@ def build_index(
         ", cancelado" if cancelado else "",
     )
     return resultado
+
+
+def _marca_do_manifesto(manifesto: dict[str, _Registro]) -> str:
+    """A marca de **tudo** o que o índice guarda, na forma do `index_fingerprint` e na ordem da pasta.
+
+    Era o `index_fingerprint` das bases desta rodada; desde que uma rodada parcial não poda (S-809)
+    o índice pode guardar mais do que ela leu, e a marca diz o que ele guarda.
+    """
+    return "|".join(f"{r.name}:{r.size}" for r in sorted(manifesto.values(), key=lambda r: r.name.lower()))
+
+
+def _pedacos_da_marca(marca: str) -> set[str]:
+    return set(marca.split("|")) if marca else set()
 
 
 def _inteiro(texto: str) -> int:
@@ -994,7 +1036,7 @@ def _abrir_para_consulta(bases: Sequence[Path], path: Path) -> tuple[sqlite3.Con
     if not path.exists():
         return None, f"O índice da base de partidas ainda não foi construído. {refazer}"
     try:
-        conexao = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        conexao = sqlite3.connect(uri_somente_leitura(path), uri=True)
     except sqlite3.Error as exc:
         return None, f"Índice por nome ilegível ({exc}). {refazer}"
     try:
@@ -1012,11 +1054,23 @@ def _abrir_para_consulta(bases: Sequence[Path], path: Path) -> tuple[sqlite3.Con
     if gravado is None:
         conexao.close()
         return None, f"O índice da base está em obras: uma rodada não chegou ao fim. {refazer}"
-    if gravado[0] != atual:
+    # Por conjunto, e nao pela string: a marca e gravada na ordem da pasta (S-809), e quem pergunta
+    # pode passar as bases em outra.
+    if _pedacos_da_marca(str(gravado[0])) != _pedacos_da_marca(atual):
         conexao.close()
+        nomes_de_agora = {pedaco.rsplit(":", 1)[0] for pedaco in _pedacos_da_marca(atual)}
+        a_mais = sorted(
+            nome for pedaco in _pedacos_da_marca(str(gravado[0])) if (nome := pedaco.rsplit(":", 1)[0]) not in nomes_de_agora
+        )
+        podar = (
+            f" O índice guarda também {', '.join(a_mais)}, fora das bases de agora; se saíram da pasta, "
+            "cvoff-games --build-index --podar as tira."
+            if a_mais
+            else ""
+        )
         return None, (
             f"O índice por nome foi feito para {gravado[0]!r} e a base agora é {atual!r}: os offsets não valem, "
-            f"e a consulta seria lixo. {refazer}"
+            f"e a consulta seria lixo.{podar} {refazer}"
         )
     return conexao, ""
 

@@ -24,7 +24,7 @@ from ..atomic_io import atomic_write_text
 from ..livro_com_pgn import DiagramaDoLivro, casar_livro, contagem
 from ..logging_setup import configure_logging
 from ..pgn_do_livro import IndiceDoLivro
-from . import add_verbose, cli_errors
+from . import add_json_argument, add_verbose, cli_errors, exige_checkpoint, exige_documento, fronteira
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pgn", type=Path, required=True, help="O PGN que acompanha o livro.")
     parser.add_argument("--modelo", type=Path, default=DEFAULT_MODEL_PATH, help="O checkpoint que confere as imagens (padrao: o de producao).")
     parser.add_argument("--sem-modelo", action="store_true", help="Casa so pela legenda, sem ler as imagens.")
-    parser.add_argument("--json", type=Path, help="Grava o relatorio neste caminho.")
+    add_json_argument(parser)
     add_verbose(parser)
     return parser
 
@@ -93,6 +93,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     configure_logging(verbose=args.verbose)
+    exige_documento(args.pdf)
+    with fronteira(f"--pgn {args.pgn}"), open(args.pgn, "rb"):
+        pass
+    if not args.sem_modelo:
+        exige_checkpoint(args.modelo, rotulo="--modelo")
     relatorio = medir(args.pdf, args.pgn, model_path=None if args.sem_modelo else args.modelo)
     texto = json.dumps(relatorio, ensure_ascii=False, indent=1)
     if args.json:

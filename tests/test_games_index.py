@@ -15,13 +15,15 @@ import threading
 import time
 import unittest
 import zipfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from unittest import mock
 
 import chess
+import varredura
 from subprocesso import rodar_python
+from tempo_da_suite import limite
 
-from chess_diagram_ocr import games_index
+from chess_diagram_ocr import games_db, games_index
 from chess_diagram_ocr.games_db import GameRecord, database_paths
 from chess_diagram_ocr.games_index import (
     _INDICES_DE_BUSCA,
@@ -309,6 +311,109 @@ class DuasBasesTests(unittest.TestCase):
         self.assertEqual(repetidas, 1)
 
 
+class CaminhoComCaractereDeUriTests(unittest.TestCase):
+    """S-808: a URI de leitura do SQLite com `#`, `%`, espaço e acento no caminho, e o caminho UNC.
+
+    `f"file:{path}?mode=ro"` não escapava nada. Numa pasta `Xadrez #2` o `?mode=ro` virava
+    fragmento, o SQLite abria `.../Xadrez ` em leitura **e escrita** -- criando um arquivo vazio
+    na pasta-mãe --, a versão voltava `None`, e `_abrir_para_escrita` apagava o índice de 8,6 GB
+    de PGN como se fosse "outro formato". Numa pasta `100%25 ok` o SQLite nem abria.
+    """
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.mae = Path(self.pasta.name)
+
+    def _segunda_rodada(self, nome_da_pasta: str) -> None:
+        pasta = self.mae / nome_da_pasta
+        pasta.mkdir()
+        base = pasta / "base.pgn"
+        base.write_text(PGN, encoding="utf-8")
+        indice = pasta / "indice.sqlite"
+        self.assertEqual(build_index(base, indice).partidas, 3)
+
+        segunda = build_index(base, indice)
+
+        self.assertEqual((segunda.relidas, segunda.arquivos_pulados), (0, 1), "o índice foi apagado e refeito")
+        self.assertEqual(len(lookup_pair(("anderssen", "kieseritzky"), base, indice)), 2)
+        self.assertEqual(sorted(p.name for p in self.mae.iterdir()), [nome_da_pasta], "nada nasce na pasta-mãe")
+
+    def test_indice_em_pasta_com_cerquilha_sobrevive_a_segunda_rodada(self) -> None:
+        self._segunda_rodada("Xadrez #2")
+
+    def test_indice_em_pasta_com_porcento_sobrevive_a_segunda_rodada(self) -> None:
+        self._segunda_rodada("100%25 ok")
+
+    def test_indice_em_pasta_com_espaco_e_acento_sobrevive_a_segunda_rodada(self) -> None:
+        self._segunda_rodada("Coleção de aberturas")
+
+    def _banco(self, pasta: Path) -> Path:
+        pasta.mkdir(parents=True, exist_ok=True)
+        arquivo = pasta / "x.sqlite"
+        conexao = sqlite3.connect(arquivo)
+        conexao.execute("CREATE TABLE t (v TEXT)")
+        conexao.execute("INSERT INTO t VALUES ('lido')")
+        conexao.commit()
+        conexao.close()
+        return arquivo
+
+    def _le_e_nao_grava(self, caminho: Path) -> None:
+        conexao = sqlite3.connect(games_db.uri_somente_leitura(caminho), uri=True)
+        try:
+            self.assertEqual(conexao.execute("SELECT v FROM t").fetchone(), ("lido",))
+            with self.assertRaises(sqlite3.OperationalError, msg="a URI tem de abrir só para ler"):
+                conexao.execute("INSERT INTO t VALUES ('gravado')")
+        finally:
+            conexao.close()
+
+    def test_uri_somente_leitura_abre_caminho_com_espaco_acento_cerquilha_e_porcento(self) -> None:
+        arquivo = self._banco(self.mae / "Pasta com espaço" / "ação #2 100%25 ok")
+        self._le_e_nao_grava(arquivo)
+        self.assertEqual(sorted(p.name for p in arquivo.parent.iterdir()), ["x.sqlite"])
+
+    def test_uri_somente_leitura_abre_unc(self) -> None:
+        """`\\\\localhost\\C$\\...`: o caminho de rede, que falha hoje e falha com `resolve().as_uri()`."""
+        arquivo = self._banco(self.mae / "rede")
+        unidade = arquivo.drive.rstrip(":")
+        if len(unidade) != 1:
+            self.skipTest("o arquivo temporário não está numa unidade com letra")
+        unc = Path(f"\\\\localhost\\{unidade}$") / arquivo.relative_to(arquivo.anchor)
+        try:
+            alcanca = unc.exists()
+        except OSError:
+            alcanca = False
+        if not alcanca:
+            self.skipTest(f"o compartilhamento administrativo {unidade}$ não existe nesta máquina")
+        self._le_e_nao_grava(unc)
+
+    def test_uri_de_unc_e_a_forma_que_o_sqlite_aceita(self) -> None:
+        """A forma medida na spec: quatro barras, `$` escapado, e nada de `localhost` como autoridade."""
+        unc = PureWindowsPath(r"\\nas\Xadrez $\a b#.sqlite")
+        self.assertEqual(games_db.uri_somente_leitura(unc), "file:////nas/Xadrez%20%24/a%20b%23.sqlite?mode=ro")
+
+    def test_versao_ilegivel_e_erro_e_nao_apaga(self) -> None:
+        """`_abrir_para_escrita` só apaga quando leu uma versão **e** ela é outra."""
+        indice = self.mae / "indice.sqlite"
+        indice.write_bytes(b"isto nao e um banco" * 100)
+        base = self.mae / "base.pgn"
+        base.write_text(PGN, encoding="utf-8")
+        with self.assertRaises(IndiceIndisponivel):
+            build_index(base, indice)
+        self.assertEqual(indice.read_bytes(), b"isto nao e um banco" * 100)
+
+    def test_nenhum_f_string_de_uri_sobra_em_src(self) -> None:
+        """Guarda sem piso: o número certo de URIs montadas à mão é zero."""
+        fontes = Path(games_index.__file__).resolve().parent
+        soltas = [
+            f"{caminho.relative_to(fontes).as_posix()}:{numero}"
+            for caminho in varredura.fontes(fontes, recursivo=True, piso=300)
+            for numero, linha in enumerate(caminho.read_text(encoding="utf-8").splitlines(), 1)
+            if 'f"file:' in linha or "f'file:" in linha
+        ]
+        self.assertEqual(soltas, [])
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -532,9 +637,54 @@ class IndiceIncrementalTests(unittest.TestCase):
         self.assertEqual(self._linhas_do_arquivo("a.pgn"), 4)
         self.assertEqual(len(lookup_pair(("anderssen", "kieseritzky"), [self.a, self.b], self.indice)), 2)
 
-    def test_arquivo_removido_sai_do_indice_sem_aviso_na_consulta(self) -> None:
+    # ------------------------------------------- subconjunto não poda (S-809)
+
+    def _cli(self, *argv: str) -> int:
+        from contextlib import redirect_stdout
+        from io import StringIO
+
+        from chess_diagram_ocr.cli import games as cli_games
+
+        with mock.patch.object(cli_games, "configure_logging"), redirect_stdout(StringIO()):
+            return cli_games.main(["--build-index", "--index", str(self.indice), *argv])
+
+    def test_build_index_com_subconjunto_nao_apaga_as_outras_bases(self) -> None:
+        """`--build-index --database a` sobre um índice de `[a, b]`: as partidas de `b` continuam.
+
+        A rodada apagava de `games` e `files` toda base fora da lista desta rodada -- e com um
+        `--database` explícito, ou com uma base que `_bases()` tirou por estar ausente naquele
+        instante, horas de indexação iam embora.
+        """
+        self.assertEqual(self._cli("--database", str(self.a)), 0)
+        self.assertEqual(self._linhas_do_arquivo("b.pgn"), 1)
+        with self.assertNoLogs("chess_diagram_ocr.games_index", level="WARNING"):
+            capablanca = lookup_pair(("capablanca", "lasker"), [self.a, self.b], self.indice)
+        self.assertEqual(len(capablanca), 1, "e a pasta inteira continua respondendo, sem reindexar")
+
+    def test_podar_sem_base_ausente_nao_faz_nada(self) -> None:
+        self.assertEqual(self._cli("--podar", "--database", str(self.a)), 0)
+        self.assertEqual(self._linhas_do_arquivo("b.pgn"), 1, "b não está na rodada, mas está na pasta")
+
+    def test_podar_tira_a_base_que_saiu_da_pasta(self) -> None:
+        self.b.unlink()
+        self.assertEqual(self._cli("--podar", "--database", str(self.a)), 0)
+        with self.assertNoLogs("chess_diagram_ocr.games_index", level="WARNING"):
+            self.assertEqual(len(lookup_pair(("anderssen", "kieseritzky"), [self.a], self.indice)), 2)
+
+    def test_base_que_saiu_sem_podar_recusa_a_consulta_e_diz_como_podar(self) -> None:
+        """O índice que guarda uma base que não está mais entre as de agora não responde menos do que
+        diz ter -- e a frase diz o comando que o põe em dia, senão "refaça" seria um laço."""
         self.b.unlink()
         rodada = build_index([self.a], self.indice)
+        self.assertEqual(rodada.arquivos_removidos, 0)
+        with self.assertRaises(IndiceIndisponivel) as recusa:
+            buscar(Filtro(brancas="Anderssen"), [self.a], self.indice)
+        self.assertIn("--podar", str(recusa.exception))
+        self.assertIn("b.pgn", str(recusa.exception))
+
+    def test_arquivo_removido_sai_do_indice_sem_aviso_na_consulta(self) -> None:
+        self.b.unlink()
+        rodada = build_index([self.a], self.indice, podar=True)
 
         self.assertEqual(rodada.arquivos_removidos, 1)
         self.assertEqual(rodada.partidas, 3)
@@ -599,15 +749,21 @@ class CancelamentoDoIndiceTests(unittest.TestCase):
 
     def test_cancelar_para_em_menos_de_um_segundo_e_a_consulta_recusa_o_indice(self) -> None:
         cancelar = threading.Event()
-        relogio = threading.Timer(0.3, cancelar.set)
+        pedido: list[float] = []
+
+        def pedir() -> None:
+            pedido.append(time.perf_counter())
+            cancelar.set()
+
+        relogio = threading.Timer(0.3, pedir)
         relogio.start()
         self.addCleanup(relogio.cancel)
-        inicio = time.perf_counter()
         rodada = build_index([self.pequena, self.grande], self.indice, cancel=cancelar)
-        decorrido = time.perf_counter() - inicio
+        honrado = time.perf_counter()
 
         self.assertTrue(rodada.cancelado)
-        self.assertLess(decorrido, 1.3, "0,3 s até o pedido, e menos de 1 s para honrá-lo")
+        # Do pedido, e não do começo (S-872): o atraso do `Timer` numa máquina carregada não é do índice.
+        self.assertLess(honrado - pedido[0], limite(1.0), "menos de 1 s para honrar o pedido")
         self.assertGreaterEqual(
             rodada.partidas,
             3,

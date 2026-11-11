@@ -33,7 +33,9 @@ O módulo não importa Qt nem torch.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import cv2
 import numpy as np
@@ -286,46 +288,180 @@ def _melhor_medida(diferenca: np.ndarray, celula: np.ndarray, limiar_do_miolo: f
     return primeira
 
 
+PROPORCAO_MAXIMA = 1.25
+"""Lado maior sobre lado menor da forma, acima do qual ela não é marca: as marcas são redondas ou quadradas."""
+
+LADO_MINIMO = 0.14
+LADO_MAXIMO = 0.72
+"""O lado maior da forma, em fração da casa. O X só tem o mínimo: os dos livros chegam a 90% da casa."""
+
+OUTRAS_MANCHAS_MAXIMAS = 0.25
+"""A área das outras manchas da casa contra a do borrão, acima da qual a casa está suja demais."""
+
+SOLIDEZ_DOS_BRACOS = 0.72
+"""Abaixo disto a forma é de braços, o X e a cruz: a tinta não enche a casca convexa."""
+
+DIAGONAIS_DO_X = 0.75
+EIXOS_DA_CRUZ = 0.85
+"""A fração da tinta ao longo das duas diagonais (X) ou dos dois eixos (cruz)."""
+
+BRACO_MAIS_FRACO = 0.4
+"""A fração mínima no braço menos pintado: um traço solto da hachura pinta um braço só."""
+
+HARMONICO_DA_ESTRELA = 0.13
+SOLIDEZ_DA_ESTRELA = (0.55, 0.85)
+"""As cinco pontas (`harmonico_5`) e a faixa de solidez da estrela: entre os braços e o disco."""
+
+EIXOS_DA_ESTRELA_PRETA = 0.62
+"""A tinta mínima nos eixos da estrela preta, que é cheia; a oca é julgada pelo miolo liso."""
+
+SOLIDEZ_DO_DISCO = 0.9
+"""A partir daqui a forma é cheia: a bolinha."""
+
+CIRCULARIDADE_DA_BOLINHA_BRANCA = 0.85
+CIRCULARIDADE_DA_BOLINHA_PRETA = 0.72
+
+EIXOS_DA_BOLINHA_BRANCA = 0.53
+"""A tinta máxima nos eixos da bolinha oca: o miolo dela é vazio."""
+
+EIXOS_DA_BOLINHA_PRETA = 0.55
+"""A tinta mínima nos eixos da bolinha cheia."""
+
+
+@dataclass(frozen=True)
+class _Forma:
+    """O que as regras de forma olham: o lado maior, o menor e o desvio do centro, em fração da casa."""
+
+    maior: float
+    menor: float
+    desvio: float
+
+
+def _forma(medidas: MedidasDaCasa) -> _Forma:
+    return _Forma(
+        maior=max(medidas.largura, medidas.altura),
+        menor=min(medidas.largura, medidas.altura),
+        desvio=max(abs(medidas.desvio_x), abs(medidas.desvio_y)),
+    )
+
+
+def _desproporcional(medidas: MedidasDaCasa, forma: _Forma) -> bool:
+    return forma.menor <= 0 or forma.maior / forma.menor > PROPORCAO_MAXIMA
+
+
+def _tem_as_duas_diagonais(medidas: MedidasDaCasa, forma: _Forma) -> bool:
+    return (
+        forma.maior >= LADO_MINIMO
+        and medidas.solidez < SOLIDEZ_DOS_BRACOS
+        and medidas.tinta_nas_diagonais >= DIAGONAIS_DO_X
+        and medidas.menor_diagonal >= BRACO_MAIS_FRACO
+        and medidas.centro_escuro
+        and forma.desvio <= DESVIO_MAXIMO
+    )
+
+
+def _na_borda_ou_suja(medidas: MedidasDaCasa, forma: _Forma) -> bool:
+    return medidas.toca_a_borda or medidas.outras_manchas > OUTRAS_MANCHAS_MAXIMAS
+
+
+def _fora_do_tamanho(medidas: MedidasDaCasa, forma: _Forma) -> bool:
+    return not LADO_MINIMO <= forma.maior <= LADO_MAXIMO
+
+
+def _tem_cinco_pontas(medidas: MedidasDaCasa, forma: _Forma) -> bool:
+    minima, maxima = SOLIDEZ_DA_ESTRELA
+    return (
+        medidas.harmonico_5 >= HARMONICO_DA_ESTRELA
+        and minima <= medidas.solidez <= maxima
+        and forma.desvio <= DESVIO_DA_ESTRELA
+    )
+
+
+def _fora_do_centro(medidas: MedidasDaCasa, forma: _Forma) -> bool:
+    return forma.desvio > DESVIO_MAXIMO
+
+
+def _e_cheia(medidas: MedidasDaCasa, forma: _Forma) -> bool:
+    return medidas.solidez >= SOLIDEZ_DO_DISCO
+
+
+def _tem_os_dois_eixos(medidas: MedidasDaCasa, forma: _Forma) -> bool:
+    return (
+        medidas.solidez < SOLIDEZ_DOS_BRACOS
+        and medidas.tinta_nos_eixos >= EIXOS_DA_CRUZ
+        and medidas.menor_eixo >= BRACO_MAIS_FRACO
+        and medidas.centro_escuro
+    )
+
+
+def _nenhuma(medidas: MedidasDaCasa) -> str | None:
+    return None
+
+
+def _x(medidas: MedidasDaCasa) -> str | None:
+    return mc.X
+
+
+def _cruz(medidas: MedidasDaCasa) -> str | None:
+    return mc.CRUZ
+
+
+def _estrela(medidas: MedidasDaCasa) -> str | None:
+    """A variante pelo centro claro: a oca tem o miolo liso, a cheia tem tinta nos eixos."""
+    if medidas.miolo_claro:
+        return mc.ESTRELA_BRANCA if medidas.variacao_do_miolo <= VARIACAO_DO_OCO else None
+    return mc.ESTRELA_PRETA if medidas.tinta_nos_eixos >= EIXOS_DA_ESTRELA_PRETA else None
+
+
+def _bolinha(medidas: MedidasDaCasa) -> str | None:
+    """A variante pelo centro claro. A oca precisa ser redonda e vazia: é o que a separa do bispo branco."""
+    if medidas.miolo_claro:
+        # Cantos enchem mais que a elipse da caixa: é o que separa a torre branca do círculo.
+        elipse = np.pi / 4 * medidas.largura * medidas.altura
+        redonda = medidas.circularidade >= CIRCULARIDADE_DA_BOLINHA_BRANCA and medidas.area / elipse <= ENCHIMENTO_DO_CIRCULO
+        vazia = medidas.variacao_do_miolo <= VARIACAO_DO_OCO and medidas.tinta_nos_eixos <= EIXOS_DA_BOLINHA_BRANCA
+        return mc.BOLINHA_BRANCA if redonda and vazia else None
+    cheia = medidas.circularidade >= CIRCULARIDADE_DA_BOLINHA_PRETA and medidas.tinta_nos_eixos >= EIXOS_DA_BOLINHA_PRETA
+    return mc.BOLINHA_PRETA if cheia else None
+
+
+class _Regra(NamedTuple):
+    nome: str
+    vale: Callable[[MedidasDaCasa, _Forma], bool]
+    tipo: Callable[[MedidasDaCasa], str | None]
+
+
+_REGRAS = (
+    _Regra("proporção", _desproporcional, _nenhuma),
+    # O X vem antes da borda e do tamanho: ele pode tocar a borda, os dos livros chegam a 90% da
+    # casa. As duas diagonais já bastam.
+    _Regra("x", _tem_as_duas_diagonais, _x),
+    _Regra("borda ou sujeira", _na_borda_ou_suja, _nenhuma),
+    _Regra("tamanho", _fora_do_tamanho, _nenhuma),
+    _Regra("estrela", _tem_cinco_pontas, _estrela),
+    _Regra("fora do centro", _fora_do_centro, _nenhuma),
+    _Regra("bolinha", _e_cheia, _bolinha),
+    _Regra("cruz", _tem_os_dois_eixos, _cruz),
+)
+"""As regras de `classificar`, na ordem: a primeira que vale decide, e nenhuma valer é `None`.
+
+Primeiro as de forma -- proporção, borda, tamanho --, com o X entre elas; depois a família pela
+faixa de solidez: estrela no meio (com as cinco pontas), bolinha cheia em cima, cruz embaixo. A
+família decide sozinha: uma estrela que não passa na variante é `None`, e não vira bolinha.
+"""
+
+
 def classificar(medidas: MedidasDaCasa) -> str | None:
     """O tipo da marca pela forma, ou `None` quando não parece marca: peça, traço ou sujeira.
 
     Os limites saíram de 2026-11-04: as marcas verdadeiras do gabarito (51 tabuleiros de outubro e 7
     enviados) contra as peças que uma versão sem eles apontava em 19 mil amostras. Silhueta sozinha
     não basta: a do bispo branco é tão redonda quanto a de uma bolinha, e o que os separa é o miolo.
+    As regras estão em `_REGRAS`.
     """
-    desvio = max(abs(medidas.desvio_x), abs(medidas.desvio_y))
-    maior, menor = max(medidas.largura, medidas.altura), min(medidas.largura, medidas.altura)
-    if menor <= 0 or maior / menor > 1.25:
-        return None
-    if (
-        maior >= 0.14
-        and medidas.solidez < 0.72
-        and medidas.tinta_nas_diagonais >= 0.75
-        and medidas.menor_diagonal >= 0.4
-        and medidas.centro_escuro
-        and desvio <= DESVIO_MAXIMO
-    ):
-        # O X pode tocar a borda: os dos livros chegam a 90% da casa. As duas diagonais já bastam.
-        return mc.X
-    if medidas.toca_a_borda or medidas.outras_manchas > 0.25 or not 0.14 <= maior <= 0.72:
-        return None
-    if medidas.harmonico_5 >= 0.13 and 0.55 <= medidas.solidez <= 0.85 and desvio <= DESVIO_DA_ESTRELA:
-        if medidas.miolo_claro:
-            return mc.ESTRELA_BRANCA if medidas.variacao_do_miolo <= VARIACAO_DO_OCO else None
-        return mc.ESTRELA_PRETA if medidas.tinta_nos_eixos >= 0.62 else None
-    if desvio > DESVIO_MAXIMO:
-        return None
-    if medidas.solidez >= 0.9:
-        if medidas.miolo_claro:
-            # Cantos enchem mais que a elipse da caixa: é o que separa a torre branca do círculo.
-            elipse = np.pi / 4 * medidas.largura * medidas.altura
-            redonda = medidas.circularidade >= 0.85 and medidas.area / elipse <= ENCHIMENTO_DO_CIRCULO
-            vazia = medidas.variacao_do_miolo <= VARIACAO_DO_OCO and medidas.tinta_nos_eixos <= 0.53
-            return mc.BOLINHA_BRANCA if redonda and vazia else None
-        return mc.BOLINHA_PRETA if medidas.circularidade >= 0.72 and medidas.tinta_nos_eixos >= 0.55 else None
-    if medidas.solidez < 0.72 and medidas.tinta_nos_eixos >= 0.85 and medidas.menor_eixo >= 0.4 and medidas.centro_escuro:
-        return mc.CRUZ
-    return None
+    forma = _forma(medidas)
+    regra = next((regra for regra in _REGRAS if regra.vale(medidas, forma)), None)
+    return regra.tipo(medidas) if regra is not None else None
 
 
 def sugerir_marcas(tabuleiro_rgb: np.ndarray) -> mc.MarcasDoDiagrama:

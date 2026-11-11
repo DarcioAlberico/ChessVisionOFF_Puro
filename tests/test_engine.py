@@ -24,6 +24,7 @@ from pathlib import Path
 import chess
 import chess.engine
 from ambiente_de_teste import pasta_temporaria_da_classe
+from tempo_da_suite import limite
 
 from chess_diagram_ocr.engine import (
     ENV_ENGINE_PATH,
@@ -149,7 +150,7 @@ class AnalyzerTests(unittest.TestCase):
             avaliacao = motor.analyse(chess.Board())
             decorrido = time.monotonic() - inicio
 
-        self.assertLess(decorrido, 2.0, "A S-33 exige avaliação em menos de 2 s.")
+        self.assertLess(decorrido, limite(2.0), "A S-33 exige avaliação em menos de 2 s.")
         self.assertEqual(avaliacao.depth, 12)
         self.assertTrue(avaliacao.best_move_san)
 
@@ -264,11 +265,41 @@ class AnalyzerTests(unittest.TestCase):
             motor.analyse(chess.Board())
             self.assertIs(motor._engine, primeiro)
 
+    def test_o_motor_que_caiu_e_reaberto_na_proxima_analise(self) -> None:
+        """**O motor que morria deixava a sala sem motor até trocar o binário** (S-875).
+
+        `EngineTerminatedError` virava `RuntimeError`, mas `_engine` seguia apontando para o
+        processo morto, e `start()` sai cedo quando ele não é `None`: toda análise seguinte falhava
+        com "engine event loop dead". O motor falso aqui sai com código 3 no primeiro `go` e
+        responde no processo seguinte; a análise que pegou a queda falha, a próxima responde.
+        """
+        from unittest import mock
+
+        from fake_uci_engine import ENV_CAI_UMA_VEZ
+
+        pasta = pasta_temporaria_da_classe(type(self), prefixo="cvoff-engine-")
+        chamadas = {
+            "analyse": lambda motor: motor.analyse(chess.Board()).best_move_san,
+            "analyse_multi": lambda motor: motor.analyse_multi(chess.Board(), count=2)[0].best_move_san,
+            "mate_in": lambda motor: motor.mate_in(chess.Board(), 2, time_s=0.2).best_move_san,
+        }
+        for nome, chamar in chamadas.items():
+            with self.subTest(nome), mock.patch.dict(os.environ, {ENV_CAI_UMA_VEZ: str(pasta / f"{nome}.caiu")}):
+                with EngineAnalyzer(self.launcher, movetime_ms=100) as motor:
+                    with self.assertRaises(RuntimeError):
+                        chamar(motor)
+                    self.assertTrue(chamar(motor), "a análise depois da queda tem de devolver um lance")
+
     def test_closing_twice_is_harmless(self) -> None:
+        """O primeiro `close` encerra o processo; o segundo não levanta (S-872: conferia só isto)."""
         motor = EngineAnalyzer(self.launcher, movetime_ms=100)
         motor.start()
+        processo = motor._engine
+        assert processo is not None
         motor.close()
+        self.assertTrue(processo.protocol.returncode.done(), "o processo do motor continua vivo")
         motor.close()
+        self.assertIsNone(motor._engine)
 
     def test_the_engine_reports_the_name_it_announced(self) -> None:
         with EngineAnalyzer(self.launcher, movetime_ms=100) as motor:

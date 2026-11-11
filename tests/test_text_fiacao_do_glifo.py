@@ -78,7 +78,7 @@ def _ler(desenho: list[tuple], lexico: frozenset[str] = frozenset({"nada"}), ext
     with (
         mock.patch.object(dicionario, "carregar", lambda *_a, **_k: lexico),
     ):
-        cruas, _ = leitor.linhas_do_glifo(img, (), reconhecedor=_Reconhecedor(_Classificador(mapa)), colados="nunca", dpi=220)
+        cruas, _ = leitor.linhas_do_glifo(img, (), reconhecedor=_Reconhecedor(_Classificador(mapa)), opcoes=leitor.OpcoesDoGlifo(colados="nunca"), dpi=220)
     return " | ".join(c.texto for c in cruas)
 
 

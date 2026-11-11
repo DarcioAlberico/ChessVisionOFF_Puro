@@ -99,7 +99,10 @@ def folhas_do_conjunto(conjunto: str, split: str, *, manifesto: str | None = Non
         erros = ouro.problemas(m)
         if erros:
             raise SystemExit(f"o manifesto do ouro não vale: {erros}")
-        return [FolhaDoConjunto("ouro", split, f.identidade, f.folha, f.lingua, f.estrato) for f in m.do_split(split)]
+        if split not in ouro.SPLITS:
+            raise SystemExit(f"split desconhecido: {split!r}; os do ouro são {ouro.SPLITS}")
+        folhas = m.do_split(split)
+        return [FolhaDoConjunto("ouro", split, f.identidade, f.folha, f.lingua, f.estrato) for f in folhas]
     from ..text import prata
 
     p = prata.carregar(manifesto)
@@ -165,11 +168,11 @@ def codigo_medido(*, exigir_src: str = "") -> dict[str, Any]:
 
 
 def _procedencia_dos_motores(modelo: str, linguas: Iterable[str]) -> dict[str, Any]:
+    from ..config import DEFAULT_GLYPH_MODEL_PATH
     from ..text import tesseract
-    from ..text.modelo import CAMINHO_PADRAO_META
 
     motor = tesseract.achar_motor()
-    pesos = Path(modelo) if modelo else CAMINHO_PADRAO_META.with_name("char_classifier.pt")
+    pesos = Path(modelo) if modelo else DEFAULT_GLYPH_MODEL_PATH
     return {
         "modelo_sha256": _sha(pesos),
         "tesseract": motor.versao,
@@ -411,7 +414,7 @@ def compilar(args: argparse.Namespace) -> int:
         caminho, _, consulta = resto.partition("?")
         registros = _ler_registros(caminho)
         filtro = _filtro_do_bloco(consulta)
-        blocos[nome] = relatorio_prosa.compilar_bloco(registros, filtro=filtro, pares=pares)  # type: ignore[arg-type]
+        blocos[nome] = relatorio_prosa.compilar_bloco(registros, filtro=filtro, pares=pares)
         for r in registros:
             c = r["codigo"]
             procedencia["modelo_sha256"].add(c.get("modelo_sha256", ""))
@@ -465,14 +468,13 @@ def importar(args: argparse.Namespace) -> int:
     faltam = [(r["identidade"], r["folha"]) for r in registros if (r["identidade"], r["folha"]) not in externas]
     if faltam:
         raise SystemExit(f"o motor {nome} não leu {len(faltam)} folhas: {faltam[:5]}...")
-    with open(args.saida, "w", encoding="utf-8", newline="\n") as saida:
-        for r in registros:
-            externa = externas[(r["identidade"], r["folha"])]
-            r["hip"][nome] = externa["texto"]
-            r["placar"].update(bancada_prosa.pontuar_hipoteses(r["ref"], {nome: externa["texto"]}, r["lingua"]))
-            if "segundos" in externa:
-                r["tempo"][nome] = externa["segundos"]
-            saida.write(json.dumps(r, ensure_ascii=False) + "\n")
+    for r in registros:
+        externa = externas[(r["identidade"], r["folha"])]
+        r["hip"][nome] = externa["texto"]
+        r["placar"].update(bancada_prosa.pontuar_hipoteses(r["ref"], {nome: externa["texto"]}, r["lingua"]))
+        if "segundos" in externa:
+            r["tempo"][nome] = externa["segundos"]
+    atomic_write_bytes(Path(args.saida), "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in registros).encode("utf-8"))
     print(f"{len(registros)} folhas com {nome} em {args.saida}")
     return 0
 
@@ -485,10 +487,9 @@ def repontuar(args: argparse.Namespace) -> int:
         raise SystemExit("--repontuar precisa de --saida")
     recusar_dentro_do_repositorio(args.saida)
     registros = _ler_registros(args.repontuar)
-    with open(args.saida, "w", encoding="utf-8", newline="\n") as saida:
-        for r in registros:
-            r["placar"] = bancada_prosa.pontuar_hipoteses(r["ref"], r["hip"], r["lingua"])
-            saida.write(json.dumps(r, ensure_ascii=False) + "\n")
+    for r in registros:
+        r["placar"] = bancada_prosa.pontuar_hipoteses(r["ref"], r["hip"], r["lingua"])
+    atomic_write_bytes(Path(args.saida), "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in registros).encode("utf-8"))
     print(f"{len(registros)} folhas repontuadas em {args.saida}")
     return 0
 
@@ -515,7 +516,7 @@ def construir_parser() -> argparse.ArgumentParser:
     ap.add_argument("--raiz", default=os.environ.get("CVOFF_RAIZ", ""), help="o checkout com PDF/ e PDF Digitais/")
     ap.add_argument("--pasta", action="append", help="onde procurar os PDF, no lugar das duas da raiz")
     ap.add_argument("--manifesto", default=None, help="outro manifesto no lugar do versionado")
-    ap.add_argument("--modelo", default="", help="o char_classifier.pt; padrão: o de models/")
+    ap.add_argument("--modelo", default="", help="o classificador de glifo (.pt); padrão: o de models/")
     add_dpi_argument(ap)
     ap.add_argument("--reserva", action="store_true", help="liga a reserva da S-715, como a janela")
     ap.add_argument("--exigir-src", default="", help="aborta se o pacote importado não morar sob esta pasta")
@@ -543,7 +544,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args.split_dado = args.split is not None
     args.split = args.split or "dev"
     if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+        sys.stdout.reconfigure(encoding="utf-8")
     logging.basicConfig(level=logging.WARNING)
     if args.canario:
         return canario(args)

@@ -472,8 +472,13 @@ def _nome_bruto(item: ItemDoLote, *, larguras: dict[str, int]) -> str:
     return nome
 
 
-def nomes_do_lote(itens: Sequence[ItemDoLote], formato: str = PNG) -> tuple[str, ...]:
+def nomes_do_lote(
+    itens: Sequence[ItemDoLote], formato: str = PNG, *, ocupados: Iterable[str] = ()
+) -> tuple[str, ...]:
     """O nome de arquivo de cada item, com extensão, na ordem em que eles chegaram.
+
+    `ocupados` são os nomes que já estão na pasta de destino: contam como tomados, e o item que
+    cairia num deles ganha o sufixo em vez de apagar o arquivo de outro dia (S-822).
 
     **Três decisões, e as três vieram de defeito real e não de precaução:**
 
@@ -492,7 +497,9 @@ def nomes_do_lote(itens: Sequence[ItemDoLote], formato: str = PNG) -> tuple[str,
         "p": len(str(max((item.pagina for item in itens), default=0))),
         "d": len(str(max((item.diagrama for item in itens), default=0))),
     }
-    vistos: set[str] = set()
+    vistos = {
+        nome[: -len(extensao)].casefold() for nome in ocupados if nome.casefold().endswith(extensao.casefold())
+    }
     saida: list[str] = []
     for item in itens:
         base = _nome_bruto(item, larguras=larguras)

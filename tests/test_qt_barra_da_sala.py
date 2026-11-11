@@ -440,7 +440,7 @@ class NoPainelTests(unittest.TestCase):
         dialogo.partida_escolhida.emit(base, 0)
         self.app.processEvents()
         self.assertIn("Carlsen", painel.lbl_origem.text())
-        self.assertEqual("ECO B90 · Sicilian, Najdorf", painel.lbl_eco.text(), "o ECO da partida aberta")
+        self.assertEqual("ECO B90 · Sicilian, Najdorf", painel.navegacao.lbl_eco.text(), "o ECO da partida aberta")
 
     def test_o_dialogo_de_busca_e_reusado_e_a_posicao_e_atualizada(self) -> None:
         """Um `QThread` destruído enquanto roda derruba o processo: abrir a busca duas vezes não
@@ -473,7 +473,7 @@ class NoPainelTests(unittest.TestCase):
         self.addCleanup(descartar, painel)
         base = self.pasta / "vazia.pgn"
         base.write_text("nada aqui\n", encoding="utf-8")
-        self.assertFalse(painel.abrir_partida_da_base(base, 0))
+        self.assertFalse(painel.partidas.abrir_partida_da_base(base, 0))
         self.assertIn("Refaça o índice", painel.lbl_status.text())
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
@@ -565,8 +565,9 @@ class BarraQueSeLeTests(unittest.TestCase):
         for registro in barra_da_sala.principais(com_motor=True):
             # `estudo_do_diagrama` fica de fora: era o primário, e neutro desde o merge do religa
             # ele passaria a ser o representante do neutro -- e é ele que abre a fila com o foco,
-            # que na folha da F9 muda o tamanho do botão (o defeito que `test_qt_tema.FOLHA_DO_MAIN`
-            # registra). O neutro medido continua sendo o de antes do merge.
+            # que na folha da F9 mudava o tamanho do botão (o defeito que
+            # `test_qt_tema.MarcadoEFocoNaFolhaTests` cobra desde a S-556). O neutro medido continua
+            # sendo o de antes do merge.
             if registro.acao == "estudo_do_diagrama":
                 continue
             if registro.icone and registro.papel not in papeis:

@@ -89,12 +89,13 @@ from chess_diagram_ocr.ui import (
     comandos,
     espaco,
     estilos,
+    formato,
     strings,
     tipografia,
     tokens,
 )
 from chess_diagram_ocr.ui import recorte_do_diagrama as regra_do_recorte
-from chess_diagram_ocr.ui.editor_model import DiagramEditorModel, EditorBinding, SaveKind, SaveTarget
+from chess_diagram_ocr.ui.editor_model import DiagramEditorModel, DiagramState, EditorBinding, SaveKind, SaveTarget
 from chess_diagram_ocr.ui.historico import Historico
 from chess_diagram_ocr.ui.legality import ILLEGAL_SAVE_TITLE, explain_position, illegal_save_question
 from chess_diagram_ocr.ui.page_results import (
@@ -246,9 +247,10 @@ class PainelDeResultado(QWidget):
         self._segunda_em_curso: Any = None
         self._csv_de_rotulos = Path(csv_de_rotulos)
         self.modelo = DiagramEditorModel()
-        self.historico: Historico[tuple[str, str]] = Historico(("", "w"))
-        """A pilha de desfazer, **por diagrama e com o lado** (S-229; OCR_UI C2, A7): cada estado
-        é `(placement, side)`, então trocar a vez entra na pilha e `Ctrl+Z` a devolve."""
+        self.historico: Historico[DiagramState] = Historico(DiagramState())
+        """A pilha de desfazer, **por diagrama, com o lado e a procedência** (S-229; OCR_UI C2, A7;
+        S-888): cada estado é um `DiagramState`, então trocar a vez entra na pilha, e `Ctrl+Z`
+        depois da segunda opinião ou do livro devolve a leitura **e** a rota de rótulo dela."""
         self._mostrando_reparadas = False
         """Se as casas que o decodificador trocou estão pintadas no tabuleiro (C1/X5)."""
         self._edicao = 0
@@ -1004,9 +1006,9 @@ class PainelDeResultado(QWidget):
         self.selecionou.emit(linha)
         self._atualizar_tudo()
 
-    def _estado_de(self, indice: int | None = None) -> tuple[str, str]:
-        """O que entra na pilha: a colocação **e** o lado do diagrama (A7)."""
-        return (self.modelo.fen_at(indice), self.modelo.side_at(indice))
+    def _estado_de(self, indice: int | None = None) -> DiagramState:
+        """O que entra na pilha: colocação, lado e procedência do diagrama (A7, S-888)."""
+        return self.modelo.state_at(indice)
 
     # ---------------------------------------------------------------------------- edição
 
@@ -1032,16 +1034,29 @@ class PainelDeResultado(QWidget):
 
         FEN inválida **avisa e não muda nada**: aceitar um campo de peças malformado daria 64
         casas inventadas, e quem digitou não saberia que o que está na tela não é o que escreveu.
+
+        **A vez digitada também se aplica** (S-893): o campo mostra a FEN inteira, e ler só as
+        peças descartava o `b` digitado e reescrevia o campo com o `w` de antes. Peças e vez são
+        um gesto só, então um `Ctrl+Z` desfaz os dois; a vez que não é `w` nem `b` recusa tudo.
         """
         if not self.modelo.items:
             return
         texto = self.campo_fen.text().strip()
-        if not board_edit.is_valid_placement(board_edit.placement_of(texto)):
+        placement = board_edit.placement_of(texto)
+        if not board_edit.is_valid_placement(placement):
             self.estado.emit("A FEN digitada não descreve um tabuleiro: nada foi aplicado.")
             return
-        placement = board_edit.placement_of(texto)
-        self.modelo.apply_placement(placement, self.modelo.clamped_index())
-        self.historico.registrar(self._estado_de())
+        try:
+            lado = board_edit.side_of(texto)
+        except ValueError:
+            self.estado.emit("A vez da FEN digitada não é w nem b: nada foi aplicado.")
+            return
+        indice = self.modelo.clamped_index()
+        if placement != self.modelo.fen_at(indice):
+            self.modelo.apply_placement(placement, indice)
+        if lado is not None and lado != self.modelo.side_at(indice):
+            self.modelo.set_side(lado, indice)
+        self.historico.registrar(self._estado_de(indice))
         self._atualizar_tudo()
 
     # ---------------------------------------------------------------- número do lance (S-71)
@@ -1148,17 +1163,12 @@ class PainelDeResultado(QWidget):
         """`Ctrl+Y`: repõe o que o desfazer tirou."""
         self._voltar(self.historico.refazer(), MOTIVO_SEM_REFAZER)
 
-    def _voltar(self, estado: tuple[str, str] | None, motivo: str) -> None:
-        """Repõe um estado da pilha: só a colocação, só o lado, ou os dois -- o que mudou."""
+    def _voltar(self, estado: DiagramState | None, motivo: str) -> None:
+        """Repõe um estado da pilha inteiro -- posição, vez e procedência (S-888)."""
         if estado is None:
             self.estado.emit(motivo)
             return
-        placement, lado = estado
-        indice = self.modelo.clamped_index()
-        if placement != self.modelo.fen_at(indice):
-            self.modelo.apply_placement(placement, indice)
-        if lado != self.modelo.side_at(indice):
-            self.modelo.set_side(lado, indice)
+        self.modelo.restore(estado, self.modelo.clamped_index())
         self._atualizar_tudo()
 
     def limpar_tabuleiro(self) -> None:
@@ -1314,7 +1324,7 @@ class PainelDeResultado(QWidget):
             return
         if parecer is None:
             return
-        self.historico.registrar(self._estado_de(indice))
+        self._registrar_se_selecionado(indice)
         self._edicao += 1
         self._atualizar_tudo()
         self.estado.emit(parecer.describe())
@@ -1323,16 +1333,31 @@ class PainelDeResultado(QWidget):
         """A posição e o lado a jogar do nó do PGN do livro no lugar da leitura (S-590).
 
         Mesma guarda da segunda opinião: o livro casa em segundo plano, e um índice de outra
-        página não é este diagrama. Desfazível como qualquer edição -- o histórico registra.
+        página não é este diagrama. Desfazível como qualquer edição **quando o diagrama é o
+        selecionado**; nos outros da página a adoção não entra na pilha (S-887, ver
+        `_registrar_se_selecionado`).
         """
         if not (0 <= indice < len(self.modelo.items)) or self.modelo.items[indice] is not item_lido:
             return False
         if not self.modelo.mark_from_book(indice, placement, lado, note=nota):
             return False
-        self.historico.registrar(self._estado_de(indice))
+        self._registrar_se_selecionado(indice)
         self._edicao += 1
         self._atualizar_tudo()
         return True
+
+    def _registrar_se_selecionado(self, indice: int) -> None:
+        """Põe na pilha a mudança que chegou de segundo plano, se ela é do diagrama selecionado.
+
+        **A pilha é do selecionado** (S-229), e o que chega em segundo plano -- o parecer da
+        segunda opinião, o PGN do livro adotado em cada diagrama da página -- pode ser de outro.
+        Registrar o estado do diagrama 1 na pilha do 0 fazia o `Ctrl+Z` seguinte pôr no 0 a
+        posição e a vez do 1, sem aviso, e o `Ctrl+S` gravá-las com o rótulo do 0 (S-887). A
+        mudança num índice não selecionado fica sem desfazer: a pilha zera ao trocar de diagrama,
+        então não haveria como desfazê-la de qualquer modo.
+        """
+        if indice == self.modelo.clamped_index():
+            self.historico.registrar(self._estado_de(indice))
 
     def _girar_180(self) -> None:
         """A outra leitura possível: a posição girada de 180°, como edição desfazível."""
@@ -1713,7 +1738,7 @@ class PainelDeResultado(QWidget):
         """A linha da lista: número, legalidade, confiança e de quem é a vez."""
         explicacao = explain_position(compose_fen(item.placement, item.side_is_white))
         vez = "brancas" if item.side_is_white else "pretas"
-        return f"{posicao + 1} · {explicacao.label} · conf. mín. {item.min_confidence:.2f} · {vez}"
+        return f"{posicao + 1} · {explicacao.label} · conf. mín. {formato.confianca(item.min_confidence)} · {vez}"
 
     def _detalhes_do_item(self, item: RecognizedDiagram) -> str:
         """O parágrafo abaixo do tabuleiro: o que se sabe, e **de onde** se sabe.
@@ -1734,7 +1759,7 @@ class PainelDeResultado(QWidget):
         linhas = [
             f"Lado a jogar: {'brancas' if item.side_is_white else 'pretas'}"
             f" — {strings.side_source_label(item.side_to_move_source, conflicting=item.side_conflicting)}",
-            f"Confiança: mínima {item.min_confidence:.3f} · média {item.mean_confidence:.3f}"
+            f"Confiança: mínima {formato.confianca(item.min_confidence)} · média {formato.confianca(item.mean_confidence)}"
             f" · {len(item.uncertain_squares)} casa(s) incerta(s)",
         ]
         if item.changed_squares:

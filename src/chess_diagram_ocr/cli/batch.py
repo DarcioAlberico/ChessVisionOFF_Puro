@@ -10,11 +10,6 @@ from pathlib import Path
 from types import FrameType
 
 from ..batch import BatchOptions, BatchReport, BookResult, find_pdfs, run_batch
-from ..config import (
-    DEFAULT_MAX_BOARDS,
-    DEFAULT_ORIENTATION_MODE,
-    DEFAULT_READING_ORDER,
-)
 from ..logging_setup import configure_logging, default_log_file
 from . import (
     EXIT_BAD_INPUT,
@@ -22,9 +17,13 @@ from . import (
     EXIT_OK,
     add_accept_threshold_argument,
     add_dpi_argument,
+    add_max_boards_argument,
     add_model_argument,
+    add_orientation_argument,
+    add_reading_order_argument,
     add_verbose,
     cli_errors,
+    exige_checkpoint,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,21 +44,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT, help="JSON do relatório consolidado.")
     add_model_argument(parser)
     add_dpi_argument(parser)
-    parser.add_argument(
-        "--max-boards-per-page", type=int, default=DEFAULT_MAX_BOARDS, help="Teto de diagramas aceitos por página."
-    )
-    parser.add_argument(
-        "--orientation",
-        choices=("auto", "0", "180"),
-        default=DEFAULT_ORIENTATION_MODE,
-        help="Rotação do tabuleiro. `auto` decide pela confiança das duas leituras.",
-    )
-    parser.add_argument(
-        "--reading-order",
-        choices=("row", "column"),
-        default=DEFAULT_READING_ORDER,
-        help="Ordem em que os diagramas da página entram no PGN.",
-    )
+    add_max_boards_argument(parser, "--max-boards-per-page")
+    add_orientation_argument(parser)
+    add_reading_order_argument(parser, help="Ordem em que os diagramas da página entram no PGN.")
     add_accept_threshold_argument(parser)
     parser.add_argument("--dedupe", action="store_true", help="Omite diagramas repetidos (S-18).")
     parser.add_argument(
@@ -107,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     if not livros:
         print(f"Nenhum PDF encontrado em {args.source}.")
         return EXIT_BAD_INPUT
+    exige_checkpoint(args.model)
 
     print(f"{len(livros)} PDF(s) a processar. Saída em {args.output}, relatório em {args.report}.")
 

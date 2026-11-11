@@ -58,18 +58,6 @@ def _caixas(pagina: int = 0, quantas: int = 2) -> PageBoxes:
     )
 
 
-class DeclaracaoTests(unittest.TestCase):
-    """A decisão é a mesma dos dois lados, e nenhum dos dois a reescreve."""
-
-    def test_o_modulo_puro_nao_carrega_tkinter_nem_imagetk(self) -> None:
-        import ast
-
-        arvore = ast.parse(Path(leitura_do_pdf.__file__).read_text(encoding="utf-8"))
-        nomes = {no.names[0].name.split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.Import)}
-        nomes |= {(no.module or "").split(".")[0] for no in ast.walk(arvore) if isinstance(no, ast.ImportFrom)}
-        self.assertNotIn("tkinter", nomes)
-        self.assertNotIn("PIL", nomes)
-
 @unittest.skipUnless(TEM_PYQT, MOTIVO)
 class PainelTests(unittest.TestCase):
     """O painel montado, com uma folha de mentira posta à mão no visor."""

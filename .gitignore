@@ -11,6 +11,7 @@ venv/
 .ruff_cache/
 .pytest_cache/
 .coverage
+coverage.json
 htmlcov/
 
 # --- Dados e artefatos grandes (nao versionaveis em git puro) ---

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,6 +11,8 @@ import numpy as np
 from qt_app import MOTIVO, TEM_PYQT, aplicacao
 from test_inference import probs_for_fen
 
+from chess_diagram_ocr.arquivo_do_dono import Lida
+from chess_diagram_ocr.atomic_io import read_image
 from chess_diagram_ocr.detection import DiagramCandidate
 from chess_diagram_ocr.gallery_scan import build_gallery_index
 from chess_diagram_ocr.inference import OrientedPrediction, prediction_from_probs
@@ -22,9 +25,11 @@ from chess_diagram_ocr.review_queue import (
     ReviewQueue,
     ReviewQueueBuilder,
     build_review_queue,
+    carregar_fila,
     error_rate,
+    fundir_fila_retomada,
+    gravar_fila,
     item_from_scanned,
-    merge_queues,
     priority_for,
     rare_classes_from_labels,
 )
@@ -188,6 +193,10 @@ class QueueOrderingTests(unittest.TestCase):
             status=status,  # type: ignore[arg-type]
         )
 
+    @staticmethod
+    def fila(*itens: ReviewItem) -> ReviewQueue:
+        return ReviewQueue(source_pdf="livro.pdf", items=list(itens))
+
     def test_sorts_by_priority_then_book_order(self) -> None:
         queue = ReviewQueue(items=[self.item(10, page=5), self.item(90, page=9), self.item(90, page=2)])
         queue.sort()
@@ -214,27 +223,64 @@ class QueueOrderingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "review_queue.json"
             queue = ReviewQueue(source_pdf="livro.pdf", created_at="2026-07-26T10:00:00", items=[self.item(42)])
-            queue.save(path)
-            restored = ReviewQueue.load(path)
+            gravar_fila(Lida(queue, path))
+            restored = carregar_fila(path).valor
             self.assertEqual(restored.source_pdf, "livro.pdf")
             self.assertEqual(len(restored.items), 1)
             self.assertAlmostEqual(restored.items[0].priority, 42.0)
 
-    def test_load_of_a_broken_file_starts_empty(self) -> None:
+    def test_load_of_a_broken_file_starts_empty_and_locked(self) -> None:
+        """Vazia em memória, e travada: a gravação seguinte não pode apagar o arquivo (S-812)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "review_queue.json"
             path.write_text("{quebrado", encoding="utf-8")
-            self.assertEqual(len(ReviewQueue.load(path).items), 0)
+            leitura = carregar_fila(path)
+            self.assertEqual(len(leitura.valor.items), 0)
+            self.assertNotIsInstance(leitura, Lida)
 
     def test_merge_keeps_what_was_already_reviewed(self) -> None:
         """Revarrer o livro não pode ressuscitar item já resolvido."""
-        antiga = ReviewQueue(items=[self.item(10, page=1, status="done"), self.item(10, page=2, status="skipped")])
-        nova = ReviewQueue(items=[self.item(80, page=1), self.item(70, page=2), self.item(60, page=3)])
-        merged = merge_queues(antiga, nova)
+        antiga = self.fila(self.item(10, page=1, status="done"), self.item(10, page=2, status="skipped"))
+        nova = self.fila(self.item(80, page=1), self.item(70, page=2), self.item(60, page=3))
+        merged = fundir_fila_retomada(antiga, nova, paginas_vistas={1, 2, 3})
         estados = {item.page_index: item.status for item in merged.items}
         self.assertEqual(estados, {1: "done", 2: "skipped", 3: "pending"})
         # A prioridade nova manda: o que mudou no livro tem de aparecer.
         self.assertAlmostEqual(next(i.priority for i in merged.items if i.page_index == 1), 80.0)
+
+    def test_revarrer_preserva_fen_corrigida(self) -> None:
+        """A correção do editor é o trabalho humano da fila, e o `status` sozinho não o guarda (S-815).
+
+        Antes a revarredura preservava o "feito" e trazia de volta a FEN do OCR: o item ficava
+        resolvido com a leitura errada que a pessoa tinha consertado.
+        """
+        corrigida = "4k3/8/8/8/8/8/8/R3K3 b - - 0 1"
+        antiga = self.fila(self.item(10, page=1), self.item(10, page=2))
+        antiga.update_fen(0, corrigida, "b")  # o que `aplicar_correcao` do painel faz
+        antiga.mark(0, "done")
+        nova = self.fila(self.item(80, page=1), self.item(70, page=2))
+
+        merged = fundir_fila_retomada(antiga, nova, paginas_vistas={1, 2})
+
+        feito = next(i for i in merged.items if i.page_index == 1)
+        self.assertEqual((feito.fen, feito.side_to_move, feito.status), (corrigida, "b", "done"))
+        pendente = next(i for i in merged.items if i.page_index == 2)
+        self.assertEqual(pendente.fen, f"{KINGS_ONLY} w - - 0 1", "o pendente segue a leitura nova")
+
+    def test_item_que_nao_le_nao_derruba_a_fila_inteira(self) -> None:
+        """Um campo não numérico num item levava a fila inteira a vazia (S-815). Agora os outros
+        itens chegam à tela, e a gravação continua travada: gravar o parcial apagaria o que não leu."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "review_queue.json"
+            bom = self.item(10, page=1).to_dict()
+            ruim = {**self.item(20, page=2).to_dict(), "page_index": "dois"}
+            path.write_text(json.dumps({"version": 1, "items": [bom, ruim]}), encoding="utf-8")
+
+            leitura = carregar_fila(path)
+
+        self.assertNotIsInstance(leitura, Lida)
+        self.assertEqual([i.page_index for i in leitura.valor.items], [1])
+        self.assertIn("item 2", leitura.mensagem)
 
     def test_a_passada_parcial_nao_encurta_a_fila(self) -> None:
         """**O defeito que a varredura retomável tornaria rotina** (S-119 + S-120).
@@ -246,29 +292,36 @@ class QueueOrderingTests(unittest.TestCase):
         Valia também para o cancelamento, e ali o defeito já existia: cancelar uma revarredura
         na página 40 gravava uma fila com as 40 primeiras e só.
         """
-        antiga = ReviewQueue(items=[self.item(10, page=1), self.item(20, page=2), self.item(30, page=8)])
-        parcial = ReviewQueue(items=[self.item(90, page=8), self.item(80, page=9)])
+        antiga = self.fila(self.item(10, page=1), self.item(20, page=2), self.item(30, page=8))
+        parcial = self.fila(self.item(90, page=8), self.item(80, page=9))
 
-        merged = merge_queues(antiga, parcial, pages={8, 9})
+        merged = fundir_fila_retomada(antiga, parcial, paginas_vistas={8, 9})
 
         paginas = sorted(item.page_index for item in merged.items)
         self.assertEqual(paginas, [1, 2, 8, 9], "o que estava fora do que foi visitado sobrevive")
         # A pagina 8 foi visitada: quem manda nela e a leitura nova.
         self.assertAlmostEqual(next(i.priority for i in merged.items if i.page_index == 8), 90.0)
 
-    def test_sem_paginas_a_fusao_continua_sendo_a_de_antes(self) -> None:
-        """O argumento é opcional porque quem varre o livro inteiro não precisa dele -- e o
-        `cvoff-review`, que sempre varre inteiro, não passa a ter de saber disso."""
-        antiga = ReviewQueue(items=[self.item(10, page=1), self.item(30, page=8)])
-        nova = ReviewQueue(items=[self.item(90, page=8)])
-        self.assertEqual([i.page_index for i in merge_queues(antiga, nova).items], [8])
+    def test_fila_de_outro_livro_e_substituida(self) -> None:
+        """A janela e o `cvoff-review` têm uma fila só: a de outro livro não se mistura (S-816)."""
+        antiga = ReviewQueue(source_pdf="outro/livro.pdf", items=[self.item(10, page=1, status="done")])
+        nova = self.fila(self.item(90, page=8))
+        merged = fundir_fila_retomada(antiga, nova, paginas_vistas={8})
+        self.assertEqual([(i.page_index, i.status) for i in merged.items], [(8, "pending")])
+
+    def test_mesmo_livro_por_outra_grafia_e_fundido(self) -> None:
+        """A fonte é conferida pela `ChaveDoLivro` (S-827), e não por igualdade de texto."""
+        antiga = ReviewQueue(source_pdf="sub/../livro.pdf", items=[self.item(10, page=1, status="done")])
+        nova = self.fila(self.item(90, page=1))
+        merged = fundir_fila_retomada(antiga, nova, paginas_vistas={1})
+        self.assertEqual([i.status for i in merged.items], ["done"])
 
     def test_a_pagina_visitada_e_esvaziada_pela_passada_nova(self) -> None:
         """Um diagrama que deixou de ser suspeito sai da fila. Preservar por página não pode
         virar "o que entrou na fila nunca sai dela"."""
-        antiga = ReviewQueue(items=[self.item(10, page=3, diagram=1), self.item(20, page=3, diagram=2)])
-        nova = ReviewQueue(items=[self.item(90, page=3, diagram=1)])
-        merged = merge_queues(antiga, nova, pages={3})
+        antiga = self.fila(self.item(10, page=3, diagram=1), self.item(20, page=3, diagram=2))
+        nova = self.fila(self.item(90, page=3, diagram=1))
+        merged = fundir_fila_retomada(antiga, nova, paginas_vistas={3})
         self.assertEqual([(i.page_index, i.diagram_index) for i in merged.items], [(3, 1)])
 
     def test_error_rate_counts_objective_signals(self) -> None:
@@ -327,6 +380,30 @@ class ItemFromScannedTests(unittest.TestCase):
             self.assertEqual(len(item.square_confidences), 64)
             self.assertEqual(item.first_uncertain_square, item.uncertain_squares[0])
 
+    def test_dois_pdfs_de_mesmo_nome_nao_dividem_miniaturas(self) -> None:
+        """O acervo tem livros duplicados em pastas diferentes (S-815). Com a pasta de miniaturas
+        nomeada só pelo nome do arquivo, o segundo livro sobrescrevia as do primeiro, e a fila do
+        primeiro passava a mostrar o tabuleiro do outro."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            raiz = Path(tmpdir)
+            itens = []
+            for pasta, tom in (("a", 40), ("b", 200)):
+                scanned = ScannedDiagram(
+                    position=position(page_index=6, min_confidence=0.30),
+                    prediction=prediction_from_probs(probs_for_fen(KINGS_ONLY, 0.30)),
+                    board_rgb=np.full((80, 80, 3), tom, dtype=np.uint8),
+                    detector_score=0.9,
+                )
+                item = item_from_scanned(scanned, pdf_path=raiz / pasta / "Livro.pdf", cache_dir=raiz / "cache")
+                assert item is not None
+                itens.append(item)
+
+            um, outro = (Path(item.board_image) for item in itens)
+            self.assertNotEqual(um, outro)
+            self.assertTrue(um.parent.name.startswith("Livro"), "o nome do livro continua legível na pasta")
+            self.assertEqual(int(read_image(um)[0, 0, 0]), 40, "a miniatura do primeiro livro é a dele")
+            self.assertEqual(int(read_image(outro)[0, 0, 0]), 200)
+
 
 class BuildQueueTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -347,7 +424,7 @@ class BuildQueueTests(unittest.TestCase):
     def test_only_diagrams_with_a_reason_enter_the_queue(self) -> None:
         leituras = [oriented(KINGS_ONLY, 0.999), oriented(KINGS_ONLY, 0.20), oriented(EMPTY_BOARD, 0.95)]
         with tempfile.TemporaryDirectory() as tmpdir, patch(
-            "chess_diagram_ocr.pdf_to_pgn.predict_with_orientation",
+            "chess_diagram_ocr.service.predict_with_orientation",
             side_effect=leituras,
         ):
             queue = build_review_queue(Path("livro.pdf"), cache_dir=Path(tmpdir))
@@ -362,7 +439,7 @@ class BuildQueueTests(unittest.TestCase):
     def test_limit_cuts_after_sorting(self) -> None:
         leituras = [oriented(EMPTY_BOARD, 0.95), oriented(KINGS_ONLY, 0.20), oriented(KINGS_ONLY, 0.50)]
         with tempfile.TemporaryDirectory() as tmpdir, patch(
-            "chess_diagram_ocr.pdf_to_pgn.predict_with_orientation",
+            "chess_diagram_ocr.service.predict_with_orientation",
             side_effect=leituras,
         ):
             queue = build_review_queue(Path("livro.pdf"), cache_dir=Path(tmpdir), limit=1)
@@ -432,11 +509,11 @@ class UmaVarreduraPorLivroTests(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = Path(tmpdir)
-            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+            with patch("chess_diagram_ocr.service.predict_with_orientation", side_effect=self._leituras()):
                 direta = build_review_queue(Path("livro.pdf"), cache_dir=cache)
 
             construtor = ReviewQueueBuilder(Path("livro.pdf"), cache_dir=cache, confirmed={})
-            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+            with patch("chess_diagram_ocr.service.predict_with_orientation", side_effect=self._leituras()):
                 indice = build_gallery_index(
                     Path("livro.pdf"), cache_dir=cache, on_scanned=construtor.feed, now="2026-08-17"
                 )
@@ -454,11 +531,11 @@ class UmaVarreduraPorLivroTests(unittest.TestCase):
         """A varredura da Galeria não pode passar a depender de quem está ouvindo."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache = Path(tmpdir)
-            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+            with patch("chess_diagram_ocr.service.predict_with_orientation", side_effect=self._leituras()):
                 sozinho = build_gallery_index(Path("livro.pdf"), cache_dir=cache, now="2026-08-17")
 
             construtor = ReviewQueueBuilder(Path("livro.pdf"), cache_dir=cache, confirmed={})
-            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+            with patch("chess_diagram_ocr.service.predict_with_orientation", side_effect=self._leituras()):
                 com_fila = build_gallery_index(
                     Path("livro.pdf"), cache_dir=cache, on_scanned=construtor.feed, now="2026-08-17"
                 )
@@ -470,7 +547,7 @@ class UmaVarreduraPorLivroTests(unittest.TestCase):
         depois da ordenação, senão "fila truncada" pareceria "o livro só tinha 30 problemas"."""
         with tempfile.TemporaryDirectory() as tmpdir:
             construtor = ReviewQueueBuilder(Path("livro.pdf"), cache_dir=Path(tmpdir), confirmed={}, limit=1)
-            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+            with patch("chess_diagram_ocr.service.predict_with_orientation", side_effect=self._leituras()):
                 build_gallery_index(Path("livro.pdf"), cache_dir=Path(tmpdir), on_scanned=construtor.feed)
             fila = construtor.finish()
 
@@ -486,7 +563,7 @@ class UmaVarreduraPorLivroTests(unittest.TestCase):
         ) as anotacoes:
             anotacoes.return_value.entries = {}
             construtor = ReviewQueueBuilder(Path("livro.pdf"), cache_dir=Path(tmpdir))
-            with patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation", side_effect=self._leituras()):
+            with patch("chess_diagram_ocr.service.predict_with_orientation", side_effect=self._leituras()):
                 build_gallery_index(Path("livro.pdf"), cache_dir=Path(tmpdir), on_scanned=construtor.feed)
             construtor.finish()
 
@@ -579,7 +656,7 @@ class ReviewSinkTests(unittest.TestCase):
         self.assertEqual(raras.call_count, 1)
 
     def test_a_fila_entregue_diz_que_paginas_a_passada_visitou(self) -> None:
-        """Sem isso a fusão encurtaria a fila numa varredura retomada -- ver `merge_queues`."""
+        """Sem isso a fusão encurtaria a fila numa varredura retomada -- ver `fundir_fila_retomada`."""
         with tempfile.TemporaryDirectory() as tmpdir, patch(
             "chess_diagram_ocr.ui.varredura_de_revisao.rare_classes_from_labels", return_value=()
         ), patch("chess_diagram_ocr.review_queue.load_annotations") as anotacoes:

@@ -41,14 +41,14 @@ Nada de `PyQt6`: quem monta widget não decide.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from ..engine import fracao_de_vantagem
 from ..settings import EngineSettings
-from . import tokens
+from . import formato, tokens
 
 __all__ = [
     "HASH",
@@ -241,27 +241,36 @@ def _sufixo(registro: _Opcao) -> str:
 
 def validar_caminho(texto: str) -> str:
     """Por que aquele caminho de binário não serve. Vazio serve: é "procure sozinho" (S-33)."""
-    limpo = str(texto or "").strip().strip('"')
-    if not limpo:
-        return ""
-    caminho = Path(limpo)
-    if caminho.is_dir():
-        return "O caminho do motor aponta para uma pasta. Informe o arquivo do executável."
-    if not caminho.exists():
-        return f"Não há arquivo em {caminho}."
-    return ""
+    return _por_que_nao_serve(
+        texto,
+        Path.is_dir,
+        "O caminho do motor aponta para uma pasta. Informe o arquivo do executável.",
+        "Não há arquivo em {}.",
+    )
 
 
 def validar_pasta_de_tablebase(texto: str) -> str:
     """Por que aquela pasta de tablebases não serve. Vazio serve: é "não usar tablebase" (S-538)."""
+    return _por_que_nao_serve(
+        texto,
+        Path.is_file,
+        "A pasta de tablebases aponta para um arquivo. Informe a pasta que contém os .rtbw.",
+        "Não há pasta em {}.",
+    )
+
+
+def _por_que_nao_serve(texto: str, do_outro_tipo: Callable[[Path], bool], outro_tipo: str, nao_ha: str) -> str:
+    """A regra dos dois campos de caminho (S-864): vazio serve, sem as aspas que o Explorer põe ao
+    copiar; o do outro tipo (arquivo onde se pede pasta, ou o contrário) não serve; o que não existe
+    também não. A frase de cada caso é de quem chama."""
     limpo = str(texto or "").strip().strip('"')
     if not limpo:
         return ""
     caminho = Path(limpo)
-    if caminho.is_file():
-        return "A pasta de tablebases aponta para um arquivo. Informe a pasta que contém os .rtbw."
+    if do_outro_tipo(caminho):
+        return outro_tipo
     if not caminho.exists():
-        return f"Não há pasta em {caminho}."
+        return nao_ha.format(caminho)
     return ""
 
 
@@ -602,5 +611,5 @@ def numero_curto(valor: int) -> str:
         if numero >= corte:
             reduzido = numero / corte
             casas = 0 if reduzido >= 100 else 1
-            return f"{reduzido:.{casas}f} {sufixo}".replace(".", ",")
+            return f"{formato.decimal(reduzido, casas)} {sufixo}"
     return str(numero)

@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from chess_diagram_ocr.splits import (
+    Split,
     assign_split,
     compute_splits,
     ensure_splits,
@@ -15,6 +16,7 @@ from chess_diagram_ocr.splits import (
     save_splits,
     split_counts,
     split_leaks,
+    splits_hash,
 )
 
 
@@ -28,11 +30,25 @@ class DeterminismTests(unittest.TestCase):
             self.assertEqual(assign_split(name), assign_split(name))
 
     def test_split_does_not_depend_on_process(self) -> None:
-        # Valores fixos: se o algoritmo de hash mudar, isto quebra de proposito.
-        # Usa SHA-256 justamente porque hash() de str e randomizado por processo.
-        self.assertEqual(assign_split("board_00000.png"), assign_split("board_00000.png"))
-        expected = {name: assign_split(name) for name in _names(20)}
-        self.assertEqual({name: assign_split(name) for name in _names(20)}, expected)
+        """Valores fixos, escritos por valor (S-846): trocar o sal ou o hash quebra isto de proposito.
+
+        A versao anterior comparava `assign_split(x)` com `assign_split(x)`, e passava com qualquer
+        sal. Um `mock.patch` do `SPLIT_SALT` nao serviria para prova-lo: o sal e argumento padrao,
+        avaliado na definicao. Os dez pares cobrem as tres particoes, e vieram do sal `cvoff-v1`.
+        """
+        esperado: dict[str, Split] = {
+            "board_00000.png": "train",
+            "board_00001.png": "train",
+            "board_00002.png": "train",
+            "board_00003.png": "val",
+            "board_00004.png": "val",
+            "board_00008.png": "val",
+            "board_00009.png": "train",
+            "board_00029.png": "test",
+            "board_00033.png": "test",
+            "board_00039.png": "test",
+        }
+        self.assertEqual({name: assign_split(name) for name in esperado}, esperado)
 
     def test_proportions_are_approximately_respected(self) -> None:
         splits = compute_splits(_names(3000), val_pct=10, test_pct=10)
@@ -204,6 +220,22 @@ class PersistenceTests(unittest.TestCase):
 
             self.assertEqual(load_splits(path), data)
 
+    def test_os_bytes_nao_dependem_da_plataforma(self) -> None:
+        """O `splits.csv` sai em LF em qualquer sistema (S-822).
+
+        Ele terminava as linhas com `os.linesep`: o mesmo particionamento dava bytes diferentes no
+        Windows e no Linux, e o arquivo semeava CRLF numa árvore que o `.gitattributes` declara LF.
+        O `os.linesep` remendado para CRLF é o Windows visto de qualquer máquina.
+        """
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("os.linesep", "\r\n"):
+            path = Path(tmp) / "splits.csv"
+            particao: dict[str, Split] = {"b.png": "val", "a.png": "train"}
+            save_splits(path, particao)
+
+            self.assertEqual(path.read_bytes(), b"filename,split\na.png,train\nb.png,val\n")
+
     def test_missing_file_returns_empty(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(load_splits(Path(tmp) / "ausente.csv"), {})
@@ -293,6 +325,65 @@ class RepresentanteDoGrupoTests(unittest.TestCase):
             self.assertNotEqual(assign_split(novo), registrado, "sem herança o par cruzaria split")
             self.assertEqual(crescido[novo], registrado)
             self.assertEqual(crescido[antigo], registrado, "e o que já estava registrado não se move")
+
+
+class OQueOsTestesNaoConferiamTests(unittest.TestCase):
+    """Os sobreviventes do mutator neste módulo (S-873): cada um, o que a pessoa perderia."""
+
+    def test_zero_por_cento_e_uma_particao_sem_aquele_lado(self) -> None:
+        """`test_pct=0` é "sem teste", e não erro; e a fronteira entre `val` e `train` é aberta:
+        com `val_pct=0`, nenhuma chave cai em `val`, nem a que está bem na borda."""
+        nomes = _names(2000)
+        sem_val = compute_splits(nomes, val_pct=0, test_pct=10)
+        sem_teste = compute_splits(nomes, val_pct=10, test_pct=0)
+
+        self.assertNotIn("val", set(sem_val.values()))
+        self.assertNotIn("test", set(sem_teste.values()))
+        self.assertEqual(set(sem_teste.values()), {"train", "val"})
+
+    def test_o_hash_da_particao_nao_muda_entre_versoes(self) -> None:
+        """O `split_hash` fica gravado no checkpoint, e `evaluation` o compara com o de hoje para
+        dizer se a avaliação está contaminada. Mudar a conta muda o hash de toda partição já
+        gravada, e todo checkpoint antigo passaria a acusar "outra partição"."""
+        self.assertEqual(splits_hash({"a.png": "train", "b.png": "test", "c.png": "val"}), "aaa5fa238a9cfec7")
+
+    def test_a_contagem_comeca_do_zero(self) -> None:
+        self.assertEqual(split_counts({"a.png": "val"}), {"train": 0, "val": 1, "test": 0})
+        self.assertEqual(split_counts({}), {"train": 0, "val": 0, "test": 0})
+
+    def test_nada_novo_nao_regrava_o_arquivo(self) -> None:
+        """Sem amostra nova e sem amostra que saiu, o `splits.csv` fica como a pessoa o deixou:
+        reescrevê-lo a cada treino é risco sem ganho, e muda bytes que ninguém pediu."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "splits.csv"
+            escrito = b"filename,split\nb.png,train\na.png,test\n"
+            path.write_bytes(escrito)
+
+            resultado = ensure_splits(["a.png", "b.png"], path)
+
+            self.assertEqual(resultado, {"a.png": "test", "b.png": "train"})
+            self.assertEqual(path.read_bytes(), escrito)
+
+    def test_vazamento_so_conta_quem_declara_pagina(self) -> None:
+        """Sem página não há procedência, como em `groups_by_origin`: duas amostras do mesmo
+        livro sem página não são o mesmo diagrama, e não são vazamento."""
+        origens = {"x.png": ("livro.pdf", "", "d1"), "y.png": ("livro.pdf", "", "d1")}
+        self.assertEqual(split_leaks(origens, {"x.png": "train", "y.png": "test"}), [])
+
+    def test_o_arquivo_que_nao_le_diz_o_que_falta_e_onde(self) -> None:
+        """A mensagem chega a quem clicou em Treinar: ela tem de dizer qual arquivo e o que nele
+        está errado, para a pessoa consertá-lo à mão."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "splits.csv"
+            path.write_bytes(b"nome,split\na.png,train\n")
+            with self.assertRaises(ValueError) as sem_coluna:
+                load_splits(path)
+            path.write_bytes(b"filename,split\na.png,treino\n")
+            with self.assertRaises(ValueError) as split_errado:
+                load_splits(path)
+
+        self.assertTrue(str(sem_coluna.exception).startswith(f"{path} precisa das colunas {{"), sem_coluna.exception)
+        self.assertEqual(str(split_errado.exception), f"Split inválido em {path}: 'treino'")
 
 
 if __name__ == "__main__":

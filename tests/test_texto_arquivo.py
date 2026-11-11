@@ -135,6 +135,14 @@ class RecusaTests(unittest.TestCase):
                 arquivo.carregar(caminho)
         self.assertIn("quebrado.cvtxt", str(caso.exception))
 
+    def test_pagina_de_origem_estragada_e_arquivo_invalido(self) -> None:
+        """S-848: o painel só pega `ArquivoInvalido`, e o que escapa do slot derruba o programa."""
+        for estrago in ({"largura": None}, {"esquema": 99}):
+            dados = arquivo.para_json(_documento_de_exemplo())
+            dados["documento"]["origem"].update(estrago)
+            with self.subTest(estrago), self.assertRaises(arquivo.ArquivoInvalido):
+                arquivo.de_json(dados)
+
     def test_a_versao_futura_e_um_arquivo_invalido(self) -> None:
         """Quem só quer saber "abriu ou não" pega uma exceção só."""
         self.assertTrue(issubclass(arquivo.VersaoFutura, arquivo.ArquivoInvalido))

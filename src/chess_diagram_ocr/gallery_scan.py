@@ -26,12 +26,12 @@ import logging
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .atomic_io import atomic_write_json
+from .arquivo_do_dono import ler_texto
 from .config import (
+    DEFAULT_DPI,
     DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
@@ -39,8 +39,9 @@ from .config import (
     OrientationMode,
     ReadingOrder,
 )
-from .gallery import DEFAULT_GALLERY_DIR
+from .gallery import DEFAULT_GALLERY_DIR, conferir_dono, gravar_do_livro
 from .pdf_to_pgn import ProgressCallback, ScannedDiagram, iter_pdf_diagrams
+from .relogio import agora_iso
 from .review_queue import DEFAULT_CACHE_DIR, cache_board_image
 
 logger = logging.getLogger(__name__)
@@ -210,29 +211,32 @@ def load_index(pdf_path: Path, *, directory: Path = DEFAULT_GALLERY_DIR) -> Gall
 
     `None` e índice vazio são coisas diferentes e a interface as trata diferente: um livro
     sem diagrama nenhum é um resultado, e nunca varrido é um convite a apertar o botão.
+
+    O índice de **outro livro** de mesmo nome levanta `GaleriaDeOutroLivro` (S-878): ele não é
+    "não varrido", e a varredura deste o gravaria por cima.
     """
     caminho = index_path_for(pdf_path, directory=directory)
     if not caminho.exists():
         return None
     try:
-        return GalleryIndex.from_dict(json.loads(caminho.read_text(encoding="utf-8")))
-    except (OSError, json.JSONDecodeError) as exc:
+        indice = GalleryIndex.from_dict(json.loads(ler_texto(caminho, do_usuario=False)))
+    except (OSError, ValueError) as exc:
         logger.warning("Nao foi possivel ler %s (%s); tratando como nao varrido.", caminho, exc)
         return None
+    conferir_dono(caminho, indice.source_pdf, pdf_path)
+    return indice
 
 
 def save_index(pdf_path: Path, index: GalleryIndex, *, directory: Path = DEFAULT_GALLERY_DIR) -> Path:
-    caminho = index_path_for(pdf_path, directory=directory)
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(caminho, index.to_dict())
-    return caminho
+    """Grava o índice com o livro dono dentro, e nunca por cima do de outro livro (S-878)."""
+    return gravar_do_livro(index_path_for(pdf_path, directory=directory), pdf_path, index.to_dict())
 
 
 def build_gallery_index(
     pdf_source: Path,
     model_path: Path = DEFAULT_MODEL_PATH,
     *,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     max_boards_per_page: int = DEFAULT_MAX_BOARDS,
     orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
     start_page: int = 0,
@@ -316,7 +320,7 @@ def build_gallery_index(
         posicao = scanned.position
         paginas.add(posicao.page_index)
         imagem = cache_board_image(
-            scanned.board_rgb, cache_dir, pdf_path.name, posicao.page_index, posicao.diagram_index
+            scanned.board_rgb, cache_dir, pdf_path, posicao.page_index, posicao.diagram_index
         )
         contexto = posicao.context
         entradas.append(
@@ -336,7 +340,7 @@ def build_gallery_index(
     cancelada = cancel_event is not None and cancel_event.is_set()
     return GalleryIndex(
         source_pdf=str(pdf_path),
-        created_at=now or datetime.now().isoformat(timespec="seconds"),
+        created_at=now or agora_iso(),
         reading_order=reading_order,
         pages_scanned=len(paginas),
         start_page=start_page,

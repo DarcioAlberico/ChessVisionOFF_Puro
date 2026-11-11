@@ -46,6 +46,7 @@ from PyQt6.QtWidgets import (
 from chess_diagram_ocr import detector_de_marcas
 from chess_diagram_ocr import importacao_de_imagens as imp
 from chess_diagram_ocr import marcas_de_casa as mc
+from chess_diagram_ocr.arquivo_do_dono import GravacaoRecusada, Leitura, gravavel, ler_texto
 from chess_diagram_ocr.fen_utils import is_syntactically_valid_fen
 from chess_diagram_ocr.qt import desenho_de_marcas, tema
 from chess_diagram_ocr.qt.dica import dica_em
@@ -150,7 +151,8 @@ class JanelaDeImportacao(QDialog):
         self._diretorio = diretorio_dos_lotes if diretorio_dos_lotes is not None else imp.DIRETORIO_DOS_LOTES
 
         self.lote: imp.Lote | None = None
-        self._arquivo_do_lote: Path | None = None
+        self._leitura_do_lote: Leitura[imp.Lote] | None = None
+        """De onde o andamento veio e se ele pode voltar para lá (S-812)."""
         self._fila: list[int] = []
         self._i = 0
         self._recorte_atual: np.ndarray | None = None
@@ -418,13 +420,14 @@ class JanelaDeImportacao(QDialog):
         if not texto:
             return False
         try:
-            lote, arquivo = imp.abrir_lote(texto, self.origem(), diretorio=self._diretorio)
+            leitura = imp.abrir_lote(texto, self.origem(), diretorio=self._diretorio)
         except (OSError, ValueError) as exc:
             self.lbl_aviso.setText(str(exc))
             return False
         self.lbl_aviso.clear()
         self.campo_pasta.setText(texto)
-        self.lote, self._arquivo_do_lote = lote, arquivo
+        self.lote, self._leitura_do_lote = leitura.valor, leitura
+        lote = leitura.valor
         self._lembrar_pasta(texto)
         self._gravar_andamento()
         # Abre no filtro que tem trabalho: com aviso quando há, senão todas as pendentes.
@@ -438,7 +441,7 @@ class JanelaDeImportacao(QDialog):
 
     def _ultimas_pastas(self) -> dict[str, str]:
         try:
-            dados = json.loads((self._diretorio / ARQUIVO_DAS_PASTAS).read_text(encoding="utf-8"))
+            dados = json.loads(ler_texto(self._diretorio / ARQUIVO_DAS_PASTAS, do_usuario=False))
         except (OSError, ValueError):
             return {}
         return {str(k): str(v) for k, v in dados.items()} if isinstance(dados, dict) else {}
@@ -454,8 +457,12 @@ class JanelaDeImportacao(QDialog):
             logger.warning("Não deu para lembrar a pasta da importação: %s", exc)
 
     def _gravar_andamento(self) -> None:
-        if self.lote is not None and self._arquivo_do_lote is not None:
-            self.lote.salvar(self._arquivo_do_lote)
+        if self.lote is None or self._leitura_do_lote is None:
+            return
+        try:
+            imp.gravar_lote(gravavel(self._leitura_do_lote).com(self.lote))
+        except GravacaoRecusada as recusa:
+            self.lbl_aviso.setText(str(recusa))
 
     # ------------------------------------------------------------------------------ fila
 

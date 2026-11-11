@@ -24,7 +24,17 @@ from ..logging_setup import configure_logging, default_log_file
 from ..onnx_export import ParityReport
 from ..text.modelo import CAMINHO_PADRAO_META, ModeloInvalido, carregar_classificador
 from ..text.onnx_glifos import ClassificadorDeGlifoOnnx, caminho_do_metadado_onnx, exportar_glifos_onnx
-from . import EXIT_BAD_INPUT, EXIT_FAILURE, EXIT_NO_CHECKPOINT, EXIT_OK, add_verbose, cli_errors
+from . import (
+    EXIT_BAD_INPUT,
+    EXIT_FAILURE,
+    EXIT_NO_CHECKPOINT,
+    EXIT_OK,
+    add_json_argument,
+    add_tolerance_argument,
+    add_verbose,
+    cli_errors,
+    fronteira,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +46,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--saida", type=Path, required=True, help="Destino .onnx. O .json sai ao lado.")
     parser.add_argument("--recortes", type=Path, default=None, help="Pasta de PNGs para a paridade (recursiva).")
     parser.add_argument("--amostras", type=int, default=512, help="Quantos recortes conferir. Padrão: 512.")
-    parser.add_argument("--tolerance", type=float, default=1e-4, help="Tolerância da S-30.")
-    parser.add_argument("--json", type=Path, default=None, help="Grava o relatório de paridade em JSON.")
+    add_tolerance_argument(parser)
+    add_json_argument(parser, help="Grava o relatório de paridade em JSON.")
     add_verbose(parser)
     return parser.parse_args(argv)
 
@@ -92,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
         print("onnxruntime não está instalado: `uv sync --extra onnx`. O .onnx foi gravado mesmo assim.")
         return EXIT_FAILURE
 
-    torch_ = carregar_classificador(args.meta, args.pesos, device="cpu")
+    with fronteira(f"--pesos {args.pesos}", checkpoint=True):
+        torch_ = carregar_classificador(args.meta, args.pesos, device="cpu")
     report = comparar(torch_.probabilidades(recortes), onnx.probabilidades(recortes), args.tolerance)
     origem = "sintéticos (aleatórios)" if args.recortes is None else str(args.recortes)
 

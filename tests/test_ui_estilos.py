@@ -13,13 +13,14 @@ import re
 import unittest
 from pathlib import Path
 
+import varredura
+
 from chess_diagram_ocr.ui import comandos, estilos
 from chess_diagram_ocr.ui.estilos import NEUTRO, PAPEIS_DE_BOTAO, estilo_de_botao
 
 RAIZ = Path(__file__).resolve().parents[1]
 ARQUIVOS = [
-    *sorted((RAIZ / "src" / "chess_diagram_ocr" / "ui").glob("*.py")),
-    *sorted((RAIZ / "src" / "chess_diagram_ocr" / "qt").glob("*.py")),
+    *varredura.da_interface(),
 ]
 
 
@@ -122,13 +123,16 @@ class TodoBotaoDeclaraPapelTests(unittest.TestCase):
         **Uma árvore só.** Achar o botão numa `ast.parse` e procurar a função noutra compara
         objetos de árvores diferentes: `is` nunca casa, toda função vira `None` e os 23 botões do
         pacote aparecem como 23 infratores. O sintoma é uma lista longa demais para ser verdade.
+
+        `qt/tabela.rodape_sem_botao_padrao` declara o papel de cada botão que recebe (o primeiro é
+        o primário), e a função que o chama declara por ele (S-864).
         """
         fora: list[int] = []
         for f in ast.walk(arvore):
             if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             corpo = ast.unparse(f)
-            if "aplicar_papel" in corpo:
+            if "aplicar_papel" in corpo or "rodape_sem_botao_padrao" in corpo:
                 continue
             fora += [
                 no.lineno

@@ -64,7 +64,7 @@ from chess_diagram_ocr.qt.dica import dica_em
 from chess_diagram_ocr.qt.foco_a_vista import seguir_o_foco
 from chess_diagram_ocr.qt.tabela import Coluna, TabelaQt
 from chess_diagram_ocr.qt.vazio import EstadoVazio
-from chess_diagram_ocr.ui import espaco, estilos, folha_de_estilo, strings, tipografia, tokens
+from chess_diagram_ocr.ui import espaco, estilos, folha_de_estilo, formato, strings, tipografia, tokens
 from chess_diagram_ocr.ui.escolha_de_bases import cache_note, describe_size
 from chess_diagram_ocr.ui.escopo_da_varredura import (
     ABERTO,
@@ -75,6 +75,7 @@ from chess_diagram_ocr.ui.escopo_da_varredura import (
 )
 from chess_diagram_ocr.ui.lista_de_partidas import COLUNAS as COLUNAS_DE_PARTIDA
 from chess_diagram_ocr.ui.lista_de_partidas import NEIGHBOUR_RADIUS, linha, rotulo, texto_busca
+from chess_diagram_ocr.ui.livros import mesmo_livro
 from chess_diagram_ocr.ui.pedido_de_treino import TrainingRequest, format_metrics, summarize_run
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,7 @@ __all__ = [
     "perguntar_bases",
     "perguntar_descarte",
     "perguntar_escopo",
+    "perguntar_recusando",
 ]
 
 
@@ -136,6 +138,25 @@ def perguntar_descarte(pai: QWidget | None, paginas: Sequence[int], *, livro: st
     return resposta == QMessageBox.StandardButton.Yes
 
 
+def perguntar_recusando(pai: QWidget | None, titulo: str, pergunta: str, *, aviso: bool = False) -> bool:
+    """Sim/Não -- ou OK/Cancelar com o ícone de aviso, com `aviso` -- e **a recusa como padrão**.
+
+    Num `QMessageBox` o padrão é o primeiro botão, e as perguntas que passam por aqui apagam ou
+    descartam trabalho humano: um `Enter` de reflexo não pode ser a confirmação. É o
+    `default=messagebox.NO` (e o `CANCEL`) do Tk, e mora aqui para a galeria e a sala não
+    discordarem sobre ele (S-864).
+    """
+    botoes = QMessageBox.StandardButton
+    aceitar, recusar = (botoes.Ok, botoes.Cancel) if aviso else (botoes.Yes, botoes.No)
+    caixa = QMessageBox(pai)
+    caixa.setIcon(QMessageBox.Icon.Warning if aviso else QMessageBox.Icon.Question)
+    caixa.setWindowTitle(titulo)
+    caixa.setText(pergunta)
+    caixa.setStandardButtons(aceitar | recusar)
+    caixa.setDefaultButton(recusar)
+    return caixa.exec() == aceitar
+
+
 def caixa_de_falha(pai: QWidget | None, titulo: str, mensagem: str, detalhe: str = "") -> QMessageBox:
     """A caixa de erro que diz o que fazer, **montada e não aberta** (A10; análise §6.8).
 
@@ -173,15 +194,6 @@ def mostrar_falha(pai: QWidget | None, titulo: str, mensagem: str, detalhe: str 
     caixa.exec()
 
 
-def _mesmo(um: Path, outro: Path) -> bool:
-    """O mesmo `.pgn`, apesar da grafia do caminho. Sem `resolve` obrigatório: 19 GB não mudam de
-    lugar, e o que interessa aqui é não listar o mesmo arquivo duas vezes."""
-    try:
-        return um.resolve() == outro.resolve()
-    except OSError:  # pragma: no cover - caminho que o sistema recusa resolver
-        return str(um).lower() == str(outro).lower()
-
-
 class DialogoDeBases(QDialog):
     """A lista de `.pgn` com caixas de marcar. Devolve pelo atributo `escolhidas` após `exec`.
 
@@ -209,10 +221,10 @@ class DialogoDeBases(QDialog):
         # índice por nome usa (ver `database_paths`), e embaralhá-la aqui confundiria a leitura.
         da_pasta = database_paths(self._folder)
         marcados = list(selected) if selected is not None else list(da_pasta)
-        de_fora = [caminho for caminho in marcados if not any(_mesmo(caminho, outro) for outro in da_pasta)]
+        de_fora = [caminho for caminho in marcados if not any(mesmo_livro(caminho, outro) for outro in da_pasta)]
         self._bases: list[Path] = [*da_pasta, *de_fora]
         self._marcadas: dict[str, bool] = {
-            str(base): any(_mesmo(base, escolhido) for escolhido in marcados) for base in self._bases
+            str(base): any(mesmo_livro(base, escolhido) for escolhido in marcados) for base in self._bases
         }
         self._caixas: dict[str, QCheckBox] = {}
 
@@ -245,7 +257,7 @@ class DialogoDeBases(QDialog):
             ("Adicionar .pgn de outra pasta…", self.adicionar_do_disco),
         ):
             botao = QPushButton(texto_botao, self)
-            botao.clicked.connect(funcao)  # type: ignore[arg-type]
+            botao.clicked.connect(funcao)
             tema.aplicar_papel(botao, estilos.NEUTRO)
             botoes.addWidget(botao)
         botoes.addStretch(1)
@@ -320,7 +332,7 @@ class DialogoDeBases(QDialog):
                 bytes_ += base.stat().st_size
             except OSError:
                 pass
-        total = f"{bytes_ / 1e9:.1f} GB".replace(".", ",")
+        total = f"{formato.decimal(bytes_ / 1e9, 1)} GB"
         self.lbl_total.setText(f"{len(escolhidas)} base(s) marcada(s), {total} no total.")
         self.lbl_nota.setText(self._nota(escolhidas))
         self.btn_ok.setEnabled(bool(escolhidas))
@@ -335,7 +347,7 @@ class DialogoDeBases(QDialog):
             )
         for bruto in trazidos or ():
             caminho = Path(bruto)
-            ja = next((base for base in self._bases if _mesmo(base, caminho)), None)
+            ja = next((base for base in self._bases if mesmo_livro(base, caminho)), None)
             if ja is not None:
                 self._marcadas[str(ja)] = True
                 continue
@@ -579,8 +591,8 @@ class DialogoDePartidas(QDialog):
         self.btn_vizinhos.setEnabled(False)
         dica_em(
             self.btn_vizinhos,
-            "Fica cinza quando os diagramas vizinhos desta página não têm partida escolhida:\n"
-            "é deles que sai o palpite, e sem eles não há o que copiar.",
+            "Fica cinza quando nenhum diagrama vizinho tem esta partida entre as candidatas:\n"
+            "o vizinho onde já se escolheu outra partida não é tocado.",
         )
         for botao in (self.btn_aplicar, self.btn_por_nome, self.btn_vizinhos):
             tema.aplicar_papel(botao, estilos.NEUTRO)
@@ -793,12 +805,18 @@ class DialogoDePartidas(QDialog):
         vizinhos = self._modelo.neighbours_with_game(escolhida, radius=NEIGHBOUR_RADIUS)
         if not vizinhos:
             return
+        poupados = self._modelo.neighbours_keeping_their_game(escolhida, radius=NEIGHBOUR_RADIUS)
+        aviso = (
+            f"\n\n{len(poupados)} vizinho(s) com outra partida já escolhida ficam como estão."
+            if poupados
+            else ""
+        )
         resposta = QMessageBox.question(
             self,
             "Partidas da base",
             f"Aplicar {escolhida.label} a {len(vizinhos)} diagrama(s) vizinho(s)?\n\n"
             "Só entram os que têm esta partida entre as candidatas deles, e cada um recebe o "
-            "lance dele -- é a mesma partida em outro momento.",
+            f"lance dele -- é a mesma partida em outro momento.{aviso}",
         )
         if resposta != QMessageBox.StandardButton.Yes:
             return
@@ -937,7 +955,13 @@ class ControladorDeTreino(QDialog):
             self.estado.emit("Já existe um treino em execução.")
             return
 
-        pedido = self._pedido()
+        try:
+            pedido = self._pedido()
+        except ValueError as exc:
+            # O regime do checkpoint que não se lê (S-839) é recusa, e não treino no genérico.
+            # Aqui dentro de um slot, uma exceção que escapasse mataria o processo (qFatal).
+            self._mostrar_falha(str(exc))
+            return
         self._rodando = True
         self._total_de_epocas = pedido.epochs
         self._cancelar = threading.Event()
@@ -1020,7 +1044,7 @@ class ControladorDeTreino(QDialog):
             )
 
     def _trabalho(self, pedido: TrainingRequest, cancelar: threading.Event) -> None:
-        from chess_diagram_ocr.augment import from_letters
+        from chess_diagram_ocr.augment import DEFAULT_AUGMENT
         from chess_diagram_ocr.training import train_model
 
         try:
@@ -1038,8 +1062,9 @@ class ControladorDeTreino(QDialog):
                 fresh=pedido.fresh,
                 # O `Event` que o botão "Cancelar" do rodapé aciona (S-309).
                 cancel_event=cancelar,
-                # C4: o regime do checkpoint de produção, não o genérico de sempre.
-                augment=from_letters(pedido.augment),
+                # C4: o regime do checkpoint de produção, inteiro (S-839), não o genérico de
+                # sempre. Sem checkpoint no disco não há regime a continuar.
+                augment=pedido.augment if pedido.augment is not None else DEFAULT_AUGMENT,
             )
             resumo = summarize_run(run)
             # Sem caixa modal ao fim (S-164): o modal do treino **já está aberto** e mostra o

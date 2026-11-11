@@ -113,6 +113,21 @@ class OCacheTests(_ComMotor):
         self.cache.gravar(self.chave(), linhas)
         self.assertEqual(self.cache.ler(self.chave()), linhas)
 
+    def test_o_recorte_que_nao_foi_lido_volta_como_nao_lido(self) -> None:
+        """`None` é "não leu" (S-853): guardado como linha vazia, a fusão derrubaria a prosa do glifo ao reler do disco."""
+        linhas = [LinhaDoTesseract("the white", (0.97,)), None]
+        self.cache.gravar(self.chave(), linhas)
+        self.assertEqual(self.cache.ler(self.chave()), linhas)
+
+    def test_a_entrada_da_versao_anterior_e_falta(self) -> None:
+        """A versão 1 guardava o recorte não lido como `""`: relê-la seria voltar ao defeito que a 2 conserta."""
+        chave = self.chave()
+        self.cache.gravar(chave, [LinhaDoTesseract("a")])
+        caminho = next((self.pasta / "cache").glob("??/*.json"))
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        caminho.write_text(json.dumps({**dados, "versao": 1}), encoding="utf-8")
+        self.assertIsNone(self.cache.ler(chave))
+
     def test_sem_entrada_e_falta(self) -> None:
         self.assertIsNone(self.cache.ler(self.chave()))
 
@@ -281,14 +296,14 @@ class AReguaFicaDeForaTests(unittest.TestCase):
         self.assertIsNone(bancada_prosa._leitor_da_folha(folha)._cache)  # noqa: SLF001
 
     def test_so_a_janela_liga(self) -> None:
-        """A varredura do pacote: quem cita `cache_texto` é o leitor, que recebe, e a aba, que liga."""
+        """A varredura do pacote: quem cita `cache_texto` é o leitor, que recebe, e a leitura da aba, que liga."""
         pacote = RAIZ / "src" / "chess_diagram_ocr"
         quem = {
             str(p.relative_to(pacote)).replace("\\", "/")
             for p in pacote.rglob("*.py")
             if p.name != "cache_texto.py" and re.search(r"\bcache_texto\b", p.read_text(encoding="utf-8"))
         }
-        self.assertEqual(quem, {"qt/painel_de_texto.py", "text/leitor_de_linha.py"})
+        self.assertEqual(quem, {"qt/texto_leitura.py", "text/leitor_de_linha.py"})
 
     def test_data_cache_texto_nao_vai_ao_git(self) -> None:
         self.assertIn("data/cache_texto/", (RAIZ / ".gitignore").read_text(encoding="utf-8").splitlines())
@@ -341,7 +356,8 @@ class OLoteTests(unittest.TestCase):
         um, dois = _recortes()
         with mock.patch.object(tesseract, "LOTE_POR_FOLHA", False):
             lidas = tesseract.ler_linhas([um, vazio, dois], motor=self.MOTOR, rodar_tesseract=rodar)
-        self.assertEqual([li.texto for li in lidas], ["a", "", "b"])
+        # O vazio é "não leu" (S-853), e fica no lugar dele: a resposta seguinte não desliza.
+        self.assertEqual([None if li is None else li.texto for li in lidas], ["a", None, "b"])
 
 
 class OAvisoDeCacheTests(unittest.TestCase):

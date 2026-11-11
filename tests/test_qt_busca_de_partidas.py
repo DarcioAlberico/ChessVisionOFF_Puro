@@ -16,7 +16,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, botoes_do_rodape, descartar
 
 from chess_diagram_ocr.games_index import IndiceIndisponivel, build_index
 from chess_diagram_ocr.ui.busca_de_partidas import Filtro
@@ -313,6 +313,20 @@ class DialogoDeBuscaTests(unittest.TestCase):
         QTest.keyClick(self.dialogo.tabela, Qt.Key.Key_Return)
         self.app.processEvents()
         self.assertEqual([esperado], escolhidas, "o Enter não chegou à tabela")
+
+    def test_o_rodape_nao_tem_botao_padrao_e_o_primeiro_e_o_primario(self) -> None:
+        """Com `autoDefault`, o Enter da lista dispararia o primeiro botão em vez do atalho da tabela."""
+        self.assertEqual(
+            [
+                ("Buscar", False, "PRIMARIO"),
+                ("Página anterior", False, "NEUTRO"),
+                ("Próxima página", False, "NEUTRO"),
+                ("<vão>", False, None),
+                ("Indexar base…", False, "NEUTRO"),
+                ("Fechar", False, "NEUTRO"),
+            ],
+            botoes_do_rodape(self.dialogo),
+        )
 
     def test_sem_linha_marcada_nada_e_emitido(self) -> None:
         self._buscar(brancas="Carlsen")

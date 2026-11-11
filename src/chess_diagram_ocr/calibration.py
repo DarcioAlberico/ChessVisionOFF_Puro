@@ -62,7 +62,7 @@ def fit_temperature(
         loss.backward()
         return loss
 
-    optimizer.step(closure)  # type: ignore[arg-type]
+    optimizer.step(closure)
 
     temperature = float(log_temperature.exp().item())
     if not np.isfinite(temperature) or temperature <= 0:

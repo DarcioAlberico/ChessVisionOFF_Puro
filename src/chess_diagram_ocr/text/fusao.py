@@ -45,14 +45,21 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from typing import Final, Literal
 
 from . import lexico as _lexico
+from .notacao import FIGURINAS, LETRAS_DE_PECA, MEIAS_RISCAS
 
-PROSA = "prosa"
-NOTACAO = "notacao"
-OUTRO = "outro"
+ClasseDoToken = Literal["prosa", "notacao", "outro"]
+OrigemDoToken = Literal["glifo", "outro"]
+"""`glifo` ou `outro`: o leitor que não é o glifo (o Tesseract, o RapidOCR ou a camada)."""
 
-_PECA = "KQRBNDTCSLFAP♔♕♖♗♘♙♚♛♜♝♞♟"
+PROSA: Final = "prosa"
+NOTACAO: Final = "notacao"
+OUTRO: Final = "outro"
+
+_PECA = LETRAS_DE_PECA + FIGURINAS
+_HIFEN = f"-{MEIAS_RISCAS}"
 _FIGURINA = re.compile(r"[♔-♟]")
 _LANCE = re.compile(
     rf"^(\d+\.+|\.\.\.|…)?([{_PECA}]?[a-h]?[1-8]?[xX:×]?[a-h][1-8](=?[{_PECA}])?:?|O-O(-O)?|0-0(-0)?)"
@@ -72,17 +79,19 @@ _LANCE_INTEIRO = re.compile(
     rf"^(?:\d+\.+\s*|\.\.\.|…)?[{_PECA}][a-h]?[1-8]?[xX:×]?[a-h][1-8](?:=?[{_PECA}])?[+#†‡✝!?]*$"
 )
 _AVALIACAO = re.compile(r"^([+\-=±∓⩲⩱∞!?#†□△⌓→↑⇆○●N]|\+/-|-/\+|\+-|-\+|=/\+|\+/=|=/∞)+$")
-_RESULTADO = re.compile(r"^(1[-–—]0|0[-–—]1|½[-–—]½|1/2[-–—]1/2|\*)$")
+_RESULTADO = re.compile(rf"^(1[{_HIFEN}]0|0[{_HIFEN}]1|½[{_HIFEN}]½|1/2[{_HIFEN}]1/2|\*)$")
 _SIMBOLOS = "ʘ⊕⊞⨀□△▲▼○●↑→←⇆⇄∆∇⌓⩲⩱±∓∞#†‡"
 _DESCRITIVA = re.compile(
-    r"^(\d+\.+)?[KQRBNPTDACS]{1,3}[1-8]?(-|[xX:])?[KQRBNPTDACS]{0,3}[1-8]?[a-z]{0,2}(ch|mate|\+|#|!|\?)*$"
+    rf"^(\d+\.+)?[{LETRAS_DE_PECA}]{{1,3}}[1-8]?(-|[xX:])?[{LETRAS_DE_PECA}]{{0,3}}[1-8]?[a-z]{{0,2}}(ch|mate|\+|#|!|\?)*$"
 )
 _CIRILICA = re.compile(r"^(\d+\.+)?(Кр|[КФЛС])?[a-hаеЬсd]?[1-8]?[:xх]?[a-hаеЬсd][1-8][+#!?]*$")
 """Com âncora no fim, ao contrário da régua: sem ela `af7anca` era lance, e a palavra certa perdia (S-716)."""
 _ACENTOS_DE_FONTE = re.compile(r"^[^A-Za-z]*[À-ÿ]{3,}[^A-Za-z]*$")
 _LONGA = re.compile(rf"^(\d+\.+)?[{_PECA}]?[a-h][1-8][-x×:–][a-h][1-8]")
-_LETRA_DE_PECA = re.compile(r"^[KQRBNDTCSLF]$")
-_ROQUE = re.compile(r"^(\d+\.+)?(O-O(-O)?|0-0(-0)?|O–O(–O)?|0–0(–0)?)")
+_LETRA_DE_PECA = re.compile(f"^[{LETRAS_DE_PECA.replace('A', '')}]$")
+"""A inicial sozinha é notação, menos o `A`: é o artigo do português, do inglês e do italiano, e o léxico
+(`_PALAVRA`) não guarda palavra de uma letra para o salvar (S-901)."""
+_ROQUE = re.compile(rf"^(\d+\.+)?(O[{_HIFEN}]O([{_HIFEN}]O)?|0[{_HIFEN}]0([{_HIFEN}]0)?)")
 _PALAVRA = re.compile(r"^[^\W\d_]{2,}(?:['’-][^\W\d_]+)*$")
 """Qualquer alfabeto (S-723): até `ÿ`, `după` e o russo nunca existiam, com lista ou sem ela."""
 _NUMERO = re.compile(r"^\(?(\d+)(?=\.)")
@@ -149,7 +158,7 @@ LEXICO_POR_LINGUA = True
 """O interruptor da S-723: desligado, `existe_do_livro` responde pelo léxico compartilhado, como antes dela."""
 
 
-def classe_do_token(token: str) -> str:
+def classe_do_token(token: str) -> ClasseDoToken:
     """`prosa`, `notacao` ou `outro`. Próprio deste módulo: ver o cabeçalho."""
     nu = token.strip("()[]{},;:\"'")
     if not nu:
@@ -249,7 +258,7 @@ def existe_no(lexico: Iterable[str], *, curtas: frozenset[str] = CURTAS) -> Call
         nu = token.strip(".,;:!?()[]'\"’“”")
         if not _PALAVRA.match(nu) or e_notacao(nu):
             return False
-        chave = nu.casefold()
+        chave = _lexico.chave_do_lexico(nu)
         return chave in conjunto or chave in curtas
 
     return existe
@@ -270,7 +279,7 @@ def existe_do_livro(lingua: str, palavras_do_livro: Iterable[str] = ()) -> Calla
         base = existe_no(lista, curtas=CURTAS_POR_LINGUA.get(lingua, CURTAS)) if lista else existe_no(_lexico.carregar())
     else:
         base = existe_no(_lexico.carregar())
-    extras = frozenset(p.casefold() for p in palavras_do_livro)
+    extras = frozenset(_lexico.chave_do_lexico(p) for p in palavras_do_livro)
     return base if not extras else _com_as_do_livro(base, extras)
 
 
@@ -381,8 +390,7 @@ class Token:
     """Um token da linha fundida, e de onde ele veio."""
 
     texto: str
-    origem: str
-    """`glifo` ou `outro`: o leitor que não é o glifo."""
+    origem: OrigemDoToken
     do_glifo: str = ""
     """O que o glifo leu ali, quando teve par: a diferença é o sinal de discordância."""
     confianca: float | None = None
@@ -412,15 +420,15 @@ def fundir(
     `♘e1` em cima de `Gelfand` é o glifo errando.
     """
     g, t = glifo.split(), leitor.split()
+    confianca = _confiancas_por_token(confiancas_do_leitor, t, leitor)
     saida: list[Token] = []
-    confianca = {j: float(c) for j, c in enumerate(confiancas_do_leitor) if j < len(t)}
     menor_da_linha = min((c for c in confiancas_do_glifo if c is not None), default=None)
 
     def do_glifo(i: int) -> float | None:
         return confiancas_do_glifo[i] if i < len(confiancas_do_glifo) else None
 
     for i, j in alinhar_tokens(g, t):
-        bloqueado = j != -1 and j < len(bloqueados) and bool(bloqueados[j])
+        bloqueado = _bloqueado(bloqueados, j)
         if i != -1 and j != -1:
             if _numero_colado(g[i], t[j]) or (_SO_FIO.match(t[j]) and any(c.isalnum() for c in g[i])):
                 saida.append(Token(g[i], "glifo", g[i], do_glifo(i), t[j]))
@@ -479,6 +487,19 @@ def fundir(
         elif regra == V3 or not e_notacao(t[j]):
             saida.append(Token(t[j], "outro", "", confianca.get(j)))
     return saida
+
+
+def _confiancas_por_token(confiancas: Sequence[float], tokens: Sequence[str], leitor: str) -> dict[int, float]:
+    """A confiança de cada token do outro leitor, por índice. Vazia quando ele não deu confiança nenhuma."""
+    if confiancas and len(confiancas) != len(tokens):
+        # Truncar aqui deslocava a confiança em silêncio: a palavra com U+2009 dentro vira dois tokens (S-853).
+        raise ValueError(f"{len(confiancas)} confianças para {len(tokens)} tokens do leitor: {leitor!r}")
+    return {j: float(c) for j, c in enumerate(confiancas)}
+
+
+def _bloqueado(bloqueados: Sequence[bool], j: int) -> bool:
+    """O token `j` do outro leitor veio marcado como não confiável. `-1` (sem token do leitor) não está."""
+    return j != -1 and j < len(bloqueados) and bool(bloqueados[j])
 
 
 def texto_fundido(tokens: Sequence[Token]) -> str:
@@ -585,6 +606,8 @@ __all__ = [
     "V3",
     "V5",
     "e_lance_inteiro",
+    "ClasseDoToken",
+    "OrigemDoToken",
     "NOTACAO",
     "OUTRO",
     "PROSA",

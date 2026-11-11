@@ -138,7 +138,7 @@ class EscritaTests(unittest.TestCase):
     def test_falha_de_disco_levanta_com_o_caminho_na_mensagem(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             destino = Path(tmp) / CIRILICO / "p00006_d1.png"
-            with unittest.mock.patch.object(Path, "write_bytes", side_effect=OSError("disco cheio")):
+            with unittest.mock.patch("chess_diagram_ocr.atomic_io.atomic_write_bytes", side_effect=OSError("disco cheio")):
                 with self.assertRaises(OSError) as ctx:
                     write_image(destino, _tabuleiro())
 

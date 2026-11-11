@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import unittest
 
+import chess
 import numpy as np
+from tempo_da_suite import limite
 from test_inference import probs_for_fen
 
 from chess_diagram_ocr.config import ACCEPT_MIN_CONFIDENCE, PIECE_CLASSES, PIECE_TO_IDX
-from chess_diagram_ocr.decode import CLASSIC_RULES, MIN_KING_PROBABILITY, DecodeRules, decode_constrained
-from chess_diagram_ocr.fen_utils import check_position, labels_from_fen, square_name
+from chess_diagram_ocr.decode import (
+    CLASSIC_RULES,
+    MIN_KING_PROBABILITY,
+    DecodeRules,
+    TipoDeViolacao,
+    decode_constrained,
+)
+from chess_diagram_ocr.fen_utils import check_position, labels_from_fen, square_from_reading_index, square_name
 from chess_diagram_ocr.inference import prediction_from_probs
 
 LEGAL = "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R"
@@ -92,13 +100,13 @@ class KingEvidenceTests(unittest.TestCase):
         self.assertEqual(result.fen_board, self.NO_BLACK_KING)
         self.assertEqual(result.changed_squares, [])
         self.assertFalse(result.constraints_satisfied)
-        self.assertEqual(result.remaining_problems, ("falta o rei preto",))
+        self.assertEqual(result.remaining_kinds, (TipoDeViolacao.REI_FALTANDO,))
 
     def test_no_king_on_the_board_names_both(self) -> None:
         result = decode_constrained(probs_for_fen("8/8/8/3P4/8/8/8/8", confidence=0.99))
 
         self.assertEqual(result.changed_squares, [])
-        self.assertEqual(result.remaining_problems, ("falta o rei branco", "falta o rei preto"))
+        self.assertEqual(result.remaining_kinds, (TipoDeViolacao.REI_FALTANDO, TipoDeViolacao.REI_FALTANDO))
 
     def test_the_threshold_decides_at_the_square(self) -> None:
         d4 = square_index("d4")
@@ -123,7 +131,7 @@ class KingEvidenceTests(unittest.TestCase):
         result = decode_constrained(probs)
 
         self.assertEqual(result.class_indices[a8], PIECE_TO_IDX["R"])
-        self.assertEqual(result.remaining_problems, ("falta o rei preto",))
+        self.assertEqual(result.remaining_kinds, (TipoDeViolacao.REI_FALTANDO,))
 
     def test_repair_of_another_rule_does_not_smuggle_a_king(self) -> None:
         """O rei sem indício também não entra como alternativa de outra regra."""
@@ -143,7 +151,7 @@ class KingEvidenceTests(unittest.TestCase):
 
         result = decode_constrained(probs, max_expansions=1)
 
-        self.assertEqual(result.remaining_problems, ("falta o rei preto",))
+        self.assertEqual(result.remaining_kinds, (TipoDeViolacao.REI_FALTANDO,))
 
     def test_threshold_zero_is_the_old_decoder(self) -> None:
         probs = probs_for_fen(self.NO_BLACK_KING, confidence=0.99)
@@ -241,7 +249,7 @@ class SearchLimitTests(unittest.TestCase):
         result = decode_constrained(probs, max_changes=2)
 
         self.assertFalse(result.constraints_satisfied)
-        self.assertTrue(result.remaining_problems)
+        self.assertTrue(result.remaining_kinds)
         self.assertLessEqual(result.changed_square_count, 2)
 
     def test_result_never_increases_probability(self) -> None:
@@ -348,12 +356,14 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class PrazoDaBuscaTests(unittest.TestCase):
-    """A busca sujeita às regras tem teto de **tempo**, e não só de expansões (S-358).
+class TetoDaBuscaTests(unittest.TestCase):
+    """A busca sujeita às regras tem um teto que cabe no tempo, e ele é de expansões (S-358, S-834).
 
     Um tabuleiro legal nem entra na busca (~0,1 ms); um tabuleiro ilegal gastava as 5.000
     expansões inteiras para no fim admitir que não achou -- 3,5 s medidos aqui, e **duas vezes por
-    diagrama**, porque o modo `auto` lê a 0° e a 180°.
+    diagrama**, porque o modo `auto` lê a 0° e a 180°. A S-358 pôs um prazo de relógio; a S-834 o
+    tirou (o relógio fazia a mesma matriz sair diferente numa máquina carregada) e baixou o teto
+    de expansões até o pior caso caber no mesmo meio segundo.
     """
 
     def _ilegal(self) -> np.ndarray:
@@ -363,19 +373,20 @@ class PrazoDaBuscaTests(unittest.TestCase):
         probs[:, PIECE_CLASSES.index("empty")] = 0.28
         return probs / probs.sum(axis=1, keepdims=True)
 
-    def test_o_tabuleiro_ilegal_para_no_prazo(self) -> None:
+    def test_o_pior_caso_cabe_no_teto_padrao(self) -> None:
         import time
 
         inicio = time.perf_counter()
-        resultado = decode_constrained(self._ilegal(), max_seconds=0.05)
+        resultado = decode_constrained(self._ilegal())
         gasto = time.perf_counter() - inicio
 
-        self.assertLess(gasto, 1.0, "a busca ignorou o prazo")
+        # ~0,5 s numa máquina ociosa; o dobro dá folga para a suíte em paralelo sem deixar
+        # passar o teto de antes, que levava sete vezes isso.
+        self.assertLess(gasto, limite(2.0), "o teto padrão de expansões não segura o pior caso")
         self.assertFalse(resultado.constraints_satisfied)
 
-    def test_o_prazo_desligado_continua_valendo_o_teto_de_expansoes(self) -> None:
-        """`max_seconds=0` é o comportamento de antes, e ele continua disponível."""
-        resultado = decode_constrained(self._ilegal(), max_seconds=0, max_expansions=50)
+    def test_o_teto_de_expansoes_vale(self) -> None:
+        resultado = decode_constrained(self._ilegal(), max_expansions=50)
         self.assertFalse(resultado.constraints_satisfied)
 
     def test_o_tabuleiro_legal_nao_e_afetado(self) -> None:
@@ -387,7 +398,7 @@ class PrazoDaBuscaTests(unittest.TestCase):
         probs[60, PIECE_CLASSES.index("k")] = 0.95
         probs = probs / probs.sum(axis=1, keepdims=True)
 
-        resultado = decode_constrained(probs, max_seconds=0.05)
+        resultado = decode_constrained(probs)
 
         self.assertTrue(resultado.constraints_satisfied)
         self.assertEqual(resultado.changed_square_count, 0)
@@ -475,3 +486,166 @@ class AdjacentKingsTests(unittest.TestCase):
         result = decode_constrained(probs_for_fen("8/8/8/3k4/8/4K3/8/8"))
         self.assertTrue(result.constraints_satisfied)
         self.assertEqual(result.changed_squares, [])
+
+
+class OrcamentoSemRelogioTests(unittest.TestCase):
+    """A busca sujeita às regras para por expansões, e não pelo relógio (S-834).
+
+    Com o prazo de 0,5 s da S-358 a mesma matriz de probabilidades podia sair em FEN diferente numa
+    máquina carregada, em rodadas paralelas ou na primeira chamada lenta de um processo: o
+    relatório de campo deixava de ser reproduzível. O teto é de expansões, e só dele.
+    """
+
+    def _kemeri(self) -> np.ndarray:
+        """A leitura do `Kemeri` sem rei branco (S-11): o reparo precisa da busca."""
+        probs = probs_for_fen(KEMERI_NO_WHITE_KING, confidence=0.80)
+        a7 = square_index("a7")
+        probs[a7] = 0.01
+        probs[a7, PIECE_TO_IDX["Q"]] = 0.60
+        probs[a7, PIECE_TO_IDX["K"]] = 0.30
+        return probs / probs.sum(axis=1, keepdims=True)
+
+    def test_um_relogio_que_corre_nao_muda_o_resultado(self) -> None:
+        from unittest import mock
+
+        esperado = decode_constrained(self._kemeri())
+        instantes = iter(float(segundo) for segundo in range(10**6))
+
+        # Um segundo a cada pergunta das horas: a máquina mais carregada que se pode imaginar.
+        with mock.patch("time.monotonic", side_effect=lambda: next(instantes)):
+            sob_carga = decode_constrained(self._kemeri())
+
+        self.assertTrue(esperado.constraints_satisfied)
+        self.assertEqual(esperado.fen_board, KEMERI_FIXED)
+        self.assertEqual(sob_carga.fen_board, esperado.fen_board)
+        self.assertEqual(sob_carga.constraints_satisfied, esperado.constraints_satisfied)
+        self.assertEqual(sob_carga.changed_squares, esperado.changed_squares)
+
+
+class ViolacaoTipadaTests(unittest.TestCase):
+    """S-835: `only_king_missing` confere o tipo da violação, e não o começo da frase.
+
+    Conferia `startswith("falta o rei")`, frase escrita também em `fen_utils` e `ui/legality`:
+    reescrever uma delas mudava a orientação sem teste nenhum falhar.
+    """
+
+    def test_rei_faltando_com_outra_violacao_nao_e_so_o_rei(self) -> None:
+        """A leitura "pode estar certa" só quando o rei sem indício é o **único** defeito: com um
+        peão na oitava ao lado, ela está errada, e a orientação não pode tratá-la como boa."""
+        result = decode_constrained(probs_for_fen("P7/8/8/8/7K/8/8/8", confidence=0.99), max_changes=0)
+
+        self.assertEqual(result.remaining_kinds, (TipoDeViolacao.REI_FALTANDO, TipoDeViolacao.PEAO_NA_BORDA))
+        self.assertFalse(result.only_king_missing)
+
+    def test_a_busca_registra_o_tipo(self) -> None:
+        probs = probs_for_fen("4k3/8/8/8/8/8/8/8", confidence=0.99)
+        probs[:, PIECE_TO_IDX["K"]] = 1e-6
+        probs = probs / probs.sum(axis=1, keepdims=True)
+
+        result = decode_constrained(probs)
+
+        self.assertEqual(result.remaining_kinds, (TipoDeViolacao.REI_FALTANDO,))
+        self.assertTrue(result.only_king_missing)
+
+
+class OQueABuscaGaranteTests(unittest.TestCase):
+    """O que a busca promete e nenhum teste conferia: os sobreviventes do mutator (S-873)."""
+
+    def test_reis_se_tocam_exatamente_quando_estao_a_uma_casa(self) -> None:
+        """Todos os pares de casas, contra a distância do python-chess. O de antes conferia um par
+        no meio do tabuleiro, e a régua errada na borda (`black // 9`) passava."""
+        for branco in range(64):
+            for preto in range(64):
+                if branco == preto:
+                    continue
+                probs = np.full((64, len(PIECE_CLASSES)), 1e-3)
+                probs[:, PIECE_TO_IDX["empty"]] = 0.9
+                probs[branco, PIECE_TO_IDX["K"]] = 0.99
+                probs[preto, PIECE_TO_IDX["k"]] = 0.99
+                distancia = chess.square_distance(
+                    square_from_reading_index(branco), square_from_reading_index(preto)
+                )
+
+                result = decode_constrained(probs, max_changes=0)
+
+                tocam = (TipoDeViolacao.REIS_SE_TOCAM,) if distancia == 1 else ()
+                self.assertEqual(result.remaining_kinds, tocam, (square_name(branco), square_name(preto)))
+
+    def test_casa_vazia_e_sempre_um_reparo_possivel(self) -> None:
+        """O docstring de `_alternatives`: `empty` entra mesmo fora das melhores, porque é o
+        conserto certo quando a casa é ruído -- e o modelo nem por isso lhe dá probabilidade."""
+        a8 = square_index("a8")
+        probs = probs_for_fen("P3k3/8/8/8/7K/8/8/8", confidence=0.99)
+        probs[a8] = 1e-4
+        probs[a8, PIECE_TO_IDX["P"]] = 0.90
+        probs[a8, PIECE_TO_IDX["p"]] = 0.09
+
+        result = decode_constrained(probs, alternatives_per_square=1)
+
+        self.assertTrue(result.constraints_satisfied)
+        self.assertEqual(result.class_indices[a8], PIECE_TO_IDX["empty"])
+
+    def test_sem_conserto_devolve_o_argmax_e_nao_uma_troca_inutil(self) -> None:
+        """Dois peões na borda e uma troca permitida: nada resolve. A troca de custo zero (a casa
+        empatada entre `P` e `p`) não diminui problema nenhum, e não pode ir para a tela como
+        casa reparada."""
+        a8, h1 = square_index("a8"), square_index("h1")
+        probs = probs_for_fen("P3k3/8/8/8/8/8/8/4K2P", confidence=0.99)
+        probs[a8] = 0.0
+        probs[a8, PIECE_TO_IDX["P"]] = 0.45
+        probs[a8, PIECE_TO_IDX["p"]] = 0.45
+        probs[a8, PIECE_TO_IDX["empty"]] = 0.10
+        probs[h1] = 0.0
+        probs[h1, PIECE_TO_IDX["P"]] = 0.90
+        probs[h1, PIECE_TO_IDX["empty"]] = 0.10
+
+        result = decode_constrained(probs, max_changes=1)
+
+        self.assertFalse(result.constraints_satisfied)
+        self.assertEqual(result.changed_squares, [])
+        self.assertEqual(result.fen_board, "P3k3/8/8/8/8/8/8/4K2P")
+
+    def test_os_dois_tetos_contam_uma_vez_cada(self) -> None:
+        """`max_expansions=2` é o argmax e mais uma: basta para a troca única do Kemeri. E
+        `max_changes=2` deixa trocar duas casas: basta para separar os reis que se tocam."""
+        kemeri = probs_for_fen(KEMERI_NO_WHITE_KING, confidence=0.99)
+        a7 = square_index("a7")
+        kemeri[a7] = 0.0
+        kemeri[a7, PIECE_TO_IDX["Q"]] = 0.55
+        kemeri[a7, PIECE_TO_IDX["K"]] = 0.45
+        self.assertEqual(decode_constrained(kemeri, max_expansions=2).fen_board, KEMERI_FIXED)
+
+        reis = probs_for_fen(AdjacentKingsTests.TOUCHING, confidence=0.99)
+        d5, c1 = square_index("d5"), square_index("c1")
+        reis[d5] = 0.0
+        reis[d5, PIECE_TO_IDX["k"]] = 0.60
+        reis[d5, PIECE_TO_IDX["q"]] = 0.40
+        reis[c1] = 0.0
+        reis[c1, PIECE_TO_IDX["q"]] = 0.55
+        reis[c1, PIECE_TO_IDX["k"]] = 0.45
+        resultado = decode_constrained(reis, max_changes=2)
+        self.assertTrue(resultado.constraints_satisfied)
+        self.assertEqual(resultado.changed_square_count, 2)
+
+    def test_peao_demais_ramifica_so_sobre_os_peoes(self) -> None:
+        """A violação mais estreita guia a busca: com nove peões, os nove são as casas a trocar.
+        Ramificar sobre todas as peças brancas (a regra dos promovidos também acusa) gasta a
+        segunda expansão num cavalo que vira bispo de graça e não conserta nada."""
+        a4, b3 = square_index("a4"), square_index("b3")
+        probs = probs_for_fen("4k3/8/8/8/P7/1N6/PPPPPPPP/4K3", confidence=0.99)
+        probs[a4] = 0.0
+        probs[a4, PIECE_TO_IDX["P"]] = 0.60
+        probs[a4, PIECE_TO_IDX["empty"]] = 0.40
+        probs[b3] = 0.0
+        probs[b3, PIECE_TO_IDX["N"]] = 0.50
+        probs[b3, PIECE_TO_IDX["B"]] = 0.49
+        probs[b3, PIECE_TO_IDX["empty"]] = 0.01
+
+        result = decode_constrained(probs, max_expansions=2)
+
+        self.assertTrue(result.constraints_satisfied)
+        self.assertEqual(result.fen_board, "4k3/8/8/8/8/1N6/PPPPPPPP/4K3")
+
+    def test_a_matriz_errada_diz_o_formato_que_veio(self) -> None:
+        with self.assertRaisesRegex(ValueError, r"^Esperada matriz \(64, 13\), recebida \(64, 5\)\.$"):
+            decode_constrained(np.full((64, 5), 0.2))

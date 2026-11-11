@@ -25,6 +25,13 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
+__all__ = [
+    "BusyOperation",
+    "BusyRegistry",
+    "BusyToken",
+    "FORA_DO_REGISTRO",
+]
+
 logger = logging.getLogger(__name__)
 
 
@@ -262,12 +269,12 @@ FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
     ),
     # `("janela.py", "_rodar")` saiu daqui no passo C2 do ciclo 2: marcar e ler a página
     # registram-se, com total (os diagramas já marcados) e «Cancelar» entre diagramas.
-    ("painel_de_texto.py", "limpar_cache_de_leitura"): (
+    ("texto_leitura.py", "limpar_cache_de_leitura"): (
         "Apagar a leitura guardada do Tesseract (S-725), que o menu pede: segundos, no pior caso. Só "
         "apaga o que a próxima leitura refaz, e fechar no meio não perde nada: o que ficou continua "
         "válido, entrada por entrada."
     ),
-    ("painel_de_texto.py", "_renderizar_ao_fundo"): (
+    ("texto_leitura.py", "renderizar_ao_fundo"): (
         "Rasterizar a folha aberta do caderno da aba Texto, para as miniaturas (S-612): um a três "
         "décimos de segundo, e o texto já está na tela. Não grava nada -- a folha continua no "
         "PDF --, e a resposta para uma folha que já saiu da tela é jogada fora."
@@ -283,7 +290,7 @@ FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
         "trancar nada. Ninguém a pediu, ela custa décimos de segundo, e o que produz é um "
         "conjunto de retângulos que a próxima visita à página refaz."
     ),
-    ("painel_de_estudo.py", "analyse"): (
+    ("sala_motor.py", "analyse"): (
         "Uma avaliação do motor sobre a posição na tela (S-33). Segundos, e derivada: a "
         "posição continua lá para pedir de novo."
     ),

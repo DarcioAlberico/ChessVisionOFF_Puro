@@ -21,7 +21,7 @@ from unittest import mock
 import numpy as np
 import pytest
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, esperar_ate
 
 from chess_diagram_ocr.config import PIECE_CLASSES
 from chess_diagram_ocr.service import RecognizedDiagram
@@ -872,12 +872,7 @@ class SegundaOpiniaoTests(PainelTests):
             return self.placement
 
     def _esperar(self, condicao, ate_ms: int = 4000) -> None:
-        from PyQt6.QtTest import QTest
-
-        for _ in range(ate_ms // 10):
-            QTest.qWait(10)
-            if condicao():
-                return
+        esperar_ate(condicao, limite_s=ate_ms / 1000)
 
     def test_as_casas_em_disputa_ficam_marcadas_e_a_posicao_e_adotada(self) -> None:
         self.carregar(LEGAL)
@@ -933,7 +928,6 @@ class SegundaOpiniaoTests(PainelTests):
         """Uma `Tarefa` filha do painel é destruída com ele e o destrutor de `QThread` aborta o
         processo com a thread a correr (F9-C2). A tarefa fica sem pai (`manter_viva`) e os slots
         perguntam se o painel ainda existe -- se isto passar, o processo sobreviveu."""
-        from PyQt6.QtTest import QTest
         from qt_app import descartar
 
         from chess_diagram_ocr.qt import trabalho
@@ -949,11 +943,7 @@ class SegundaOpiniaoTests(PainelTests):
         self.assertIsNone(tarefa.parent(), "sem pai: não morre com o painel")
         self.assertIn(tarefa, trabalho._VIVAS)
         descartar(painel)
-        for _ in range(200):
-            QTest.qWait(10)
-            if tarefa not in trabalho._VIVAS:
-                break
-        self.assertNotIn(tarefa, trabalho._VIVAS, "a tarefa terminou e foi solta")
+        esperar_ate(lambda: tarefa not in trabalho._VIVAS, limite_s=2, o_que="a tarefa terminar e ser solta")
         self.assertEqual(leitor.lidos, 1)
 
     def test_a_copia_do_primeiro_nao_marca_nada(self) -> None:
@@ -1059,3 +1049,196 @@ class NumeroDoLanceTests(PainelTests):
         self.anotado[(0, 0)] = 40
         self.painel.sincronizar_lance()
         self.assertEqual(self.painel.campo_lance.text(), "40")
+
+
+LIVRO_0 = "4k3/8/8/8/8/8/3P4/4K3"
+"""O que o PGN do livro diz do diagrama 0: a leitura com um peão a mais em d2."""
+LIVRO_1 = OUTRA
+"""E do diagrama 1: outra posição, com as pretas a jogar."""
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class ComoAPessoaTests(PainelTests):
+    """O editor dirigido pelo que a pessoa faz -- clique na casa, letra, botão Desfazer -- e
+    conferido pelo que ela vê: o tabuleiro, o campo de FEN, a pendência ao fechar."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtTest import QTest
+
+        self.QTest = QTest
+        self.Qt = Qt
+        self.painel.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        self.painel.resize(900, 760)
+        self.painel.show()
+        self.app.processEvents()
+
+    def clicar_casa(self, casa: int) -> None:
+        from PyQt6.QtCore import QPoint
+
+        tabuleiro = self.painel.tabuleiro
+        linha, coluna = tabuleiro.modelo.display_from_index(casa)
+        x0, y0, x1, y1 = tabuleiro.geometria().rect(linha, coluna)
+        self.QTest.mouseClick(tabuleiro, self.Qt.MouseButton.LeftButton, pos=QPoint(int((x0 + x1) / 2), int((y0 + y1) / 2)))
+        self.app.processEvents()
+
+    def tecla(self, texto: str) -> None:
+        """Uma letra de peça no tabuleiro em foco: maiúscula com Shift, como no teclado."""
+        modificador = self.Qt.KeyboardModifier.ShiftModifier if texto.isupper() else self.Qt.KeyboardModifier.NoModifier
+        self.QTest.keyClick(self.painel.tabuleiro, texto, modificador)
+        self.app.processEvents()
+
+    def desfazer(self) -> None:
+        self.QTest.mouseClick(self.painel.btn_desfazer, self.Qt.MouseButton.LeftButton)
+        self.app.processEvents()
+
+    def test_adotar_do_livro_em_outro_indice_nao_entra_na_pilha(self) -> None:
+        """S-887: `livro_com_pgn.aplicar` adota o livro em **cada** diagrama da página, e a pilha é
+        do selecionado. A adoção no diagrama 1 entrava na pilha do 0, e o Ctrl+Z depois de uma
+        casa corrigida no 0 punha nele a posição e a vez do 1 -- gravável com o Ctrl+S seguinte."""
+        self.carregar(LEGAL, LEGAL)
+        itens = self.painel.modelo.items
+        self.assertTrue(self.painel.adotar_do_livro(0, itens[0], LIVRO_0, "w", "Game 1 · confere"))
+        self.assertTrue(self.painel.adotar_do_livro(1, itens[1], LIVRO_1, "b", "Game 2 · confere"))
+        self.assertEqual(self.painel.tabuleiro.posicao(), LIVRO_0, "o diagrama 0 segue na tela")
+
+        self.clicar_casa(51)   # o peão de d2, que o livro pôs
+        self.tecla("N")        # vira cavalo
+        self.assertEqual(board_edit.piece_at(self.painel.tabuleiro.posicao(), 51), "N")
+        self.desfazer()
+
+        self.assertNotEqual(self.painel.modelo.fen_at(0), LIVRO_1, "o Ctrl+Z pôs no 0 a posição do diagrama 1")
+        self.assertEqual(self.painel.tabuleiro.posicao(), LIVRO_0)
+        self.assertEqual(self.painel.modelo.side_at(0), "w", "o Ctrl+Z pôs no 0 a vez do diagrama 1")
+        self.assertTrue(self.painel.campo_fen.text().endswith(" w - - 0 1"), self.painel.campo_fen.text())
+        self.assertEqual((self.painel.modelo.fen_at(1), self.painel.modelo.side_at(1)), (LIVRO_1, "b"))
+
+    def clicar(self, botao) -> None:
+        self.QTest.mouseClick(botao, self.Qt.MouseButton.LeftButton)
+        self.app.processEvents()
+
+    def test_a_segunda_opiniao_do_diagrama_deixado_nao_entra_na_pilha_do_novo(self) -> None:
+        """S-887, o outro caminho: pedir a segunda opinião do 0, ir ao 1 enquanto ela é lida,
+        corrigir uma casa do 1 e desfazer. O parecer do 0 entrava na pilha do 1, e o Ctrl+Z
+        punha no 1 a posição do 0."""
+        self.carregar(LEGAL, LIVRO_0)
+        leitor = SegundaOpiniaoTests._LeitorLento(OUTRA)
+        with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=leitor):
+            self.painel.segunda_opiniao()
+            self.clicar(self.painel.proximo)
+            esperar_ate(lambda: self.painel._segunda_em_curso is None, limite_s=4, o_que="o parecer da 2ª opinião")
+        self.assertEqual(leitor.lidos, 1)
+        self.assertEqual(self.painel.modelo.fen_at(0), OUTRA, "o parecer foi para o diagrama 0")
+        self.assertEqual(self.painel.tabuleiro.posicao(), LIVRO_0, "o 1 está na tela")
+
+        self.clicar_casa(51)
+        self.tecla("N")
+        self.desfazer()
+        self.assertEqual(self.painel.tabuleiro.posicao(), LIVRO_0, "o Ctrl+Z pôs no 1 a posição do 0")
+        self.assertFalse(self.painel.btn_desfazer.isEnabled(), "a pilha do 1 tinha o parecer do 0")
+
+    def escolher_o_lado(self, lado: str) -> None:
+        botao = next(b for b in self.painel._lados.buttons() if b.property("lado") == lado)
+        self.clicar(botao)
+
+    def esperar_a_segunda(self, leitor: object) -> None:
+        """Clica «2ª opinião» com um leitor configurado e espera o parecer chegar."""
+        with mock.patch.object(self.painel, "leitor_da_segunda_opiniao", return_value=leitor),                 mock.patch.object(self.painel, "_segunda_opiniao_configurada", return_value=True):
+            self.painel._atualizar_tudo()
+            self.clicar(self.painel.btn_segunda)
+            esperar_ate(lambda: self.painel._segunda_em_curso is None, limite_s=4, o_que="o parecer da 2ª opinião")
+
+    def test_desfazer_a_segunda_opiniao_volta_a_rota_ocr_aceito(self) -> None:
+        """S-888: desfazer a segunda opinião devolvia a posição e deixava a procedência -- a
+        amostra da leitura do modelo, aceita, saía gravada como «segunda opinião», e as casas
+        roxas continuavam marcadas sobre uma posição em que ninguém discorda de nada."""
+        self.carregar(LEGAL)
+        self.esperar_a_segunda(SegundaOpiniaoTests._Leitor(OUTRA))
+        self.assertEqual(self.painel.modelo.save_target().route, "segunda-opiniao")
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], (4, 28))
+
+        self.desfazer()
+        self.assertEqual(self.painel.tabuleiro.posicao(), LEGAL)
+        self.assertEqual(self.painel.modelo.save_target().route, "ocr-aceito")
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], (), "as casas roxas ficaram")
+
+        # E o refazer devolve as duas coisas juntas, pela mesma razão.
+        self.clicar(self.painel.btn_refazer)
+        self.assertEqual(self.painel.modelo.save_target().route, "segunda-opiniao")
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], (4, 28))
+
+    def test_desfazer_o_livro_tira_a_nota_e_as_casas_do_livro(self) -> None:
+        """S-888, o PGN do livro: a explicação seguia dizendo «PGN do livro» sob a leitura."""
+        self.carregar(LEGAL)
+        self.assertTrue(self.painel.adotar_do_livro(0, self.painel.modelo.items[0], LIVRO_0, "b", "Game 1 · confere"))
+        self.assertIn("PGN do livro", self.painel.detalhes.text())
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], (51,))
+
+        self.desfazer()
+        self.assertEqual((self.painel.tabuleiro.posicao(), self.painel.modelo.side_at(0)), (LEGAL, "w"))
+        self.assertNotIn("PGN do livro", self.painel.detalhes.text())
+        self.assertEqual(self.painel.tabuleiro.casas_marcadas()["disputadas"], ())
+        self.assertFalse(self.painel.modelo.has_unsaved_hand_edits)
+
+    def test_desfazer_ate_a_leitura_nao_deixa_pendencia(self) -> None:
+        """S-888: desfazer até a leitura passava por `apply_placement` e `set_side`, que marcam
+        edição à mão -- e ao fechar vinha a pergunta «vai perder trabalho?» sobre nada, e a página
+        não saía mais do cache de navegação."""
+        self.carregar(LEGAL)
+        lido = self.painel.detalhes.text()
+        self.clicar_casa(60)   # o rei branco
+        self.QTest.keyClick(self.painel.tabuleiro, self.Qt.Key.Key_Up)
+        self.tecla("N")
+        self.escolher_o_lado("b")
+        self.assertTrue(self.painel.modelo.has_unsaved_hand_edits)
+
+        self.desfazer()
+        self.desfazer()
+        self.assertEqual((self.painel.tabuleiro.posicao(), self.painel.modelo.side_at(0)), (LEGAL, "w"))
+        self.assertFalse(self.painel.btn_desfazer.isEnabled())
+        self.assertFalse(self.painel.modelo.has_unsaved_hand_edits, "a leitura ficou como pendência")
+        self.assertFalse(self.painel.modelo.has_hand_edits)
+        self.assertEqual(self.painel.detalhes.text(), lido, "a procedência da vez ficou «manual»")
+        self.painel.lembrar_pagina()
+        self.assertEqual(self.painel.paginas.pages_with_hand_edits(), [], "a página ficou presa no cache")
+
+    def digitar_fen(self, texto: str) -> None:
+        """Clica no campo, apaga o que há, digita e aperta Ctrl+Enter -- como a pessoa."""
+        campo = self.painel.campo_fen
+        self.clicar(campo)
+        self.QTest.keyClick(campo, self.Qt.Key.Key_A, self.Qt.KeyboardModifier.ControlModifier)
+        self.QTest.keyClicks(campo, texto)
+        self.QTest.keyClick(campo, self.Qt.Key.Key_Return, self.Qt.KeyboardModifier.ControlModifier)
+        self.app.processEvents()
+
+    def lado_marcado(self) -> str:
+        return next(str(b.property("lado")) for b in self.painel._lados.buttons() if b.isChecked())
+
+    def test_aplicar_fen_com_vez_preta_troca_o_lado(self) -> None:
+        """S-893: o campo mostra a FEN inteira, com a vez, e aplicá-la só lia o campo de peças --
+        a vez digitada sumia, e o campo era reescrito com a vez de antes, sem aviso."""
+        self.carregar(LEGAL)
+        self.assertTrue(self.painel.campo_fen.text().endswith(" w - - 0 1"))
+        self.digitar_fen(f"{LIVRO_0} b - - 0 1")
+
+        self.assertEqual(self.painel.tabuleiro.posicao(), LIVRO_0)
+        self.assertEqual(self.lado_marcado(), "b", "o rádio não mostra a vez digitada")
+        self.assertEqual(self.painel.campo_fen.text(), f"{LIVRO_0} b - - 0 1", "o campo trocou a vez digitada")
+        self.assertEqual(self.painel.modelo.save_target().side, "b")
+        # Um Ctrl+Z devolve as duas coisas: foi um gesto só.
+        self.desfazer()
+        self.assertEqual((self.painel.tabuleiro.posicao(), self.lado_marcado()), (LEGAL, "w"))
+
+    def test_so_a_vez_digitada_tambem_se_aplica(self) -> None:
+        self.carregar(LEGAL)
+        self.digitar_fen(f"{LEGAL} b - - 0 1")
+        self.assertEqual((self.painel.tabuleiro.posicao(), self.lado_marcado()), (LEGAL, "b"))
+        self.assertTrue(self.painel.btn_desfazer.isEnabled())
+
+    def test_a_vez_invalida_e_recusada_com_mensagem(self) -> None:
+        self.carregar(LEGAL)
+        self.digitar_fen(f"{LIVRO_0} x - - 0 1")
+        self.assertEqual((self.painel.tabuleiro.posicao(), self.lado_marcado()), (LEGAL, "w"), "aplicou meia FEN")
+        self.assertIn("vez", self.recados[-1])
+        self.assertFalse(self.painel.btn_desfazer.isEnabled())

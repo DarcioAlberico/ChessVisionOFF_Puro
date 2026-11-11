@@ -20,7 +20,6 @@ import sys
 from pathlib import Path
 
 from ..alinhamento import LIMITE_DE_DESALINHAMENTO_PX
-from ..config import DEFAULT_MAX_BOARDS, DEFAULT_PDF_DIR, DEFAULT_READING_ORDER
 from ..detection_census import (
     DEFAULT_FRONT_MATTER,
     DEFAULT_PAGES_PER_BOOK,
@@ -40,7 +39,20 @@ from ..detection_census import (
     write_rejections_csv,
 )
 from ..logging_setup import configure_logging, default_log_file
-from . import EXIT_BAD_INPUT, EXIT_FAILURE, add_dpi_argument, add_verbose, cli_errors
+from . import (
+    EXIT_BAD_INPUT,
+    EXIT_FAILURE,
+    add_baseline_argument,
+    add_dpi_argument,
+    add_json_argument,
+    add_max_boards_argument,
+    add_pages_per_book_argument,
+    add_pdf_dir_argument,
+    add_reading_order_argument,
+    add_verbose,
+    cli_errors,
+    exige_documento,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,21 +67,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     origem = parser.add_mutually_exclusive_group()
-    origem.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Acervo inteiro.")
+    add_pdf_dir_argument(origem, help="Acervo inteiro.")
     origem.add_argument("--pdf", type=Path, default=None, help="Um livro só.")
 
     paginas = parser.add_mutually_exclusive_group()
-    paginas.add_argument("--pages", type=int, default=DEFAULT_PAGES_PER_BOOK, help="Páginas amostradas por livro.")
+    add_pages_per_book_argument(paginas, default=DEFAULT_PAGES_PER_BOOK)
     paginas.add_argument("--all-pages", action="store_true", help="Varre o livro inteiro, sem amostrar.")
 
     add_dpi_argument(parser)
-    parser.add_argument("--max-boards", type=int, default=DEFAULT_MAX_BOARDS, help="Teto de candidatos por página.")
-    parser.add_argument(
-        "--reading-order",
-        default=DEFAULT_READING_ORDER,
-        choices=("row", "column"),
-        help="Ordem em que os candidatos da página são contados.",
-    )
+    add_max_boards_argument(parser, help="Teto de candidatos por página.")
+    add_reading_order_argument(parser, help="Ordem em que os candidatos da página são contados.")
     parser.add_argument(
         "--suspect-below-pt",
         type=float,
@@ -86,8 +93,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--csv", type=Path, default=None, help="Grava uma linha por candidato.")
-    parser.add_argument("--json", type=Path, default=None, help="Grava o resumo por livro.")
-    parser.add_argument("--baseline", type=Path, default=None, help="CSV de uma corrida anterior, para o diff.")
+    add_json_argument(parser, help="Grava o resumo por livro.")
+    add_baseline_argument(parser, help="CSV de uma corrida anterior, para o diff.")
     parser.add_argument(
         "--recusas",
         type=Path,
@@ -254,9 +261,10 @@ def main(argv: list[str] | None = None) -> int:
         if not pdf_path.is_file():
             print(f"PDF não encontrado: {pdf_path}")
             return EXIT_BAD_INPUT
+        exige_documento(pdf_path)
         alcance = "livro inteiro" if pages is None else f"{pages} página(s)"
         print(f"Varrendo {pdf_path.name} ({alcance})...")
-        book = census_book(pdf_path, **comuns)  # type: ignore[arg-type]
+        book = census_book(pdf_path, **comuns)
         _print_book(book)
         census = DetectionCensus(
             books=[book],
@@ -274,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_BAD_INPUT
         alcance = "livro inteiro" if pages is None else f"{pages} página(s) por livro"
         print(f"Varrendo {pdf_dir} ({alcance})...")
-        census = census_collection(pdf_dir, on_book=_print_book, **comuns)  # type: ignore[arg-type]
+        census = census_collection(pdf_dir, on_book=_print_book, **comuns)
 
     _print_census(census)
 

@@ -34,6 +34,8 @@ from pathlib import Path
 
 import numpy as np
 
+from ..config import DEFAULT_DPI
+
 logger = logging.getLogger(__name__)
 
 VERSOES_MEDIDAS = (5,)
@@ -399,6 +401,15 @@ def assinatura_do_preprocessamento() -> str:
     return f"margem={MARGEM_DO_RECORTE};escala={ESCALA_PELA_ALTURA_X};alvo={ALTURA_X_ALVO};russo={RUS_COM_ENG}"
 
 
+def confiancas_por_token(palavras: Sequence[Palavra]) -> tuple[float, ...]:
+    """Uma confiança por token de `" ".join(p.texto for p in palavras).split()` (S-853).
+
+    A palavra do TSV pode trazer espaço Unicode dentro (U+2009), e `split()` a parte em duas: contada uma vez,
+    ela deslocava a confiança de todas as palavras seguintes, ou cortava as últimas, sem erro nenhum.
+    """
+    return tuple(p.confianca for p in palavras for _ in p.texto.split())
+
+
 def _tiff_de(recortes: Sequence[np.ndarray]) -> bytes:
     """Um TIFF de várias páginas, uma linha em cada, com a margem branca. Sem compressão: é um cano."""
     import cv2
@@ -422,19 +433,22 @@ def ler_linhas(
     recortes: Sequence[np.ndarray],
     *,
     lingua: str = LINGUA_PADRAO,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     motor: Motor | None = None,
     rodar_tesseract: Callable[..., str] = rodar,
     sem_dicionario: bool = False,
-) -> list[LinhaDoTesseract]:
+) -> list[LinhaDoTesseract | None]:
     """Um recorte de linha por página do TIFF, um processo só. Levanta `FalhaDoTesseract`.
 
-    Recorte vazio responde `""` sem ir ao processo: ele não tem como ser página de TIFF, e tirá-lo
-    deslocaria todas as respostas seguintes. `sem_dicionario` é para linha de notação: `load_system_dawg=0`.
+    Recorte vazio responde `None` sem ir ao processo: ele não tem como ser página de TIFF, e tirá-lo
+    deslocaria todas as respostas seguintes. **`None` e não `""`** (S-853): é o contrato do
+    `leitor_de_linha` -- `None` é "não leu", e a linha fica com o glifo; `""` é "leu vazio", e a fusão
+    derrubava a prosa do glifo por uma leitura que nunca aconteceu. `sem_dicionario` é para linha de notação:
+    `load_system_dawg=0`.
     """
     achado = achar_motor() if motor is None else motor
     validos = [i for i, r in enumerate(recortes) if r.size]
-    saida = [LinhaDoTesseract("") for _ in recortes]
+    saida: list[LinhaDoTesseract | None] = [None for _ in recortes]
     if not validos:
         return saida
 
@@ -460,9 +474,7 @@ def ler_linhas(
         por_pagina.setdefault(palavra.pagina, []).append(palavra)
     for posicao, indice in enumerate(validos, start=1):
         palavras = por_pagina.get(posicao, [])
-        saida[indice] = LinhaDoTesseract(
-            " ".join(p.texto for p in palavras), tuple(p.confianca for p in palavras), tuple(palavras)
-        )
+        saida[indice] = LinhaDoTesseract(" ".join(p.texto for p in palavras), confiancas_por_token(palavras), tuple(palavras))
     return saida
 
 
@@ -470,7 +482,7 @@ def ler_folha(
     cinza: np.ndarray,
     *,
     lingua: str = LINGUA_PADRAO,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     psm: int = 3,
     motor: Motor | None = None,
     rodar_tesseract: Callable[..., str] = rodar,

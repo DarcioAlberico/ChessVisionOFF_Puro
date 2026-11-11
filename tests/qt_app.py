@@ -24,8 +24,12 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import threading
 import unittest
+from collections.abc import Callable
 from typing import Any
+
+import tempo_da_suite
 
 TEM_PYQT = importlib.util.find_spec("PyQt6") is not None
 """Se o PyQt6 está instalado. Sem ele os testes de janela **pulam**, e o `-ra` do `pyproject.toml`
@@ -34,7 +38,12 @@ vez de virar um `s` no meio de quatro mil pontos.
 
 **Ele deixou de ser um extra no corte do Tk (S-506)**, e a checagem continua valendo por outro
 motivo: um `.venv` antigo, de antes de o PyQt6 entrar nas dependências de base, ainda não o tem --
-e ali pular com o motivo escrito é melhor que um `ImportError` na coleta."""
+e ali pular com o motivo escrito é melhor que um `ImportError` na coleta.
+
+**Pular não é passar (S-805).** Duzentas classes pulando deixavam a rodada **verde** num ambiente
+sem a dependência de base, e a única marca era o `-ra`. Quem reprova é
+`test_disciplina_da_suite.PyQtAusenteReprovaTests`: um teste só, que não pula, e que diz o que
+instalar."""
 
 MOTIVO = "o PyQt6 não está instalado (uv sync)"
 
@@ -55,13 +64,20 @@ def aplicacao() -> Any:
     return _APLICACAO
 
 
-def esperar(janela: Any, *, limite_ms: int = 60_000) -> None:
+def esperar(janela: Any, *, limite_ms: int = 60_000, tarefa_segurada: bool = False) -> None:
     """Roda a linha de eventos até a janela ficar ociosa: tarefa, leitura adiada e detector.
 
     Sem isto o teste que dispara uma leitura termina antes da thread, e o `QThread` morre com
     o objeto Python dele -- o que derruba o processo inteiro e leva junto os testes seguintes,
     com uma mensagem (`QThread: Destroyed while thread is still running`) que não nomeia quem
     fez isso.
+
+    O prazo escala com `tempo_da_suite.fator()`, e o estouro **reprova** (S-872): a janela ainda
+    ocupada no fim é o defeito, e voltar calado o empurrava para a asserção seguinte.
+
+    `tarefa_segurada=True` é para o teste que **segura** a leitura (`TarefaAdiada`) e quer só o resto
+    assentado: sem ele a espera esperava a tarefa que o próprio teste não solta -- e, calada, gastava
+    os 60 s inteiros a cada chamada (três testes de `test_qt_ancora_da_tela`, três minutos por rodada).
     """
     from PyQt6.QtCore import QEventLoop, QTimer
 
@@ -71,7 +87,7 @@ def esperar(janela: Any, *, limite_ms: int = 60_000) -> None:
         detector = getattr(janela, "_detector", None)
         adiada = getattr(janela, "_leitura_adiada", None)
         return (
-            janela._tarefa is not None
+            (janela._tarefa is not None and not tarefa_segurada)
             or bool(adiada is not None and adiada.isActive())
             or bool(detector is not None and detector.ocupado)
         )
@@ -82,9 +98,31 @@ def esperar(janela: Any, *, limite_ms: int = 60_000) -> None:
     relogio = QTimer()
     relogio.timeout.connect(lambda: laco.quit() if not ocupada() else None)
     relogio.start(20)
-    QTimer.singleShot(limite_ms, laco.quit)
+    prazo_ms = tempo_da_suite.limite_ms(limite_ms)
+    QTimer.singleShot(prazo_ms, laco.quit)
     laco.exec()
     relogio.stop()
+    if ocupada():
+        raise AssertionError(f"a janela continuou ocupada depois de {prazo_ms / 1000:.0f} s")
+
+
+def esperar_ate(condicao: Callable[[], object], *, limite_s: float = 10.0, o_que: str = "a condição") -> None:
+    """Gira a linha de eventos até `condicao()` valer, e **reprova** se o prazo acabar antes (S-872).
+
+    As esperas copiadas nos testes de fila e de índice voltavam caladas no estouro, e a asserção
+    seguinte reprovava dizendo outra coisa -- «o livro não está pronto» --, quando o que houve foi o
+    prazo acabar numa máquina carregada. O prazo escala com `tempo_da_suite.fator()`.
+    """
+    import time
+
+    from PyQt6.QtTest import QTest
+
+    prazo = tempo_da_suite.limite(limite_s)
+    fim = time.monotonic() + prazo
+    while not condicao():
+        if time.monotonic() >= fim:
+            raise AssertionError(f"{o_que} não aconteceu em {prazo:.1f} s")
+        QTest.qWait(20)
 
 
 def renderizar(widget: Any) -> Any:
@@ -216,3 +254,118 @@ def descartar(widget: Any) -> None:
     from PyQt6.QtCore import QCoreApplication, QEvent
 
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
+
+
+def botoes_do_rodape(dialogo: Any) -> list[tuple[str, bool, object]]:
+    """Os botões do rodapé do diálogo (o último leiaute dele), na ordem da tela: texto, `autoDefault`
+    e o papel declarado. O vão entre os grupos sai como `("<vão>", False, None)`."""
+    from PyQt6.QtWidgets import QPushButton
+
+    from chess_diagram_ocr.qt import tema
+
+    fora = dialogo.layout()
+    rodape = fora.itemAt(fora.count() - 1).layout()
+    saida: list[tuple[str, bool, object]] = []
+    for n in range(rodape.count()):
+        botao = rodape.itemAt(n).widget()
+        if isinstance(botao, QPushButton):
+            saida.append((botao.text(), botao.autoDefault(), botao.property(tema.PROPRIEDADE_DE_PAPEL)))
+        else:
+            saida.append(("<vão>", False, None))
+    return saida
+
+
+class _SinalAdiado:
+    """O par `connect`/`emit` de um `pyqtSignal`, sem Qt: chama os alvos na hora do `emit`."""
+
+    def __init__(self) -> None:
+        self._alvos: list[Callable[..., object]] = []
+
+    def connect(self, alvo: Callable[..., object]) -> None:
+        self._alvos.append(alvo)
+
+    def emit(self, *argumentos: object) -> None:
+        for alvo in list(self._alvos):
+            alvo(*argumentos)
+
+
+class TarefaAdiada:
+    """Uma `qt.trabalho.Tarefa` sem thread, cujo resultado só chega **quando o teste manda** (S-805).
+
+    **O defeito que a `_TarefaNaHora` não pega.** Ela emite `pronto` dentro do `start`: a tarefa
+    termina antes de a tela poder mudar, e nenhum teste com ela vê o caso "a folha virou, o livro
+    trocou, a pessoa digitou **enquanto** a tarefa rodava" -- que é o caso normal de uma thread e o
+    que a S-823, a S-824 e a S-894 cobram.
+
+    O trabalho roda no `start`, como numa thread rápida que já acabou; o desfecho espera em
+    `pendentes` até `entregar()`. É a janela entre a thread terminar e o sinal dela, que vai pela
+    fila da linha de eventos, chegar ao painel. Troque-a por `mock.patch.object(modulo, "Tarefa",
+    TarefaAdiada)` e chame `TarefaAdiada.entregar_todas()` -- ou `entregar()` numa só -- quando o
+    teste quiser que o resultado chegue.
+    """
+
+    pendentes: list[TarefaAdiada] = []
+    """As tarefas que já rodaram e ainda não entregaram, na ordem em que começaram. Esvazie no
+    `setUp` (`TarefaAdiada.pendentes.clear()`): a lista é da classe, como o remendo."""
+
+    def __init__(self, funcao: Callable[[], Any], *, nome: str = "tarefa") -> None:
+        self._funcao = funcao
+        self._nome = nome
+        self.rastro = ""
+        self.pronto, self.falhou, self.finished = _SinalAdiado(), _SinalAdiado(), _SinalAdiado()
+        self._cancelar = threading.Event()
+        self._desfecho: tuple[str, Any] | None = None
+        self._rodando = False
+
+    @property
+    def nome(self) -> str:
+        return self._nome
+
+    def start(self) -> None:
+        try:
+            self._desfecho = ("pronto", self._funcao())
+        except Exception as erro:  # noqa: BLE001 - a falha vai pelo sinal, como na thread
+            self._desfecho = ("falhou", erro)
+        self._rodando = True
+        TarefaAdiada.pendentes.append(self)
+
+    def entregar(self) -> None:
+        """Emite o desfecho guardado -- `pronto` ou `falhou` -- e depois `finished`, como a thread."""
+        if self._desfecho is None:
+            raise AssertionError(f"a tarefa «{self._nome}» não começou, ou já entregou")
+        tipo, valor = self._desfecho
+        self._desfecho, self._rodando = None, False
+        TarefaAdiada.pendentes.remove(self)
+        if tipo == "pronto":
+            self.pronto.emit(valor)
+        else:
+            from chess_diagram_ocr.qt.trabalho import rastro_de
+
+            self.rastro = rastro_de(valor)
+            self.falhou.emit(str(valor), valor)
+        self.finished.emit()
+
+    @classmethod
+    def entregar_todas(cls) -> None:
+        """Entrega as pendentes na ordem em que começaram, inclusive as que nascerem no caminho."""
+        while cls.pendentes:
+            cls.pendentes[0].entregar()
+
+    def isRunning(self) -> bool:  # noqa: N802 - o nome é o do `QThread`
+        return self._rodando
+
+    def deleteLater(self) -> None:  # noqa: N802 - o nome é o do `QObject`
+        """`manter_viva` solta a tarefa por aqui no `finished`; sem thread não há o que apagar."""
+
+    def wait(self, _ms: int = 0) -> bool:
+        return not self._rodando
+
+    def cancelar(self) -> None:
+        self._cancelar.set()
+
+    def should_cancel(self) -> bool:
+        return self._cancelar.is_set()
+
+    @property
+    def cancelada(self) -> bool:
+        return self._cancelar.is_set()

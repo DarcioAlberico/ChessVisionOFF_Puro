@@ -184,6 +184,13 @@ class _Classificador:
         return [("x", 0.9) for _ in recortes]
 
 
+SEM_CORRECAO = leitor.OpcoesDoGlifo(
+    colados="nunca", caixa_alta=False, traco=False, marca_fina=False, empilhados=False, italico=False,
+    dicionario=False, numeros=False,
+)
+"""O glifo sem nenhuma das correções: só a segmentação e o classificador (S-860)."""
+
+
 class _Reconhecedor:
     classifier = _Classificador()
 
@@ -193,14 +200,7 @@ def _pelo_leitor(imagem: np.ndarray) -> list[tuple[int, int, int, int]]:
     cruas, _ = leitor.linhas_do_glifo(
         imagem,
         reconhecedor=_Reconhecedor(),
-        colados="nunca",
-        caixa_alta=False,
-        traco=False,
-        marca_fina=False,
-        empilhados=False,
-        italico=False,
-        dicionario=False,
-        numeros=False,
+        opcoes=SEM_CORRECAO,
     )
     return [(c.caixa.x1, c.caixa.y1, c.caixa.x2, c.caixa.y2) for c in cruas]
 
@@ -231,14 +231,7 @@ class FiacaoTests(unittest.TestCase):
             cruas, _ = leitor.linhas_do_glifo(
                 np.stack([cinza] * 3, axis=2),
                 reconhecedor=_Reconhecedor(),
-                colados="nunca",
-                caixa_alta=False,
-                traco=False,
-                marca_fina=False,
-                empilhados=False,
-                italico=False,
-                dicionario=False,
-                numeros=False,
+                opcoes=SEM_CORRECAO,
             )
         retangulos = sorted((c.caixa.y1, c.caixa.y2, c.caixa.x1, c.caixa.x2) for c in cruas)
         inteiras = [(200 + 40 * k, 220 + 40 * k, 0, 316) for k in range(6)]

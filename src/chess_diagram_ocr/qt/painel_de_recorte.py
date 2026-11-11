@@ -30,6 +30,7 @@ from PyQt6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPaintEvent, Q
 from PyQt6.QtWidgets import QToolTip, QWidget
 
 from chess_diagram_ocr.qt import tema
+from chess_diagram_ocr.qt.desenho_de_marcas import pintar_anel
 from chess_diagram_ocr.qt.imagens import pixmap_de_rgb
 from chess_diagram_ocr.ui import recorte_do_diagrama as regra
 from chess_diagram_ocr.ui import tokens
@@ -278,14 +279,7 @@ class PainelDeRecorte(QWidget):
 
     def _anel(self, pintor: QPainter, casa: int, cor: str, *, tracejado: bool = False) -> None:
         retangulo = self.retangulo_da_casa(casa)
-        caneta = QPen(QColor(cor))
-        caneta.setWidthF(max(2.0, retangulo.width() * LARGURA_DO_CONTORNO))
-        if tracejado:
-            caneta.setStyle(Qt.PenStyle.DashLine)
-        pintor.setPen(caneta)
-        pintor.setBrush(Qt.BrushStyle.NoBrush)
-        folga = caneta.widthF() / 2.0
-        pintor.drawRect(retangulo.adjusted(folga, folga, -folga, -folga))
+        pintar_anel(pintor, retangulo, cor, espessura=retangulo.width() * LARGURA_DO_CONTORNO, tracejado=tracejado)
 
     def casas_marcadas(self) -> dict[str, Sequence[int]]:
         """O que está aceso agora, por papel. Existe para o teste afirmar o que a tela diz."""

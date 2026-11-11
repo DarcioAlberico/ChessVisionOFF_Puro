@@ -30,7 +30,7 @@ from chess_diagram_ocr.ui.busy import BusyRegistry, BusyToken
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["Aquecimento", "ESPERA_PARA_AQUECER_MS", "FRASE_SEM_MODELO", "Ocupacao", "frase_de_cancelamento", "sem_modelo"]
+__all__ = ["Aquecimento", "ESPERA_PARA_AQUECER_MS", "FRASE_SEM_MODELO", "Ocupacao", "sem_modelo"]
 
 FRASE_SEM_MODELO = "Modelo de casas não encontrado. Aponte o arquivo .pt em Ferramentas ▸ Configurações…"
 """O que o rodapé diz quando o `.pt` falta: onde se resolve, e não só o nome do arquivo."""
@@ -39,14 +39,6 @@ FRASE_SEM_MODELO = "Modelo de casas não encontrado. Aponte o arquivo .pt em Fer
 def sem_modelo(excecao: object) -> bool:
     """A falha é o `.pt` ausente? É a única que a caixa de erro não deve mostrar como pilha."""
     return isinstance(excecao, FileNotFoundError) and "piece_classifier" in str(excecao)
-
-
-def frase_de_cancelamento(lidos: int) -> str:
-    return (
-        f"Leitura cancelada: {lidos} diagrama(s) lido(s) ficaram na lista."
-        if lidos
-        else "Leitura cancelada antes do primeiro diagrama."
-    )
 
 
 class Ocupacao:
@@ -131,17 +123,6 @@ class Aquecimento:
     def concluido(self) -> bool:
         """A carga já correu (bem ou mal) nesta sessão -- o que o portão `--frio` espera."""
         return self._feito and self._tarefa is None
-
-    def esperar(self, ms: int) -> bool:
-        """Espera a carga em curso ao fechar a janela: um `QThread` filho destruído a correr
-        derruba o processo. `True` quando não há carga ou ela terminou a tempo."""
-        tarefa = self._tarefa
-        if tarefa is None:
-            return True
-        try:
-            return bool(tarefa.wait(ms))
-        except RuntimeError:  # pragma: no cover - a tarefa já foi destruída pelo Qt
-            return True
 
     def agendar(self, parent: QObject | None = None, *, ms: int = ESPERA_PARA_AQUECER_MS) -> None:
         """Aquece quando a janela estiver ociosa há `ms`: cada gesto que a janela anuncia

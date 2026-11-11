@@ -54,6 +54,12 @@ def rodar_python(
     )
 
 
+def iniciar_python(codigo: str) -> subprocess.Popen[bytes]:
+    """`python -c codigo` que **fica rodando**, enxergando este checkout: o processo vivo de que um
+    teste precisa (a trava do caderno em nome de outro programa, S-897). Quem chama o mata."""
+    return subprocess.Popen([sys.executable, "-c", codigo], env=ambiente_com_o_pacote())
+
+
 def rodar_roteiro(
     caminho: Path,
     *,

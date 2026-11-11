@@ -285,7 +285,7 @@ def decidir(
             alta = caixa_pela_altura(float(alturas[linha]), xh, corte=CORTE_ACENTUADA)
             escolhido = acentuadas[escolhido] if idx_to_char[escolhido].isupper() != alta else escolhido
         if base is not None and linha < len(caixas or ()) and linha < len(alturas):
-            descida = float(caixas[linha].y2) - base  # type: ignore[index,union-attr,attr-defined]
+            descida = float(caixas[linha].y2) - base  # type: ignore[index,union-attr]
             escolhido = _pela_descida(escolhido, descida, float(alturas[linha]), xh, probs[linha], idx_to_char, de_char)
         saida.append((idx_to_char[escolhido], float(probs[linha, escolhido])))
     return saida

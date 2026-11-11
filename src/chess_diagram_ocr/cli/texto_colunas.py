@@ -43,16 +43,25 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ..atomic_io import atomic_write_json
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import DEFAULT_DPI, PROJECT_ROOT
 from ..logging_setup import configure_logging
-from . import EXIT_BAD_INPUT, EXIT_FAILURE, add_verbose, cli_errors, confere_baseline
+from . import (
+    EXIT_BAD_INPUT,
+    EXIT_FAILURE,
+    add_baseline_argument,
+    add_pdf_dir_argument,
+    add_verbose,
+    cli_errors,
+    confere_baseline,
+    fronteira,
+)
 
 logger = logging.getLogger(__name__)
 
 ANOTADAS_PADRAO = PROJECT_ROOT / "docs" / "metrics" / "colunas_anotadas.json"
 SAIDA_PADRAO = PROJECT_ROOT / "docs" / "metrics" / "texto_colunas.json"
 
-DPI = 220
+DPI = DEFAULT_DPI
 """O mesmo da aba Texto e da varredura de produção."""
 
 MIN_LINHAS = 6
@@ -108,9 +117,9 @@ def regioes_pela_camada(page: Any) -> list[Any] | None:
     from ..text.leitor import calha_de_linhas
     from ..text.quadros import quadros_da_camada
     from ..text.regioes import detectar_regioes
-    from .texto_ordem import _linhas_da_camada
+    from .texto_ordem import linhas_da_camada
 
-    linhas = _linhas_da_camada(page)
+    linhas = linhas_da_camada(page)
     if len(linhas) < MIN_LINHAS:
         return None
     caixas = [Caixa(int(b[0]), int(b[1]), int(b[2]), int(b[3])) for _, b in linhas]
@@ -212,10 +221,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         epilog="O --baseline reprova se qualquer pagina certa no relatorio anterior estiver errada agora.",
     )
     parser.add_argument("--anotadas", type=Path, default=ANOTADAS_PADRAO, help="O conjunto anotado (JSON).")
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    add_pdf_dir_argument(parser)
     parser.add_argument("--motor", choices=("camada", "glifo"), default="camada", help="Por onde ler a pagina.")
     parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
-    parser.add_argument("--baseline", type=Path, help="Falha (codigo 1) se alguma pagina certa neste relatorio errar.")
+    add_baseline_argument(parser, help="Falha (codigo 1) se alguma pagina certa neste relatorio errar.")
     add_verbose(parser)
     return parser.parse_args(argv)
 
@@ -230,7 +239,9 @@ def main(argv: list[str] | None = None) -> int:
     if (codigo := confere_baseline(args.anotadas, rotulo="--anotadas")) is not None:
         return codigo
 
-    relatorio = medir(carregar_anotadas(args.anotadas), pdf_dir=args.pdf_dir, motor=args.motor)
+    with fronteira(f"--anotadas {args.anotadas}"):
+        anotadas = carregar_anotadas(args.anotadas)
+    relatorio = medir(anotadas, pdf_dir=args.pdf_dir, motor=args.motor)
     atomic_write_json(args.saida, relatorio)
     print(
         f"motor {args.motor}: {relatorio['acertos']} de {relatorio['paginas_medidas']} paginas com a "
@@ -246,7 +257,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{len(relatorio['nao_encontradas'])} pagina(s) de livro que nao esta neste checkout.")
 
     if args.baseline:
-        anterior = json.loads(args.baseline.read_text(encoding="utf-8"))
+        with fronteira(f"--baseline {args.baseline}"):
+            anterior = json.loads(args.baseline.read_text(encoding="utf-8"))
         if anterior.get("motor") not in (None, args.motor):
             logger.error("O baseline foi medido com o motor %s, e esta medicao com %s.", anterior.get("motor"), args.motor)
             return EXIT_BAD_INPUT

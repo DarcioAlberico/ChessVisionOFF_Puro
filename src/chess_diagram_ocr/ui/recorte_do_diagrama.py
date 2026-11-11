@@ -35,6 +35,7 @@ import numpy as np
 
 from chess_diagram_ocr.config import PIECE_CLASSES, UNCERTAIN_SQUARE_THRESHOLD
 from chess_diagram_ocr.fen_utils import square_name
+from chess_diagram_ocr.ui import formato
 from chess_diagram_ocr.ui.board_edit import PIECE_NAMES_PT
 
 __all__ = [
@@ -194,9 +195,9 @@ def dica_da_casa(casa: int, leituras: Sequence[Alternativa], folga: float | None
     Sem leituras -- item da fila, amostra do dataset -- a dica é só o nome da casa.
     """
     partes = [square_name(casa)]
-    partes.extend(f"{leitura.nome} {leitura.probabilidade:.3f}".replace(".", ",") for leitura in leituras)
+    partes.extend(f"{leitura.nome} {formato.decimal(leitura.probabilidade, 3)}" for leitura in leituras)
     if folga is not None and leituras:
-        partes.append(f"margem {folga:.2f}".replace(".", ","))
+        partes.append(f"margem {formato.decimal(folga, 2)}")
     return " · ".join(partes)
 
 

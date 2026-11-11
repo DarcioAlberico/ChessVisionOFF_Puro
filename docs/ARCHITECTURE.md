@@ -109,7 +109,7 @@ Da FEN em diante o caminho se divide em três, e todos partem do mesmo `Recogniz
 
 ### O texto da página (`src/chess_diagram_ocr/text/`)
 
-**Cinquenta módulos, e este documento não os citava** (S-410). O pacote nasceu na Fase 25 e cresceu
+**O pacote tinha cinquenta módulos, e este documento não os citava** (S-410). O pacote nasceu na Fase 25 e cresceu
 por sete fases; descrever a arquitetura deste projeto sem ele é descrever um terço do código como
 se não existisse — e é o mesmo modo de falha que a S-135 mediu nos números: o documento envelhece
 onde ninguém o lê contra o disco.
@@ -125,18 +125,70 @@ palavra, e quem monta parágrafo não sabe o que é um pixel.
 | `leitura_de_linha.py` · `colados.py` · `empilhados.py` | Ler a linha em vez do caractere (S-188), separar glifo colado (S-186) e desempilhar o que a binarização juntou. |
 | `dicionario.py` · `lexico.py` | O léxico que **desempata** entre os candidatos do modelo, e nunca aproxima da palavra mais parecida (S-209). |
 | `caixa_alta.py` · `traco.py` · `italico.py` · `negrito.py` · `numero.py` · `notacao.py` | As correções que dependem do que a letra **é**: altura, proporção, pendor, peso da fonte, dígito e lance. |
-| `paragrafos.py` · `grade.py` · `tabela.py` · `vertical.py` | O que a página tem além de prosa: parágrafo, grade de exercício, tabela e texto girado. |
+| `paragrafos.py` · `grade.py` · `tabela.py` | O que a página tem além de prosa: parágrafo, grade de exercício e tabela. O texto girado (S-197) não é lido na página: a decisão de ângulo mora no `cli/texto_vertical.py`, que a mede (S-855). |
 | `camada.py` · `pdf_pesquisavel.py` | A camada de texto do próprio PDF — como referência (S-194) e como saída invisível sobre a página (S-210). |
 | `documento.py` · `exportacao.py` · `rico.py` | O documento do editor: o `.cvtxt`, o HTML e o texto com formato. |
 | `busca.py` · `paleta.py` · `semelhanca.py` | Achar no texto, colorir por confiança e "aplicar a todos os semelhantes" (S-213). |
 | `treino.py` · `dataset.py` · `coleta.py` · `dedupe.py` · `conflitos.py` · `procedencia.py` | A base de caractere: coletar, inventariar, treinar, e o que fazer com a mesma imagem sob dois rótulos (S-202). |
 | `custo.py` · `transcricao.py` · `calibracao.py` | Quanto o texto custa por página (S-215), a transcrição humana de referência (S-183) e a calibração do classificador. |
+| `binarizacao.py` | Separar tinta de papel numa página escaneada, decidindo pelo resultado e não pelo histograma (S-184). |
+| `trama.py` | Texto sobre trama de meio-tom, e o bloco que engoliu a tabela (S-196, S-199). |
+| `negativo.py` | Texto impresso em negativo: branco sobre tarja preta ou colorida (S-195). |
+| `faixas.py` | Texto claro sobre faixa preta: achar a faixa e devolvê-la como tinta sobre papel (S-599). |
+| `folha_da_camada.py` | A folha do PDF extraída uma vez por leitura, e a vizinha uma vez por varredura (S-851). |
+| `moldura.py` | A moldura que envolve a folha, e por que ela apagava a folha inteira (S-711). |
+| `gigantes.py` | A caixa alta demais para ser letra, que intercalava a coluna inteira (S-712). |
+| `marca_fina.py` | Apóstrofo ou vírgula, decidido pela posição na linha (S-211). |
+| `duas_linhas.py` | O box que engoliu duas linhas (S-198). |
+| `pagina.py` | A ordem em que a página se lê (S-193). |
+| `regioes.py` | Até onde a coluna vale, medido na imagem (S-507). |
+| `quadros.py` | O quadro de largura inteira que cruza a calha com muitas bandas (S-583). |
+| `lado.py` | O lado a jogar lido pelo classificador deste projeto, e não por motor de fora (S-207). |
+| `aumento.py` | O aumento de dados dirigido ao glifo de livro (S-204). |
+| `onnx_glifos.py` | O classificador de caractere exportado para ONNX, com o metadado ao lado (a S-30 para o texto). |
+| `estilo.py` | O estilo da palavra pela imagem: o conjunto rotulado, o classificador e o portão (S-661 a S-663). |
+| `fila.py` | A fila de revisão de caractere, ordenada por valor de informação (S-212). |
+| `correcao.py` | A correção humana: o que a pessoa mudou, e sobre que leitura (S-239). |
+| `sugestao.py` | As sugestões do léxico para uma palavra marcada, ordenadas pelo que o OCR erra (S-657). |
+| `arquivo.py` | O arquivo do editor: o que se grava para poder voltar (S-238). |
+| `rascunho.py` | O rascunho automático da aba de texto, e a recuperação depois do fechamento (S-255). |
+| `caderno.py` | O caderno do livro: cada folha corrigida num arquivo, guardada sem pergunta e nunca podada (S-610). |
+| `caderno_na_suite.py` | O caderno do livro no EPUB/DOCX da suíte: as folhas corrigidas, num formato que a suíte lê (R7). |
+| `leitor_de_linha.py` | O contrato do segundo leitor, `LeitorDeLinha`: quem lê as linhas que o glifo achou (S-720). |
+| `tesseract.py` | O executor do Tesseract: um processo por folha, sem console, sem órfão e sem calar erro (S-720). |
+| `camada_prosa.py` | A prosa da camada, nos livros em que a camada é a tinta (S-716). |
+| `fusao.py` | A prosa de um leitor e a notação de outro: o roteador de tokens (S-716 a S-718). |
+| `guarda_de_leitura.py` | A folha que saiu vazia avisa: a densidade de leitura (S-710). |
+| `admissao.py` | A admissão de folha ao ouro sem rodar OCR nenhum: a camada só é referência quando é a tinta (S-702). |
+| `ouro.py` | O ouro da régua da prosa: que livros e que folhas medem, e em que split (S-702). |
+| `acento.py` | Til contra trema, circunflexo contra agudo: a letra certa com o acento errado (S-735). |
+| `arbitro.py` | O árbitro de notação: a gramática, a continuidade e a legalidade decidem o lance disputado (S-729, S-743). |
+| `bancada_prosa.py` | A bancada da régua da prosa: uma folha, a referência montada, e cada motor lendo a mesma imagem (S-706, S-713). |
+| `cache_texto.py` | A leitura do Tesseract guardada: quem relê uma folha não paga o processo de novo (S-725). |
+| `confianca_palavra.py` | Quanto vale cada palavra da linha fundida: a confiança calibrada por domínio (S-760). |
+| `correcao_no_livro.py` | Corrigir uma vez, corrigir no livro inteiro: as palavras do livro e a troca em todas as folhas do caderno (S-766). |
+| `dado_corrigido.py` | A correção humana como dado, sem contaminar nada (S-762). |
+| `degradacao.py` | Escaneamento simulado de uma folha digital, sem mexer na geometria (S-704). |
+| `espacado.py` | O texto espaçado (*gesperrt*), que é ênfase e não são letras soltas (S-744). |
+| `fronteira.py` | O espaço que o vão entre as caixas não mostra, e o léxico como árbitro dele (S-732). |
+| `ligadura.py` | A ligadura sem o `1` a mais (S-733): `first` saía `fi1rst`, e `flee` saía `f1ee`. |
+| `lingua.py` | A língua do livro: detectada pelas palavras funcionais das primeiras folhas lidas, e a escolhida à mão vence (S-723). |
+| `monitor_prosa.py` | O monitor da prosa sem referência: os sinais, o alarme que a medição deixou, e a folha-canário (S-763). |
+| `palavras_curtas.py` | As palavras curtas que o léxico não tem de propósito, para quem precisa delas (S-732, S-735). |
+| `poeira.py` | A poeira que estica a linha (S-714). |
+| `prata.py` | A prata da régua da prosa: scans reais com camada de terceiro, que **só ordenam** motores (S-705). |
+| `regua_prosa.py` | A régua da prosa: quanto um leitor erra no texto que não é lance nem avaliação (S-700, S-701). |
+| `relatorio_prosa.py` | O relatório da régua da prosa: agrega os registros de folha, sem texto de livro nenhum (S-706, S-705, S-713). |
+| `scan_ouro.py` | O scan-ouro: que folhas escaneadas recebem verdade humana, e em que split (S-703). |
+| `traco_vertical.py` | Traço vertical contra ponto, decidido pela **geometria da caixa** (S-730). |
+| `transcricao_scan.py` | A transcrição do scan-ouro: a verdade humana, às cegas, fora do repositório (S-703). |
 
-Os outros doze são operações de imagem e utilidades da mesma cadeia: `binarizacao.py`,
-`trama.py`, `negativo.py`, `marca_fina.py`, `aumento.py`, `duas_linhas.py`, `correcao.py`,
-`lado.py`, `pagina.py`, `rascunho.py`, `fila.py` e `arquivo.py`.
+A tabela tem todo módulo de `text/`, e `tests/test_docs.py` reprova o que entrar sem linha (S-832):
+a prosa dizia "os outros doze" e não dizia o que cada um faz, e a primeira entrega das Fases 100 a
+107 inteira -- `fusao`, `tesseract`, `leitor_de_linha`, `guarda_de_leitura`, `admissao`, `camada_prosa`,
+`caderno_na_suite` -- entrou sem ser citada.
 
-### A interface (`src/chess_diagram_ocr/qt/` e `src/chess_diagram_ocr/ui/`)
+### A interface (`src/chess_diagram_ocr/qt/`)
 
 A janela é PyQt6 desde 2026-08-31 (S-506). `app_pyqt.py` é a entrada; `qt/janela.py` monta as abas
 ao lado do visualizador, liga sinal a sinal e traduz widget em parâmetro do serviço -- e **nada
@@ -150,20 +202,171 @@ divisão, não o toolkit, que este documento descreve.
 | `painel_do_pdf.py` · `visor.py` | O lado direito: o PDF, a navegação, a seleção, e a página com os diagramas marcados por cima. A roda e o zoom são de `ui/viewport.py`; onde as caixas estão e o que um clique nelas significa, de `ui/page_overlay.py`. |
 | `painel_de_resultado.py` · `tabuleiro_editavel.py` · `tabuleiro.py` | O editor de diagramas reconhecidos: o tabuleiro que se corrige por clique, arrasto e pincel, a FEN, a legalidade e a gravação. O estado é de `ui/editor_model.py` e `ui/board_model.py`; o desenho puro, de `ui/desenho_do_tabuleiro.py`. |
 | `painel_de_estudo.py` · `tabuleiro_de_jogo.py` | A sala de estudo: um estudo por diagrama, árvore de variantes, anotação, motor, e o tabuleiro em que se joga (Fases 43 a 50 e 73 a 77). |
+| `sala_motor.py` · `sala_partidas.py` · `sala_treino.py` · `sala_leiaute.py` | As partes da sala de estudo com estado próprio (S-866): o motor (avaliação, partida inteira, opções), as perguntas à base de partidas e o índice, o treino com o placar, as táticas e a agenda, e a repartição das alças com a régua do tabuleiro (S-551). O painel as compõe e delega os comandos do catálogo. |
+| `sala_lista.py` · `sala_cabecalho.py` · `sala_coluna.py` · `sala_arquivos.py` | Os widgets e as funções da sala de estudo (S-866): a lista de lances com as variantes dobráveis, o cabeçalho da partida e o formulário dele, a faixa de navegação e a miniatura do diagrama, e o estudo que entra e sai -- colar, abrir e salvar PGN, exportar e imprimir. |
 | `painel_de_revisao.py` · `painel_do_dataset.py` · `painel_da_galeria.py` · `painel_de_texto.py` | As abas de Revisão, Dataset, Galeria e Texto. |
+| `texto_espelho.py` · `texto_leitura.py` · `texto_caderno.py` · `texto_miniaturas.py` | As partes da aba Texto com estado próprio (S-865): o documento desenhado no editor com a digitação de volta e a pilha do desfazer, as tarefas (a leitura da folha, as exportações, a volta da Revisão e a folha rasterizada ao fundo), o caderno do livro com o rascunho, o `.cvtxt` e a mesa, e os diagramas no texto com a miniatura, a dica e o menu. O painel as compõe e delega os comandos do catálogo. |
+| `texto_correcao.py` · `texto_vista.py` · `texto_ferramentas.py` | As outras três partes da aba Texto (S-865): o léxico, o pincel, a busca (`JanelaDeBusca`), a paleta de símbolos e o painel de navegação; o zoom, a letra, o modo foco e a barra de estado; e o formato do trecho com os controles da fita que o aplicam. |
 | `menu.py` · `fita.py` · `fila.py` · `barra.py` · `paleta.py` · `atalhos.py` | O menu, as duas peles de cromo (fita e fila), a barra que quebra em vez de cortar, a paleta de comandos e os atalhos -- gerados de `ui/comandos.py` e `ui/atalhos.py`, nunca reescritos. |
 | `tema.py` · `icones.py` · `dica.py` · `legenda.py` | A folha de estilo (os papéis de `ui/tokens.py` virando QSS), os ícones vetoriais, a dica do controle desabilitado e a legenda de atalhos. |
 | `exportador.py` · `dialogos.py` · `trabalho.py` · `campo.py` | A exportação do livro para PGN, os quatro diálogos, o trabalho pesado fora da linha de eventos, e a anotação do conjunto de campo. |
 | `rodape.py` · `tabela.py` · `imagens.py` · `texto_formato.py` · `plataforma.py` | O rodapé, a tabela das mesmas `Coluna`, a ponte `numpy` → `QImage`, os atributos do texto rico virando formato do Qt, e o DPI antes de a janela existir. |
+| `abas_da_suite.py` | As abas emprestadas da suíte (Rotulagem, Revisão de texto) como donas de comandos (OCR_UI ciclo 2, C8). |
+| `acessibilidade.py` | Dá nome acessível a todo controle que ainda não tem um (F9); as regras são de `ui/nomes_acessiveis.py`. |
+| `analise_da_partida.py` | A partida inteira pelo motor, com barra, Cancelar e o gráfico do resultado (S-537). |
+| `areas_de_trabalho.py` | A faixa de abas: a aba `Livro` e as do acervo (OCR_UI passo 17). |
+| `arvore_de_aberturas.py` | A janela da árvore de aberturas: a tabela, a barra de resultado e o clique que anda (S-535). |
+| `barra_da_sala.py` | A barra da sala de estudo: a fila de `qt/barra.py` com a tabela de `ui/barra_da_sala.py` (S-527). |
+| `busca_de_partidas.py` | O diálogo que pergunta à base por jogador, torneio, ano, Elo, resultado e ECO (S-533). |
+| `decisoes_de_diagrama.py` | O gancho que leva a correção feita na janela ao livro, gravando a decisão (OCR_UI ciclo 2, A3). |
+| `desenho_de_marcas.py` | Como uma marca de diagrama aparece: no tabuleiro, no ícone da paleta e sobre o recorte. |
+| `dialogo_de_configuracoes.py` | *Ferramentas ▸ Configurações…*: a janela que grava `data/settings.json`, sobre `ui/configuracoes.py`. |
+| `disposicao_de_mesa.py` | A disposição de mesa: o divisor com os lados trocados (S-640/S-645). |
+| `escala.py` | Aplica a escala tipográfica de `ui/tipografia.py` à janela inteira (F9-C2). |
+| `exportador_de_livro.py` | *Exportar o livro para EPUB…* / *…para DOCX…*: a exportação da suíte, nesta janela. |
+| `fila_de_livros.py` | A fila de PDFs varrida de dentro da janela, com barra por livro e Cancelar (S-546). |
+| `fita_do_texto.py` | A fita da aba Texto: as abas e os grupos de `ui/fita_do_texto.py`, desenhados (S-650, S-652). |
+| `foco_a_vista.py` | O controle que recebe o foco numa rolagem fica à vista inteiro, também quando o foco vem de fora. |
+| `importador_de_imagens.py` | *Importar imagens*: diagramas de fora do programa para o dataset de treino. |
+| `importador_de_livro.py` | *Importar o livro*: a importação da suíte nesta janela, com o trilho de páginas como destino. |
+| `impressao_do_estudo.py` | O estudo impresso e em PDF: a folha desenhada, o diagrama em vetor e a prévia (S-545). |
+| `indice_da_base.py` | O índice por nome construído de dentro da janela, com barra e Cancelar (S-532). |
+| `indice_do_caderno.py` | O índice das folhas do caderno: quanto do livro já foi lido, corrigido e conferido (S-613). |
+| `leitura.py` | A leitura da página como operação com progresso, cancelamento e aquecimento (OCR_UI ciclo 2, C2). |
+| `livro_com_pgn.py` | *Carregar PGN do livro…*: o `.pgn` que vem com o PDF digital, ligado à janela (S-590 a S-595). |
+| `lote_de_diagramas.py` | O diálogo do lote de diagramas: as escolhas, a prévia, a pasta e a thread (S-544). |
+| `marcas.py` | Quais diagramas de um livro já têm amostra gravada, lido fora da thread da janela (F9-C2). |
+| `mesa_destacada.py` | A mesa numa janela própria, o editor e uma vista da folha, para quem tem dois monitores (S-646). |
+| `motor.py` | O painel do motor: a barra vertical ao lado do tabuleiro e as linhas candidatas (S-529). |
+| `painel_de_navegacao.py` | O painel de navegação da aba Texto: títulos, folhas, resultados e correções (S-654). |
+| `painel_de_recorte.py` | O recorte do diagrama, ampliado ao lado do tabuleiro editável (OCR_UI passo 13); a geometria é de `ui/recorte_do_diagrama.py`. |
+| `painel_de_revisao_de_texto.py` | A aba Revisão de texto: a janela de revisão dos trechos duvidosos da suíte (SOL-11). |
+| `painel_de_rotulagem.py` | A aba Rotulagem: a bancada de rotulagem e treino por livro da suíte, dentro desta janela. |
+| `painel_de_treino.py` | A tela de treino: a agenda do dia, o exercício e o placar (S-539 a S-541); a decisão é de `ui/treino_declarado.py`. |
+| `painel_principal.py` | O painel principal: os quatro painéis do diagrama como modos da aba `Livro`, e não como abas (OCR_UI passo 17). |
+| `paleta_de_marcas.py` | A paleta de marcas da conferência de importação: o que o próximo gesto põe no tabuleiro. |
+| `paleta_de_pecas.py` | A paleta de peças da aba Resultado: doze peças, apagar e o pincel visível (S-65/S-506). |
+| `revisao_para_o_caderno.py` | *Trazer as correções da Revisão de texto*: o R7 de volta, do lado do tronco. |
+| `rolagem.py` | A aba que rola quando não cabe na tela (S-552). |
+| `rotulo.py` | O rótulo que encolhe em vez de empurrar a janela, e o separador de bloco (F9-C2). |
+| `tabuleiro_de_marcas.py` | O tabuleiro da conferência de importação: corrige peças e anota as marcas impressas. |
+| `trilho.py` | O trilho de páginas: uma miniatura por página, com estado, ao lado do visor (OCR_UI passo 17); o que cada uma diz é de `ui/trilho.py`. |
+| `vazio.py` | O estado vazio: título, frase e o botão que resolve, dentro do vazio (F9-C2). |
+| `correcao_no_livro.py` | A janela de «Corrigir em todas as folhas» (S-766): quem decide é `text/correcao_no_livro.py`, e aqui só se mostra a prévia. |
+| `modo_transcricao.py` | O modo transcrição da aba Texto: a folha do scan-ouro, linha a linha, às cegas (S-703). |
+| `montagem_da_janela.py` | A montagem da janela: o que existe na tela, e o que cada comando do catálogo faz nela (S-31). |
+| `sessao_da_janela.py` | A sessão da janela: o que ela lembra entre execuções, e como ela fecha (S-31). |
 
-**`ui/` é a camada pura, e é onde mora a regra.** Meia centena de módulos sem toolkit --
-`page_overlay`, `viewport`, `editor_model`, `board_model`, `state`, `comandos`, `atalhos`, `tokens`,
-`tipografia`, `folha`, `pele`, `geometria`, `busy`, `degradacao`, `desfazivel`, `sala_declarada`,
-`texto_declarado` e os outros --, e cada decisão ali tem teste sem janela. `tests/` tem uma
+A tabela tem todo módulo de `qt/`, e `tests/test_docs.py` reprova o que entrar sem linha (S-832).
+
+### A camada pura da interface (`src/chess_diagram_ocr/ui/`)
+
+**`ui/` é a camada pura, e é onde mora a regra.** Os módulos sem toolkit
+estão todos na tabela abaixo, e cada decisão ali tem teste sem janela. `tests/` tem uma
 varredura de importação em cada um: se um toolkit voltar a entrar ali, a suíte reprova. E
 `tests/test_ui_orfaos.py` cobra a segunda pergunta, a que o corte do Tk deixou sem resposta por um
 mês: **de cada decisão pura, quem a chama?** (S-511). Um módulo órfão não quebra teste nenhum,
 porque o teste dele continua verde medindo a decisão sozinha.
+
+| módulo (`ui/`) | responsabilidade |
+|---|---|
+| `state.py` | O estado persistido da aplicação: tipado, versionado e gravado de forma atômica (S-25). |
+| `livros.py` | A identidade de um livro pelo caminho: `ChaveDoLivro`, `chave_do_livro`, `mesmo_livro` (S-827). |
+| `ancora_da_tela.py` | De onde veio um resultado que chega depois: `AncoraDaTela(documento, pagina)` e se ele ainda vale para a tela (S-823). |
+| `ocr_que_falta.py` | A frase de abertura da janela quando o OCR de legenda foi pedido e não subiu, no checkout e no `.exe` (S-884). |
+| `busy.py` | O que está rodando agora, e o que se perde ao fechar a janela (S-60). |
+| `strings.py` | O vocabulário compartilhado da interface: as frases que os painéis repetem (S-04). |
+| `formato.py` | Como um número vira texto na tela, e a precisão que ele não tem (S-169, S-910). |
+| `dispositivos.py` | Em que dispositivo cada um dos dois modelos torch está rodando (S-182). |
+| `plataforma.py` | O que o Windows precisa saber antes de a janela existir: DPI e ícone (S-148). |
+| `geometria.py` | O piso da janela, calculado do que os painéis pedem (S-150). |
+| `degradacao.py` | O contrato de degradação da aparência: cair um degrau, registrar uma vez, nunca levantar (S-234). |
+| `comandos.py` | O catálogo de comandos da janela, declarado como dado (S-324). |
+| `atalhos.py` | Os atalhos de teclado, declarados uma vez (S-161/S-165). |
+| `menu.py` | A barra de menus da janela, declarada como dado (S-161). |
+| `filtro_de_comandos.py` | O que a paleta de comandos decide: o filtro e a ordem (S-231/S-503). |
+| `barra.py` | As duas formas de barra de ferramentas, a que quebra (S-151) e a que enfileira (S-527/S-528); `qt/barra.py` as executa. |
+| `barra_da_sala.py` | A barra da sala de estudo como dado: grupos por tarefa, e o que vai para "Mais" (S-527). |
+| `barra_do_pdf.py` | A barra do painel do PDF como dado: grupos por tarefa, e o que vai para "Mais" (S-528). |
+| `barra_do_resultado.py` | A barra do painel de Resultado como dado: grupos por tarefa, e o que vai para "Mais" (S-528). |
+| `medidas_da_fita.py` | O que a fita é e quanta altura ela custa (S-227/S-228/S-503). |
+| `fita_do_texto.py` | A fita da aba Texto como dado: abas, grupos e os comandos de cada um (S-650). |
+| `abas.py` | O rótulo de uma aba, e quanto trabalho ela carrega (S-162). |
+| `pele.py` | A pele da janela: qual aparência, declarada como dado e guardada no estado (S-221). |
+| `tokens.py` | A paleta do produto num lugar só: papéis semânticos, não hexadecimais (S-145). |
+| `tipografia.py` | A escala de fontes do produto num lugar só: papéis, não números (S-149). |
+| `espaco.py` | As folgas da escala de `tipografia.py` já resolvidas para a densidade da janela (S-447). |
+| `estilos.py` | O papel do botão -- primário, destrutivo ou neutro -- como nome de estilo (S-144). |
+| `folha.py` | O acabamento de base dos controles, herdado da folha do `ttk` (S-441, S-442), que `folha_de_estilo.py` leva ao Qt. |
+| `folha_de_estilo.py` | A folha de estilo do cromo, e a paleta que ela não alcança, sem importar Qt (F9). |
+| `icones.py` | O ícone como traço declarado, desenhado na cor que o token resolve (S-220). |
+| `nomes_acessiveis.py` | Como um controle sem rótulo é anunciado por um leitor de tela (F9). |
+| `estado_do_rodape.py` | O que o rodapé decide e mostra (S-163/S-501). |
+| `tabela.py` | As colunas de uma tabela: o que cada uma é, e o que isso decide (S-153). |
+| `leitura_do_pdf.py` | O que o visualizador de PDF decide fora do widget (S-31/S-69/S-330/S-503). |
+| `viewport.py` | A vista da página: o que a roda faz, para onde o zoom puxa, quanto cabe (S-70). |
+| `page_overlay.py` | Onde estão os diagramas da página exibida, para desenhá-los e para clicá-los (S-68). |
+| `page_results.py` | Os resultados de OCR guardados por página, para navegar sem perder o reconhecimento, e o que a tela faz com a resposta de uma leitura (`responder_a_leitura`, S-867). |
+| `cortina.py` | A cortina de comparação: onde fica a divisa entre o antes e o depois (F9). |
+| `trilho.py` | O que o trilho de páginas diz de cada página (OCR_UI passo 17). |
+| `mesa.py` | A mesa de texto: o PDF à esquerda e o editor à direita, na própria janela (S-640/S-645). |
+| `editor_model.py` | O estado do editor de diagramas, fora do widget (S-49). |
+| `board_model.py` | O estado e as regras do tabuleiro (S-50). |
+| `board_edit.py` | A edição de posição sem regra de lance: mover, pôr e tirar peça (S-20). |
+| `historico.py` | Desfazer e refazer a edição do tabuleiro: uma pilha de posições (S-229). |
+| `desfazivel.py` | Quem desfaz quando se aperta `Ctrl+Z`: o foco decide (S-243). |
+| `teclado_do_tabuleiro.py` | O que cada tecla faz no tabuleiro editável (OCR_UI ciclo 2, C8). |
+| `desenho_do_tabuleiro.py` | Onde o tabuleiro fica e de que cor a casa fala, sem imagem (S-155/S-501). |
+| `conjuntos.py` | O conjunto de peças do tabuleiro, declarado como dado e escolhível (S-230). |
+| `pecas.py` | O desenho derivado do conjunto "traço grosso", em PIL (S-230/S-506). |
+| `recorte_do_diagrama.py` | O recorte do diagrama ao lado do tabuleiro: casa ↔ pixel, as três leituras e a margem. |
+| `legality.py` | O painel de legalidade: o problema em pt-BR e onde ele está (S-21). |
+| `exportacao_de_pgn.py` | O que a exportação do livro inteiro decide fora da janela (S-24/S-31/S-505). |
+| `lote_de_diagramas.py` | O lote de diagramas: o que sai, com que nome, em que formato e de que tamanho (S-544). |
+| `biblioteca.py` | O acervo inteiro como uma decisão só: busca, facetas e a janela que se realiza. |
+| `gallery_model.py` | O estado da galeria: onde estou, o que edito e o que isso grava (S-67). |
+| `galeria_declarada.py` | O que a aba Galeria mede, oferece e relata (S-67/S-120/S-154/S-503). |
+| `resumo_do_dataset.py` | O que a aba Dataset mostra (S-23/S-118/S-149/S-503). |
+| `pedido_de_treino.py` | Os parâmetros do treino e como uma época é lida (S-27/S-310/S-503). |
+| `varredura_de_revisao.py` | Os parâmetros da varredura e o acumulador da fila de revisão (S-116/S-119/S-503). |
+| `escopo_da_varredura.py` | Quais livros a varredura percorre, e a única regra que isso tem (S-119/S-503). |
+| `fila_de_livros.py` | A fila de livros a varrer: estado por livro, transições legais e as frases (S-546). |
+| `field_draft.py` | A anotação de uma página do conjunto de campo, montada na tela (S-77). |
+| `configuracoes.py` | O que a janela *Configurações…* mostra, declarado uma vez. |
+| `escolha_de_bases.py` | Contra quais `.pgn` perguntar, onde mora o cache disso, e o que se perde ao trocar (S-503). |
+| `lista_de_partidas.py` | A partida candidata como linha de tabela: colunas, filtro e o travessão (S-86/S-503). |
+| `busca_de_partidas.py` | O que a busca de partidas pergunta à base, e como ela conta o que achou (S-533). |
+| `indice_da_base.py` | O que a barra do índice da base diz, e quanto ela anda (S-532). |
+| `sala_declarada.py` | O que a sala de estudo declara fora do widget (S-244/S-279/S-280/S-307/S-503). |
+| `estudo_lista.py` | A lista de lances como dado: trechos com papel, nível e caminho (S-273). |
+| `estudo_dobra.py` | Dobrar variantes na lista de lances: o que se esconde, e o que não pode se esconder (S-516). |
+| `cabecalho_da_partida.py` | O cabeçalho da partida na sala: quais campos, como se lê, e o que a edição grava (S-530). |
+| `motor_declarado.py` | O motor como a sala o declara: as opções que se pode mudar e o que o painel mostra (S-529/S-536). |
+| `analise_da_partida.py` | A partida inteira analisada: quanto cada lance custou, e onde o gráfico o desenha (S-537). |
+| `arvore_de_aberturas.py` | O que a árvore de aberturas mostra, em que ordem, e o que ela se recusa a afirmar (S-535). |
+| `finais.py` | O final resolvido por tabela, e não por busca: quando perguntar e o que dizer (S-538). |
+| `impressao_do_estudo.py` | A paginação do estudo impresso: que pedaço de que bloco cai em que página (S-545). |
+| `treino_declarado.py` | O que a tela de treino decide (S-539/S-540/S-541). |
+| `texto_declarado.py` | O que a aba de texto declara fora do widget (S-240/S-262/S-264/S-266/S-423/S-504). |
+| `texto_cores.py` | A cor do autor, e o canal que ela não pode usar (S-242). |
+
+A tabela tem todo módulo de `ui/`, e `tests/test_docs.py` reprova o que entrar sem linha (S-832); ela
+dizia "meia centena" quando eram 78.
+
+**O que saiu: a substituição de diagrama no PDF (retirada na S-881, decisão D7 da solidez).** A F9
+absorveu em 2026-09-07 três módulos para trocar um diagrama impresso por um desenhado dentro do
+próprio PDF do livro: `pdf_substituicao.py` (917 linhas, na raiz do pacote: apagar retângulos,
+carimbar o diagrama novo, inserir o link do Lichess, achar as coordenadas impressas em volta do
+tabuleiro e gravar o PDF de saída), `ui/substituicao.py` (o que é uma substituição, um
+apagamento, o espaço de escrita da página, a assinatura da prévia e a pilha de desfazer) e
+`ui/selecao_de_area.py` (o retângulo vivo sobre a página: alças, arrasto, ajuste fino e
+grampeamento). O painel do Qt que os chamaria nunca veio: nenhum dos três tinha chamador nem
+teste (0% de cobertura em 626 instruções), `pdf_substituicao.achar_coordenadas` era o maior CRAP
+do programa (870), e o código gravava no arquivo do usuário sem recusar `saida == entrada`. Os
+três foram apagados em vez de ligados; quem retomar a funcionalidade os acha no histórico do git,
+no commit anterior ao da S-881. `desenho_de_diagrama.py` ficou, porque a aba Texto e o livro com
+PGN desenham com ele, mas só a saída em PNG: o PDF vetorial e o SVG, que só a substituição pedia,
+saíram com ela.
 
 ---
 
@@ -250,12 +453,12 @@ piorar um livro que já funciona:
 exceção. Vinte e duas são operações longas e estão no `BusyRegistry`; as outras dezesseis são declaradas
 em `ui/busy.py::FORA_DO_REGISTRO`, com o motivo de cada uma (S-112).
 
-**A última é a volta do R7 (2026-10-29, `qt/painel_de_texto.py`).** *Trazer as correções da
+**A última é a volta do R7 (2026-10-29, `qt/texto_leitura.py` desde a S-865).** *Trazer as correções da
 Revisão de texto* pergunta à suíte que folhas o revisor editou, e quando a importação do livro em
 mãos não serve a suíte importa de novo essas páginas, com OCR: registra-se, com «Cancelar» e sem
 `loses_work`, porque nada é gravado no caderno antes de a resposta chegar.
 
-**As três últimas são do caderno do livro (2026-10-24, `qt/painel_de_texto.py`).** A folha aberta
+**As três últimas são do caderno do livro (2026-10-24, `qt/texto_leitura.py` desde a S-865).** A folha aberta
 do caderno é rasterizada ao fundo para as miniaturas (S-612), décimos de segundo com o texto já na
 tela, e fica declarada. A exportação do caderno (S-614) renderiza de novo cada folha com diagrama
 para tirar as miniaturas, e num livro de centenas de folhas isso é minuto: registra-se como a
@@ -328,9 +531,9 @@ Contar só a primeira deixaria de fora a leitura da página, que é o laço inte
 | busca por nome na base | `qt/painel_da_galeria.py` | sim, entre partidas | não, é curta | não |
 | busca por posição na base | `qt/painel_da_galeria.py` | sim, entre pedaços | **sim**, a passada inteira | não |
 | detecção de duplicatas | `qt/painel_do_dataset.py` | não | não, é derivada | não |
-| leitura do texto da página | `qt/painel_de_texto.py` | sim, entre páginas | não, o `.cvtxt` já está em disco | não (é o classificador de caractere) |
-| exportação do texto lido | `qt/painel_de_texto.py` | não | **sim**, o destino fica pela metade | não |
-| avaliação do motor sobre a posição | `qt/painel_de_estudo.py` | não | — declarada | não (é o Stockfish) |
+| leitura do texto da página | `qt/texto_leitura.py` | sim, entre páginas | não, o `.cvtxt` já está em disco | não (é o classificador de caractere) |
+| exportação do texto lido | `qt/texto_leitura.py` | não | **sim**, o destino fica pela metade | não |
+| avaliação do motor sobre a posição | `qt/sala_motor.py` | não | — declarada | não (é o Stockfish) |
 | índice por nome da base de partidas (S-532) | `qt/indice_da_base.py::IndexadorDaBase` | sim, a cada 16 mil linhas | não: cada arquivo é uma transação, e a rodada seguinte retoma | não |
 | busca por jogador, evento, ano, Elo e ECO (S-533) | `qt/busca_de_partidas.py::DialogoDeBusca` | não (dezenas de ms com índice) | — declarada: nada é gravado | não |
 | fila de livros (S-546) | `qt/fila_de_livros.py::VarreduraDeLivros`, uma thread para a fila inteira | sim, entre páginas e entre livros | não: cada livro pronto tem o PGN, e o em curso tem o parcial da S-24 | sim (S-57), um livro de cada vez |
@@ -377,7 +580,7 @@ duplicado e uma linha para um arquivo que este repositório nunca teve.
 |---|---|---|
 | `data/labels.csv` | rótulos: imagem, FEN, lado a jogar, origem, split, e a confirmação de ilegalidade deliberada (`illegal_ok`) | sim |
 | `data/splits.csv` | partição treino/validação/teste, estável sob crescimento, atribuída às amostras novas pelo próprio treino (S-56) | sim |
-| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (5,0 GB) |
+| `data/samples/` | os PNGs 800×800 dos tabuleiros | não (17,1 GB) |
 | `data/field_set.jsonl` | as páginas reais anotadas à mão: a régua de campo (S-41, S-77, S-95) | **sim** |
 | `data/quarantine.csv` | as linhas que o `cvoff-audit --fix` tirou do `labels.csv`, com o motivo | não — `.gitignore:28` |
 | `data/settings.json` | preferências do usuário, incluindo o endpoint remoto | não |

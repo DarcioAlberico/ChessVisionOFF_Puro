@@ -281,6 +281,116 @@ class ListaDeSolucoesTests(unittest.TestCase):
         self.assertEqual({}, taticas.solucoes_da_folha(self._folha_de_solucoes(), []))
 
 
+# As colunas da tabela do `Big Book of Combinations`, na borda esquerda de cada uma: número,
+# jogadores, ano, a solução do autor, o lance do Zarkov e a contagem de nós.
+_X_NUMERO, _X_JOGADORES, _X_ANO, _X_AUTOR, _X_ZARKOV, _X_NOS = 34.0, 60.0, 130.0, 182.0, 230.0, 280.0
+
+
+def _celula(texto: str, x: float, fileira: int, largura: float = 30.0) -> BlocoDeTexto:
+    topo = 100.0 + 12.0 * fileira
+    return _paragrafo(_linha(texto, (x, topo, x + largura, topo + 10.0)))
+
+
+def _tabela(fileiras: list[tuple[str | None, str, str, str]]) -> PaginaLida:
+    """Uma folha de soluções em tabela: `(número, ano, autor, zarkov)` por fileira, `None` onde o
+    número saiu como glifo e não como texto."""
+    blocos: list[BlocoDeTexto] = []
+    for indice, (numero, ano, autor, zarkov) in enumerate(fileiras):
+        if numero is not None:
+            blocos.append(_celula(numero, _X_NUMERO, indice, largura=20.0))
+        blocos.append(_celula("Fulano - Beltrano", _X_JOGADORES, indice, largura=60.0))
+        blocos.append(_celula(ano, _X_ANO, indice))
+        blocos.append(_celula(autor, _X_AUTOR, indice))
+        blocos.append(_celula(zarkov, _X_ZARKOV, indice))
+        blocos.append(_celula(str(56799 + indice), _X_NOS, indice))
+    return _folha(*blocos, pagina=193)
+
+
+class TabelaDeSolucoesTests(unittest.TestCase):
+    """A lista de soluções em tabela é lida por coluna e por fileira, e não como fluxo (S-539)."""
+
+    FILEIRAS: list[tuple[str | None, str, str, str]] = [
+        ("207", "1950", "Rxh7+", "Rxh7+"),
+        ("208", "1951", "Qe4", "Qxe4"),
+        ("209", "1952", "Nf6+", "Nf6+"),
+        ("210", "1953", "Bxg7", "Bxg7"),
+        ("211", "1954", "d5", "d5"),
+        ("212", "1955", "Rd8+", "Rd8+"),
+        ("213", "1956", "Qxh7+", "Qxh7+"),
+        ("214", "1957", "e6", "e6"),
+    ]
+
+    def test_cada_numero_recebe_o_lance_da_propria_fileira(self) -> None:
+        achados = taticas.solucoes_da_folha(_tabela(self.FILEIRAS), range(207, 215))
+        self.assertEqual({int(n): (autor,) for n, _ano, autor, _z in self.FILEIRAS if n}, achados)
+
+    def test_numero_das_outras_colunas_nao_abre_exercicio(self) -> None:
+        """Lida como fluxo, a contagem de nós `56801` e o ano `1950` seriam números à procura de
+        lance; na tabela só a coluna do número conta."""
+        achados = taticas.solucoes_da_folha(_tabela(self.FILEIRAS), [1950, 56801, 209])
+        self.assertEqual({209: ("Nf6+",)}, achados)
+
+    def test_o_lance_do_zarkov_cobre_o_do_autor_ilegivel_e_o_do_autor_vence(self) -> None:
+        fileiras = list(self.FILEIRAS)
+        fileiras[1] = ("208", "1951", "Q#e?", "Qxe4")
+        achados = taticas.tabela_de_solucoes(_tabela(fileiras))
+        self.assertEqual(("Qxe4",), achados[208], "a segunda leitura do livro cobre a primeira")
+        self.assertEqual(("Rxh7+",), achados[207])
+        self.assertEqual(("Qe4",), taticas.tabela_de_solucoes(_tabela(self.FILEIRAS))[208])
+
+    def test_a_camada_que_parte_o_numero_e_troca_o_digito_ainda_e_lida(self) -> None:
+        """`':1 07'` e `RxfS` são o que a camada da folha 193 devolve para 107 e `Rxf5`."""
+        fileiras = list(self.FILEIRAS)
+        fileiras[0] = (":2 07", "1950", "RxhS", "RxhS")
+        self.assertEqual(("Rxh5",), taticas.tabela_de_solucoes(_tabela(fileiras))[207])
+
+    def test_fileira_sem_lance_legivel_fica_de_fora(self) -> None:
+        fileiras = list(self.FILEIRAS)
+        fileiras[3] = ("210", "1953", "???", "--")
+        achados = taticas.tabela_de_solucoes(_tabela(fileiras))
+        self.assertNotIn(210, achados)
+        self.assertEqual(7, len(achados))
+
+    def test_a_coluna_que_conta_vence_a_dos_anos_quando_os_numeros_viram_glifo(self) -> None:
+        """Os primeiros números da lista saíram como glifo: a coluna do número tem menos células
+        que a do ano, e é a contagem de um em um, e não o tamanho, que a escolhe."""
+        anos = [str(1840 + 8 * i) for i in range(10)]
+        lances = ["Rxh7+", "Qe4", "Nf6+", "Bxg7", "d5", "Rd8+", "Qxh7+", "e6", "Kg2", "a4"]
+        fileiras = [
+            (None if i < 3 else str(300 + i), anos[i], lances[i], lances[i]) for i in range(10)
+        ]
+        achados = taticas.tabela_de_solucoes(_tabela(fileiras))
+        self.assertEqual(list(range(303, 310)), sorted(achados))
+        self.assertEqual(("Kg2",), achados[308])
+
+    def test_folha_sem_coluna_de_lance_cai_na_leitura_por_fluxo(self) -> None:
+        """Seis números empilhados e nenhuma coluna de lance: a tabela não reclama a folha, e a
+        caminhada por token a lê."""
+        pagina = _folha(
+            *(_paragrafo(_linha(f"{70 + i}. Fulano, 1898. 1.Qxf7#", (10, 10 + 14 * i, 300, 22 + 14 * i))) for i in range(6))
+        )
+        self.assertEqual({}, taticas.tabela_de_solucoes(pagina))
+        self.assertEqual(
+            dict.fromkeys(range(70, 76), ("1.Qxf7#",)), taticas.solucoes_da_folha(pagina, range(70, 76))
+        )
+
+    def test_folha_curta_ou_ausente_nao_e_tabela(self) -> None:
+        self.assertEqual({}, taticas.tabela_de_solucoes(None))
+        self.assertEqual({}, taticas.tabela_de_solucoes(_tabela(self.FILEIRAS[:5])))
+        achatada = _folha(*(_celula(str(207 + i), _X_NUMERO, 0) for i in range(8)))
+        degenerada = PaginaLida(
+            pagina=0,
+            colunas=(
+                Coluna(
+                    indice=0,
+                    blocos=tuple(_paragrafo(_linha(str(207 + i), (34, 100, 54, 100))) for i in range(8)),
+                ),
+            ),
+        )
+        self.assertEqual({}, taticas.tabela_de_solucoes(degenerada), "altura zero não é linha")
+        self.assertEqual({}, taticas.tabela_de_solucoes(achatada))
+
+
 class LinhaAoLadoTests(unittest.TestCase):
     """O gabarito impresso junto do diagrama, para os livros sem lista no fim."""
 
@@ -332,6 +442,21 @@ class ValidacaoDaSolucaoTests(unittest.TestCase):
         self.assertEqual(("Qxf7#",), solucao.lances)
         self.assertFalse(solucao.fechou)
         self.assertIn("Qh8", solucao.motivo + solucao.token)
+
+    def test_solucao_numerada_no_meio_da_partida_fecha(self) -> None:
+        """S-899: livro de partidas imprime `4.Qxf7#`, e não `1.Qxf7#`. O tabuleiro nascia no
+        lance 1 e `validar` recusava o número; agora o número e o lado saem do primeiro lance."""
+        mate_do_pastor = "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR"
+        solucao = taticas.validar_solucao(mate_do_pastor, ["4.Qxf7#"])
+        self.assertEqual((("Qxf7#",), "w", True), (solucao.lances, solucao.vez, solucao.fechou))
+        mate_do_louco = "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR"
+        solucao = taticas.validar_solucao(mate_do_louco, ["2...Qh4#"], vez="w")
+        self.assertEqual((("Qh4#",), "b", True), (solucao.lances, solucao.vez, solucao.fechou))
+
+    def test_o_numero_do_problema_antes_da_linha_nao_e_o_do_lance(self) -> None:
+        """«12. 1.Qxf7#»: o número que vale é o grudado no primeiro lance."""
+        mate_do_pastor = "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR"
+        self.assertEqual(("Qxf7#",), taticas.validar_solucao(mate_do_pastor, ["12.", "1.Qxf7#"]).lances)
 
     def test_posicao_ilegal_nao_derruba_o_modulo(self) -> None:
         solucao = taticas.validar_solucao("isto-nao-e-uma-fen", ["1.", "e4"])

@@ -71,7 +71,6 @@ def corrigir(
                         min(caixa.y1, haste.y1),
                         max(caixa.x2, haste.x2),
                         max(caixa.y2, haste.y2),
-                        caixa.angulo,
                     )
                 )
                 saida.append((char, min(conf, lidos[k + 1][1])))

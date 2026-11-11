@@ -8,7 +8,6 @@ já produzia antes de haver formatação nenhuma.
 
 from __future__ import annotations
 
-import ast
 import unittest
 from pathlib import Path
 
@@ -342,18 +341,6 @@ class EdicaoTests(unittest.TestCase):
 
 
 class FronteiraTests(unittest.TestCase):
-    def test_o_modulo_nao_importa_tkinter(self) -> None:
-        """A mesma varredura da S-145 sobre `ui/tokens.py`, e pelo mesmo motivo: o documento que
-        sobrevive ao widget não pode depender do widget."""
-        arvore = ast.parse(Path(rico.__file__).read_text(encoding="utf-8"))
-        importados: set[str] = set()
-        for no in ast.walk(arvore):
-            if isinstance(no, ast.Import):
-                importados.update(alias.name.split(".")[0] for alias in no.names)
-            elif isinstance(no, ast.ImportFrom) and no.module:
-                importados.add(no.module.split(".")[0])
-        self.assertNotIn("tkinter", importados)
-
     def test_o_modulo_nao_importa_a_interface(self) -> None:
         """`cor` é nome de domínio, e quem o resolve em tinta é a interface -- como `PAPEL_DA_FAIXA`."""
         texto = Path(rico.__file__).read_text(encoding="utf-8")

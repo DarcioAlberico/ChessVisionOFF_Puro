@@ -111,14 +111,6 @@ class EmBlocoTests(unittest.TestCase):
         self.assertEqual(0.4, divergente.confianca)
         self.assertEqual(0.95, concordante.confianca)
 
-    def test_a_linha_girada_cai_no_modo_por_caractere(self) -> None:
-        """A faixa deixa de ser um retângulo em pé, e endireitá-la é problema da S-197."""
-        girada = (Caixa(0, 0, 10, 20, 90), Caixa(10, 0, 20, 20, 90), Caixa(20, 0, 30, 20, 90))
-        leitor = LeitorFalso("Bib")
-        saida = em_bloco(self._cinza(), girada, self.LIDOS, leitor)
-        self.assertEqual(["B", "1", "b"], [item.caractere for item in saida])
-        self.assertEqual(0, leitor.chamadas, "o leitor de linha não devia nem ter sido chamado")
-
     def test_o_leitor_que_nao_le_nada_nao_apaga_a_leitura_por_caractere(self) -> None:
         saida = em_bloco(self._cinza(), self.LINHA, self.LIDOS, LeitorFalso(""))
         self.assertEqual(["B", "1", "b"], [item.caractere for item in saida])

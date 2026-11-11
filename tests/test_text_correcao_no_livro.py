@@ -199,8 +199,8 @@ class JanelaTests(_ComCaderno):
         super().setUp()
         aplicacao()
         self.painel = mock.MagicMock()
-        self.painel.caderno_aberto = self.cad
-        self.painel._guardar_a_folha.return_value = True  # noqa: SLF001
+        self.painel.caderno.aberto = self.cad
+        self.painel.caderno.guardar_a_folha.return_value = True  # noqa: SLF001
 
     def _nova(self, antes: str = "Gelfmnd", depois: str = "Gelfand") -> Any:
         from PyQt6.QtWidgets import QWidget
@@ -243,13 +243,13 @@ class JanelaTests(_ComCaderno):
         janela = self._nova()
         janela.btn_previa.click()
         janela.btn_aplicar.click()
-        self.painel._guardar_a_folha.assert_called_once()  # noqa: SLF001
+        self.painel.caderno.guardar_a_folha.assert_called_once()  # noqa: SLF001
 
     def test_a_folha_da_tela_que_nao_grava_nao_deixa_trocar(self) -> None:
         self.guardar(0, "the Gelfmnd line")
         janela = self._nova()
         janela.btn_previa.click()
-        self.painel._guardar_a_folha.return_value = False  # noqa: SLF001
+        self.painel.caderno.guardar_a_folha.return_value = False  # noqa: SLF001
         janela.btn_aplicar.click()
         self.assertIn("Gelfmnd", self.cad.folha(0).para_texto())
         self.painel.folhas_corrigidas_no_livro.assert_not_called()
@@ -258,10 +258,10 @@ class JanelaTests(_ComCaderno):
         self.guardar(0, "the Gelfmnd line")
         janela = self._nova()
         janela.btn_previa.click()
-        self.painel.caderno_aberto = object()
+        self.painel.caderno.aberto = object()
         janela.btn_aplicar.click()
         self.assertIn("Gelfmnd", self.cad.folha(0).para_texto())
-        self.painel._guardar_a_folha.assert_not_called()  # noqa: SLF001
+        self.painel.caderno.guardar_a_folha.assert_not_called()  # noqa: SLF001
         self.assertFalse(janela.btn_aplicar.isEnabled())
         self.assertIsNone(janela.ver_previa())
 
@@ -291,20 +291,20 @@ class PainelTests(unittest.TestCase):
         self.painel = PainelDeTexto(dpi=72, pasta_de_rascunhos=self.pasta / "rascunhos", pasta_de_cadernos=self.pasta / "cadernos")
         self.addCleanup(descartar, self.painel)
         self.painel.definir_livro(self.pdf, pagina=0)
-        cad = self.painel._caderno  # noqa: SLF001
+        cad = self.painel.caderno.aberto  # noqa: SLF001
         assert cad is not None
         self.cad = cad
         self.cad.guardar_leitura(folha(0, "the Gelfmnd line", documento=str(self.pdf)), motor="fusao")
-        self.painel._abrir_do_caderno(0)  # noqa: SLF001
+        self.painel.caderno.abrir_do_caderno(0)  # noqa: SLF001
 
     def test_a_correcao_na_tela_ensina_o_lexico_ao_gravar(self) -> None:
-        self.painel._aplicar(corrigido(self.painel.documento, "Gelfmnd", "Xyzzyq"))  # noqa: SLF001
-        self.assertTrue(self.painel._guardar_a_folha())  # noqa: SLF001
+        self.painel.espelho.aplicar(corrigido(self.painel.documento, "Gelfmnd", "Xyzzyq"))  # noqa: SLF001
+        self.assertTrue(self.painel.caderno.guardar_a_folha())  # noqa: SLF001
         self.assertIn("xyzzyq", self.cad.lexico())
 
     def test_o_comando_abre_com_a_ultima_correcao(self) -> None:
         self.cad.guardar_leitura(folha(1, "more Gelfmnd here", documento=str(self.pdf)), motor="fusao")
-        self.painel._aplicar(corrigido(self.painel.documento, "Gelfmnd", "Gelfand"))  # noqa: SLF001
+        self.painel.espelho.aplicar(corrigido(self.painel.documento, "Gelfmnd", "Gelfand"))  # noqa: SLF001
         janela = self.painel.corrigir_em_todas_as_folhas()
         self.addCleanup(descartar, janela)
         self.assertEqual((janela.campo_antes.text(), janela.campo_depois.text()), ("Gelfmnd", "Gelfand"))
@@ -324,7 +324,7 @@ class PainelTests(unittest.TestCase):
         self.assertIn("the Gelfand line", self.painel.documento.para_texto())
 
     def test_sem_caderno_diz_e_nao_abre(self) -> None:
-        self.painel._caderno = None  # noqa: SLF001
+        self.painel.caderno._caderno = None  # noqa: SLF001
         frases: list[str] = []
         self.painel.estado.connect(frases.append)
         self.assertIsNone(self.painel.corrigir_em_todas_as_folhas())
@@ -340,17 +340,17 @@ class NaJanelaDeVerdadeTests(_JanelaComLivro):
         janela = self.janela()
         janela.show()
         painel = janela.texto
-        cad = painel.caderno_aberto
+        cad = painel.caderno.aberto
         assert cad is not None
         cad.guardar_leitura(folha(0, "the Gelfmnd line", documento=str(self.livro)), motor="fusao")
         cad.guardar_leitura(folha(1, "more Gelfmnd here", documento=str(self.livro)), motor="fusao")
-        painel._abrir_do_caderno(0)  # noqa: SLF001
+        painel.caderno.abrir_do_caderno(0)  # noqa: SLF001
         self.app.processEvents()
         return janela, painel, cad
 
     def abrir_a_troca(self, janela: Any, painel: Any) -> Any:
         janela._comandos()["corrigir_em_todas_as_folhas"]()  # noqa: SLF001
-        troca = painel._janela_de_correcao_no_livro  # noqa: SLF001
+        troca = painel.caderno._janela_de_correcao_no_livro  # noqa: SLF001
         self.addCleanup(descartar, troca)
         troca.campo_antes.setText("Gelfmnd")
         troca.campo_depois.setText("Gelfand")
@@ -403,10 +403,10 @@ class NaJanelaDeVerdadeTests(_JanelaComLivro):
         janela.abrir_pdf(outro)
         self.app.processEvents()
         self._esperar_o_detector(janela)
-        novo = painel.caderno_aberto
+        novo = painel.caderno.aberto
         self.assertIsNot(novo, cad)
         novo.guardar_leitura(folha(0, "o texto do livro novo", documento=str(outro)), motor="fusao")
-        painel._abrir_do_caderno(0)  # noqa: SLF001
+        painel.caderno.abrir_do_caderno(0)  # noqa: SLF001
         self.digitar(painel, "ABC")
 
         troca.btn_aplicar.click()
@@ -445,11 +445,11 @@ class LeituraDaAbaTests(unittest.TestCase):
         painel = PainelDeTexto(dpi=72, pasta_de_rascunhos=pasta / "rascunhos", pasta_de_cadernos=pasta / "cadernos")
         self.addCleanup(descartar, painel)
         painel.definir_livro(pdf, pagina=0)
-        caixa = painel.escolha_de_motor
+        caixa = painel.leitura.escolha_de_motor
         caixa.setCurrentIndex(caixa.findData("fusao"))
         caixa.activated.emit(caixa.currentIndex())
         if com_a_palavra:
-            painel._caderno.acrescentar_ao_lexico("Xyzzyq")  # noqa: SLF001
+            painel.caderno.aberto.acrescentar_ao_lexico("Xyzzyq")  # noqa: SLF001
         cruas = [leitor._Cru(texto="o Xyzzyq vence", caixa=Caixa(58, 50 + 18 * n, 300, 63 + 18 * n), confianca=0.9, procedencia="glifo") for n in range(30)]  # noqa: SLF001
         with (
             mock.patch.object(leitor, "linhas_do_glifo", return_value=(cruas, [])),
@@ -457,7 +457,7 @@ class LeituraDaAbaTests(unittest.TestCase):
             mock.patch("chess_diagram_ocr.text.leitor_de_linha.leitor_padrao", return_value=Falso()),
         ):
             painel.ler()
-            tarefa = painel._tarefa  # noqa: SLF001
+            tarefa = painel.leitura.tarefa  # noqa: SLF001
             self.assertIsNotNone(tarefa)
             self.assertTrue(tarefa.wait(30_000))  # type: ignore[union-attr]
             app.processEvents()

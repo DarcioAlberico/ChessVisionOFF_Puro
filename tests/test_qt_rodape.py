@@ -256,9 +256,25 @@ class OcupacaoTests(unittest.TestCase):
         rod._btn_cancelar.click()
         self.assertEqual(chamadas, ["cancelou"])
 
-    def test_sem_cancelador_o_clique_nao_levanta(self) -> None:
+    def test_sem_cancelador_o_clique_nao_muda_nada(self) -> None:
+        """O contrato é justamente «não faz nada» (S-872): então o rodapé fica igual, widget a
+        widget -- texto, habilitado e visível --, e a barra no mesmo modo."""
+        from PyQt6.QtWidgets import QAbstractButton, QLabel, QProgressBar
+
+        def retrato() -> list[tuple[object, ...]]:
+            linhas: list[tuple[object, ...]] = [("modo", self.rodape._modo_da_barra)]
+            for filho in self.rodape.findChildren(QLabel):
+                linhas.append(("rotulo", filho.text(), filho.isVisibleTo(self.rodape)))
+            for filho in self.rodape.findChildren(QAbstractButton):
+                linhas.append(("botao", filho.text(), filho.isEnabled(), filho.isVisibleTo(self.rodape)))
+            for filho in self.rodape.findChildren(QProgressBar):
+                linhas.append(("barra", filho.minimum(), filho.maximum(), filho.value()))
+            return linhas
+
         self.rodape.aplicar_ocupacao([operacao(cancellable=True)])
+        antes = retrato()
         self.rodape._btn_cancelar.click()
+        self.assertEqual(retrato(), antes)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

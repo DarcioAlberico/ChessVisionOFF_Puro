@@ -225,7 +225,7 @@ class LinhasDoGlifoTests(unittest.TestCase):
 
     def _caixas(self, imagem: np.ndarray) -> list[tuple[float, float, float, float]]:
         cruas, _ = leitor.linhas_do_glifo(
-            imagem, (), reconhecedor=_Reconhecedor(), colados="nunca", dicionario=False, dpi=None
+            imagem, (), reconhecedor=_Reconhecedor(), opcoes=leitor.OpcoesDoGlifo(colados="nunca", dicionario=False), dpi=None
         )
         return [(c.caixa.x1, c.caixa.y1, c.caixa.x2, c.caixa.y2) for c in cruas]
 
@@ -268,7 +268,7 @@ class LinhasDoGlifoTests(unittest.TestCase):
 
         rec = _Reconhecedor()
         rec.classifier = Espia()  # type: ignore[assignment]
-        cruas, _ = leitor.linhas_do_glifo(imagem, (), reconhecedor=rec, colados="nunca", dicionario=False, dpi=None)
+        cruas, _ = leitor.linhas_do_glifo(imagem, (), reconhecedor=rec, opcoes=leitor.OpcoesDoGlifo(colados="nunca", dicionario=False), dpi=None)
         self.assertIn(self.ALTURA + 11, alturas)
         self.assertEqual(cruas[0].caixa.y2, 100 + self.ALTURA + int(poeira.CAIXA_ABAIXO_DO_MIOLO * self.ALTURA))
 

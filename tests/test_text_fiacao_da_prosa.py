@@ -94,6 +94,7 @@ class _ComLivro(unittest.TestCase):
 
     def ler(self, motor: str, cruas: Sequence[Any], *, diagramas: Sequence[Any] = (), **opcoes: Any) -> pagina.PaginaLida:
         with (
+            mock.patch.object(leitor, "_reconhecedor_configurado", return_value=mock.MagicMock(name="glifo")),
             mock.patch.object(leitor, "linhas_do_glifo", return_value=(list(cruas), [])),
             mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=list(diagramas)),
         ):
@@ -289,6 +290,17 @@ class ReservaTests(_ComLivro):
         self.assertTrue(lida.marca_por_palavra)
         self.assertEqual(sum(len(linha.revisar_em) for linha in _linhas(lida)), 1)
 
+    def test_a_palavra_com_espaco_dentro_nao_desloca_as_confiancas(self) -> None:
+        """U+2009 dentro da palavra do Tesseract: a dúvida fica na palavra em que ele duvidou (S-853)."""
+        textos = ["white knight", "pawn", *(["white"] * 23)]
+        palavras = [
+            tesseract.Palavra(t, 0.2 if t == "pawn" else 0.99, (180 + 40 * n, 100, 210 + 40 * n, 140), linha=0)
+            for n, t in enumerate(textos)
+        ]
+        lida = self.ler("glifo", [_crua("h", 50)], leitor_de_linha=_Falso(folha=palavras), reserva=True)
+        marcadas = [linha.texto[a:b] for linha in _linhas(lida) for a, b in linha.revisar_em]
+        self.assertEqual(marcadas, ["pawn"])
+
     def test_a_partida_na_calha_nao_parte_no_espaco(self) -> None:
         palavras = [tesseract.Palavra(t, 0.9, (100 + 80 * n, 100, 170 + 80 * n, 125)) for n, t in enumerate("abc")]
         self.assertEqual(len(leitor._partida_no_vao(palavras)), 1)  # noqa: SLF001
@@ -343,6 +355,16 @@ class CamadaNaFolhaPerdidaTests(_ComLivro):
         montada = leitor._camada_montada([_crua("Nf6", 50)], palavras, leituras, ESCALA)[0]  # noqa: SLF001
         self.assertEqual(montada.texto, "Nf6")
         self.assertEqual(montada.revisar_em, ())
+
+    def test_a_reserva_que_nao_le_avisa(self) -> None:
+        """A falha do leitor era jogada fora neste ramo, e os outros dois a avisam (S-853)."""
+        falso = _Falso(falha="Sem Tesseract.")
+        with mock.patch.object(camada_prosa, "palavras_da_folha", return_value=self._suspeita()):
+            lida = self.ler("camada_prosa", [_crua("h", 50)], leitor_de_linha=falso, reserva=True)
+        self.assertIsNotNone(falso.cinza, "a palavra suspeita tem de chamar o leitor")
+        self.assertEqual([a.codigo for a in lida.avisos], [pagina.CAMADA_NA_FOLHA, pagina.LEITOR_INDISPONIVEL])
+        self.assertIn("Sem Tesseract.", lida.avisos[1].mensagem)
+        self.assertIn(LINHA, lida.texto(com_marcas=False), "e a folha continua lida pela camada")
 
     def test_sem_palavra_suspeita_o_tesseract_nem_abre(self) -> None:
         falso = _Falso()
@@ -605,15 +627,19 @@ class _Classificador:
         return [("a", 0.5 + i / 1000) for i in range(len(recortes))]
 
 
+SEM_CORRECAO = leitor.OpcoesDoGlifo(
+    colados="nunca", caixa_alta=False, traco=False, marca_fina=False, empilhados=False, italico=False,
+    dicionario=False, numeros=False,
+)
+"""O glifo sem nenhuma das correções: só a segmentação e o classificador (S-860)."""
+
+
 class ConfiancaPorCaractereTests(unittest.TestCase):
     def test_um_numero_por_caractere_que_nao_e_espaco(self) -> None:
         imagem = np.full((200, 800, 3), 255, dtype=np.uint8)
         cv2.putText(imagem, "white wins a pawn", (40, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 2, cv2.LINE_AA)
         reconhecedor = mock.Mock(classifier=_Classificador(), _leitor_de_linha=None)
-        cruas, _ = leitor.linhas_do_glifo(
-            imagem, reconhecedor=reconhecedor, colados="nunca", caixa_alta=False, traco=False, marca_fina=False,
-            empilhados=False, italico=False, dicionario=False, numeros=False,
-        )
+        cruas, _ = leitor.linhas_do_glifo(imagem, reconhecedor=reconhecedor, opcoes=SEM_CORRECAO)
         self.assertTrue(cruas)
         self.assertEqual(len(cruas[0].confiancas), len("".join(cruas[0].texto.split())))
 
@@ -840,20 +866,57 @@ class PalavraSuspeitaTests(unittest.TestCase):
         linhas, fora = camada_prosa.por_linha([caixa], [palavra])
         self.assertEqual((len(linhas[0]), fora), (1, []))
 
-    def test_o_perfil_do_livro_e_calculado_uma_vez(self) -> None:
-        documento_falso = mock.Mock(page_count=5)
-        documento_falso.name = "uma-vez.pdf"
-        with mock.patch.object(camada_prosa.admissao, "perfil_do_livro", return_value="perfil") as perfil:
-            camada_prosa.perfil_em_memoria(documento_falso)
-            camada_prosa.perfil_em_memoria(documento_falso)
-        camada_prosa._perfis.clear()  # noqa: SLF001
-        perfil.assert_called_once()
-
     def test_vale_a_linha_de_centro_mais_proximo(self) -> None:
         caixas = [(0.0, 0.0, 100.0, 10.0), (0.0, 10.5, 100.0, 20.5)]
         palavra = camada_prosa.PalavraDaCamada("x", (10.0, 10.5, 20.0, 12.5))  # centro em 11,5, na segunda
         linhas, _ = camada_prosa.por_linha(caixas, [palavra])
         self.assertEqual([len(linha) for linha in linhas], [0, 1])
+
+
+class PerfilEmMemoriaTests(unittest.TestCase):
+    """O perfil do livro (S-716) é guardado por documento, e o documento é o do disco (S-850)."""
+
+    def setUp(self) -> None:
+        camada_prosa._perfis.clear()  # noqa: SLF001
+        self.addCleanup(camada_prosa._perfis.clear)  # noqa: SLF001
+
+    @staticmethod
+    def _bytes(titulo: str) -> bytes:
+        import fitz
+
+        with fitz.open() as rascunho:
+            rascunho.new_page().insert_text((50, 100), f"O livro {titulo}.", fontsize=11)
+            rascunho.set_metadata({"title": titulo})
+            return rascunho.tobytes()
+
+    def test_o_perfil_do_livro_do_disco_e_calculado_uma_vez(self) -> None:
+        import fitz
+
+        caminho = pasta_temporaria(self) / "uma-vez.pdf"
+        caminho.write_bytes(self._bytes("A"))
+        with mock.patch.object(camada_prosa.admissao, "perfil_do_livro", return_value="perfil") as perfil:
+            for _ in range(2):
+                with fitz.open(caminho) as documento:
+                    camada_prosa.perfil_em_memoria(documento)
+        perfil.assert_called_once()
+
+    def test_o_livro_de_bytes_nao_herda_o_perfil_de_outro(self) -> None:
+        """Dois documentos de bytes, do mesmo tamanho, abertos e fechados em sequência: sem nome, a chave
+        era `id(doc)`, o id do primeiro voltava no segundo e o livro B lia com o perfil do livro A."""
+        import fitz
+
+        def perfil_pelo_titulo(documento: Any) -> str:
+            return str(documento.metadata["title"])
+
+        vistos = []
+        with mock.patch.object(camada_prosa.admissao, "perfil_do_livro", side_effect=perfil_pelo_titulo) as perfil:
+            for titulo in ("A", "B", "C"):
+                documento = fitz.open("pdf", self._bytes(titulo))
+                vistos.append(camada_prosa.perfil_em_memoria(documento))
+                documento.close()
+                del documento
+        self.assertEqual(vistos, ["A", "B", "C"])
+        self.assertEqual(perfil.call_count, 3)
 
 
 class GuardaTests(unittest.TestCase):

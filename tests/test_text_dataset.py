@@ -217,14 +217,14 @@ class SplitPorLivroTests(unittest.TestCase):
     def test_nenhuma_pagina_atravessa_o_split(self) -> None:
         """Página vive dentro de livro: livro inteiro de um lado é a garantia mais forte."""
         y, grupos, livros = self._base()
-        lado = split_por_livro(y, grupos, livros, semente=1)
-        self.assertEqual([], livros_em_dois_lados(livros, lado))
+        lado, aptos = split_por_livro(y, grupos, livros, semente=1)
+        self.assertEqual([], livros_em_dois_lados(livros, lado, aptos=aptos))
         self.assertEqual([], vazamento(grupos, lado))
 
     def test_existe_um_livro_so_do_teste(self) -> None:
         """É o único número que fala sobre fonte nova, e sem ele a fase não mede o que promete."""
         y, grupos, livros = self._base()
-        lado = split_por_livro(y, grupos, livros, semente=1)
+        lado, aptos = split_por_livro(y, grupos, livros, semente=1)
         no_teste = set(livros[lado == TESTE].tolist())
         no_treino = set(livros[lado == TREINO].tolist())
         self.assertTrue(no_teste)
@@ -235,24 +235,46 @@ class SplitPorLivroTests(unittest.TestCase):
         y = np.tile(np.arange(4), 250).astype(np.int32)
         grupos = np.arange(y.size, dtype=np.int32)
         livros = np.array([0] * 900 + [1] * 50 + [2] * 50, dtype=np.int32)
-        lado = split_por_livro(y, grupos, livros, semente=0)
+        lado, aptos = split_por_livro(y, grupos, livros, semente=0)
         self.assertTrue((lado == VALIDACAO).any())
         self.assertTrue((lado == TESTE).any())
 
     def test_amostra_sem_livro_fica_fora_do_teste(self) -> None:
         y, grupos, livros = self._base()
         livros[:40] = -1
-        lado = split_por_livro(y, grupos, livros, semente=1)
+        lado, aptos = split_por_livro(y, grupos, livros, semente=1)
         self.assertEqual({TREINO}, set(lado[livros == -1].tolist()))
 
     def test_o_grupo_de_quase_duplicata_nao_atravessa(self) -> None:
         """Irmã em dois livros não pode ser atômica e livro-pura ao mesmo tempo: volta ao treino."""
         y, grupos, livros = self._base()
         grupos[40] = grupos[0]  # une uma amostra do livro 0 com uma do livro 1
-        lado = split_por_livro(y, grupos, livros, semente=1)
+        lado, aptos = split_por_livro(y, grupos, livros, semente=1)
         self.assertEqual(TREINO, lado[0])
         self.assertEqual(TREINO, lado[40])
         self.assertEqual([], vazamento(grupos, lado))
+
+    def test_grupo_que_atravessa_livros_passa_na_trava_de_livro(self) -> None:
+        """S-900: o grupo que a regra mandou ao treino de propósito não faz o livro "vazar".
+
+        Com quatro livros e um grupo cruzando dois deles, a trava gêmea acusava o livro do
+        grupo como livro dos dois lados em 7 a 8 de 10 sementes, e o `cvoff-texto-train`
+        abortava -- o primeiro treino a registrar o split por livro nunca chegaria a treinar.
+        """
+        y, grupos, livros = self._base(n_livros=4)
+        grupos[40] = grupos[0]  # o mesmo `e` da mesma fonte, no livro 0 e no livro 1
+        for semente in range(10):
+            with self.subTest(semente=semente):
+                lado, aptos = split_por_livro(y, grupos, livros, semente=semente)
+                self.assertEqual([], livros_em_dois_lados(livros, lado, aptos=aptos))
+                self.assertEqual([], vazamento(grupos, lado))
+
+                # A trava segue de pé para o livro que vaza de verdade: uma amostra apta do
+                # livro do teste empurrada para o treino é acusada.
+                do_teste = int(livros[aptos & (lado == TESTE)][0])
+                vazado = lado.copy()
+                vazado[np.flatnonzero(aptos & (livros == do_teste))[0]] = TREINO
+                self.assertEqual([do_teste], livros_em_dois_lados(livros, vazado, aptos=aptos))
 
     def test_o_livro_e_atomico_e_a_regra_da_procedencia_nao_o_parte(self) -> None:
         """**A trava pegou isto na primeira corrida sobre base com livro.**
@@ -263,7 +285,7 @@ class SplitPorLivroTests(unittest.TestCase):
         treinar. Quem tira a amostra da conta é quem monta os índices de medição, depois.
         """
         y, grupos, livros = self._base()
-        lado = split_por_livro(y, grupos, livros, semente=1)
+        lado, aptos = split_por_livro(y, grupos, livros, semente=1)
 
         for livro in np.unique(livros):
             with self.subTest(livro=int(livro)):

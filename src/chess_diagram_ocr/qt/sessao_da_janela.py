@@ -17,7 +17,9 @@ from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtWidgets import QMessageBox
 
+from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
 from chess_diagram_ocr.qt import dialogos, plataforma
+from chess_diagram_ocr.qt.trabalho import esperar_as_tarefas
 from chess_diagram_ocr.ui import abas, geometria, sala_declarada
 from chess_diagram_ocr.ui.geometria import LARGURA_MINIMA_DAS_ABAS, LARGURA_MINIMA_DO_VISOR
 from chess_diagram_ocr.ui.page_results import paginas_editadas
@@ -63,11 +65,11 @@ def aplicar_estado(janela: JanelaPrincipal) -> None:
     janela.texto.aplicar_estado(estado)  # zoom, quebra, motor e os diagramas (S-620, S-623)
     for nome, ligado in {**janela.mesa.estados(), **janela.texto.interruptores_da_vista()}.items():
         janela.menu.marcar(nome, ligado=ligado)  # a mesa (S-640) e a vista dos diagramas (S-620, S-624)
-    janela.estudo.posicionar_divisor(estado.estudo_divisor)
-    janela.estudo.posicionar_divisor_vertical(estado.estudo_divisor_vertical)
+    janela.estudo.leiaute.posicionar_divisor(estado.estudo_divisor)
+    janela.estudo.leiaute.posicionar_divisor_vertical(estado.estudo_divisor_vertical)
     # O leitor que `board_zoom` nunca teve (S-518): o campo era gravado, era lido do disco, e
     # não chegava a widget nenhum.
-    janela.estudo.definir_fracao_do_tabuleiro(estado.board_zoom)
+    janela.estudo.leiaute.definir_fracao_do_tabuleiro(estado.board_zoom)
     # Daqui para baixo o disco já está nos widgets, e gravar volta a ser honesto (S-322).
     janela._estado_aplicado = True
 
@@ -136,12 +138,11 @@ def gravar_estado(janela: JanelaPrincipal) -> None:
     de fábrica, e escrevê-los por cima do disco apagaria a escolha da sessão anterior sem que
     ninguém tivesse mudado nada.
 
-    `board_zoom` não é tocado aqui, e a omissão é deliberada: é um controle que **este**
-    frontend não tem, porque não precisa -- o tabuleiro do Qt se ajusta ao painel, e o
-    deslizador de zoom do outro existia porque lá ele era um canvas de tamanho fixo. Não
-    escrevê-lo preserva o que estiver no arquivo; zerá-lo seria apagar a escolha de alguém em
-    nome de um widget que não há.
+    `board_zoom` **é** gravado (a docstring dizia o contrário até a S-828): é a fração do
+    tabuleiro da sala (S-518), que `aplicar_estado` entrega a `definir_fracao_do_tabuleiro`
+    e que volta daqui por `fracao_do_tabuleiro`, como as alças dos divisores.
     """
+    janela._gravacao_adiada.stop()  # o que estava agendado é este: quem chama direto o conclui
     if not janela._estado_aplicado:
         logger.debug("Estado ainda não aplicado aos widgets: gravação adiada (S-322).")
         return
@@ -158,11 +159,11 @@ def gravar_estado(janela: JanelaPrincipal) -> None:
     estado.estudo_aberto = janela.estudo.chave_do_estudo_aberto
     # `or` o guardado: o divisor devolve `0.0` enquanto não há geometria medida, e zero
     # significa "nunca guardado" -- gravá-lo apagaria a alça da sessão anterior.
-    estado.estudo_divisor = janela.estudo.fracao_do_divisor or estado.estudo_divisor
+    estado.estudo_divisor = janela.estudo.leiaute.fracao_do_divisor or estado.estudo_divisor
     estado.estudo_divisor_vertical = (
-        janela.estudo.fracao_do_divisor_vertical or estado.estudo_divisor_vertical
+        janela.estudo.leiaute.fracao_do_divisor_vertical or estado.estudo_divisor_vertical
     )
-    estado.board_zoom = janela.estudo.fracao_do_tabuleiro
+    estado.board_zoom = janela.estudo.leiaute.fracao_do_tabuleiro
     anotar_arranjo(janela)
     save_state(janela._caminho_do_estado, estado)
 
@@ -195,16 +196,16 @@ def fechar(janela: JanelaPrincipal, a0: Any) -> None:
     gravar_estado(janela)
     # O motor é um processo (S-523) e a sala pode tê-lo trocado nas preferências (S-536): o
     # fechado é o dela, e sem levantar (`encerrar_o_motor`, F9-C16).
-    sala_declarada.encerrar_o_motor(janela.estudo.analisador)
+    sala_declarada.encerrar_o_motor(janela.estudo.motor.analisador)
+    processo_de_trabalho().encerrar(matar=True)  # o filho pendurado não segura o processo (S-906)
     janela._detector.parar(ESPERA_AO_FECHAR_MS)
-    # As tarefas (a leitura, o aquecimento do modelo) não têm pai desde a fase 2 do ciclo 2:
-    # destruí-las a correr derrubava o processo sem rastro (o portão `comandos` mediu: exit
-    # 255, nada no log). A espera é cortesia -- sair com a leitura no meio deixa uma thread
-    # a terminar sozinha, e `manter_viva` a solta quando acaba.
+    # Nenhuma tarefa tem pai (F9-C2, S-826): destruí-las a correr derrubava o processo sem
+    # rastro (o portão `comandos` mediu: exit 255, nada no log). A espera é cortesia, e é de
+    # **todas** -- a leitura, o aquecimento, as dos painéis (a exportação do texto que acaba
+    # em vez de ficar pela metade) --; a que estoura o prazo fica no log e termina sozinha.
     janela._aquecimento.cancelar()   # o relógio de uma janela fechada não dispara mais
-    janela._aquecimento.esperar(ESPERA_AO_FECHAR_MS)
-    if janela._tarefa is not None and not janela._tarefa.wait(ESPERA_AO_FECHAR_MS):
-        logger.warning("A janela fechou com uma tarefa ainda em andamento; ela termina sozinha.")
+    if pendentes := esperar_as_tarefas(ESPERA_AO_FECHAR_MS):
+        logger.warning("A janela fechou com tarefas em andamento (%s); elas terminam sozinhas.", ", ".join(t.nome for t in pendentes))
     if a0 is not None:
         a0.accept()
 

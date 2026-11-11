@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import chess
 import numpy as np
+import varredura
 from test_inference import probs_for_fen
 
 from chess_diagram_ocr.detection import DiagramCandidate
@@ -207,7 +208,7 @@ class PdfToPgnTests(unittest.TestCase):
                 self.assertIn(f'[OCRRotation "{rotation}"]', payload)
 
     @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
-    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
+    @patch("chess_diagram_ocr.service.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
@@ -239,7 +240,7 @@ class PdfToPgnTests(unittest.TestCase):
         self.assertIs(mock_contexts.call_args.args[3], sentinela)
 
     @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
-    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
+    @patch("chess_diagram_ocr.service.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
@@ -298,7 +299,7 @@ class PdfToPgnTests(unittest.TestCase):
         self.assertEqual(mock_predict.call_count, 3)
 
     @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
-    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
+    @patch("chess_diagram_ocr.service.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
@@ -356,7 +357,7 @@ class PdfToPgnTests(unittest.TestCase):
         permitidos = {"inference.py", "service.py", "evaluation.py"}
         culpados = [
             caminho.relative_to(raiz).as_posix()
-            for caminho in sorted(raiz.rglob("*.py"))
+            for caminho in varredura.fontes(raiz, recursivo=True, piso=300)
             if caminho.name not in permitidos
             and caminho.parent.name != "cli"
             and "load_model(" in caminho.read_text(encoding="utf-8")
@@ -368,7 +369,7 @@ class PdfToPgnTests(unittest.TestCase):
         self.assertEqual(fonte.count("load_model("), 1)
 
     @patch("chess_diagram_ocr.pdf_to_pgn._page_contexts")
-    @patch("chess_diagram_ocr.pdf_to_pgn.predict_with_orientation")
+    @patch("chess_diagram_ocr.service.predict_with_orientation")
     @patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams")
     @patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page")
     @patch("chess_diagram_ocr.pdf_to_pgn.load_model")
@@ -827,6 +828,83 @@ class ExportGateTests(unittest.TestCase):
             self.assertIsNone(report.review_path)
             self.assertFalse((Path(tmpdir) / "book.review.pgn").exists())
 
+    def test_exportar_sem_revisao_remove_review_pgn_antigo(self) -> None:
+        """S-818: a rodada que não tem nada a revisar não deixa o `.review.pgn` da anterior.
+
+        O relatório diz `review_path=None`; um arquivo de revisão velho ao lado do PGN novo
+        mandaria a pessoa consertar posições que a rodada de agora já não exportou assim.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "book.pgn"
+            primeira = write_gated_pgn(self.positions(), output_path, source_name="book.pdf")
+            self.assertIsNotNone(primeira.review_path)
+
+            segunda = write_gated_pgn(self.positions()[:1], output_path, source_name="book.pdf")
+
+            self.assertIsNone(segunda.review_path)
+            self.assertFalse((Path(tmpdir) / "book.review.pgn").exists())
+
+    def test_pgn_exportado_e_lf(self) -> None:
+        """S-818: o PGN, o `.review.pgn` e o sidecar saem com quebra LF também no Windows."""
+        from chess_diagram_ocr.proveniencia import Cabecalho, read_sidecar
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "book.pgn"
+            report = write_gated_pgn(
+                self.positions(), output_path, source_name="book.pdf",
+                provenance=Cabecalho(source_name="book.pdf"),
+            )
+
+            assert report.review_path is not None and report.provenance_path is not None
+            for caminho in (output_path, report.review_path, report.provenance_path):
+                conteudo = caminho.read_bytes()
+                self.assertIn(b"\n", conteudo, caminho.name)
+                self.assertNotIn(b"\r", conteudo, caminho.name)
+            _, linhas = read_sidecar(report.provenance_path)
+            self.assertEqual(len(linhas), 3)
+
+    def test_queda_na_gravacao_deixa_o_pgn_anterior_inteiro(self) -> None:
+        """S-818: interrompida a troca, os três arquivos da rodada anterior ficam como estavam."""
+        from chess_diagram_ocr import atomic_io
+        from chess_diagram_ocr.proveniencia import Cabecalho
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "book.pgn"
+            anterior = write_gated_pgn(
+                self.positions(), output_path, source_name="book.pdf",
+                provenance=Cabecalho(source_name="book.pdf"),
+            )
+            assert anterior.review_path is not None and anterior.provenance_path is not None
+            arquivos = (output_path, anterior.review_path, anterior.provenance_path)
+            antes = {caminho: caminho.read_bytes() for caminho in arquivos}
+
+            original = atomic_io._substituir
+            for alvo in arquivos:
+                def queda(temp_path: Path, path: Path, alvo: Path = alvo) -> None:
+                    if path == alvo:
+                        raise KeyboardInterrupt("queda simulada")
+                    original(temp_path, path)
+
+                with patch.object(atomic_io, "_substituir", side_effect=queda):
+                    with self.assertRaises(KeyboardInterrupt):
+                        write_gated_pgn(
+                            list(reversed(self.positions())), output_path, source_name="outro.pdf",
+                            provenance=Cabecalho(source_name="outro.pdf"),
+                        )
+                self.assertEqual(alvo.read_bytes(), antes[alvo], alvo.name)
+                self.assertEqual(sorted(p.name for p in Path(tmpdir).iterdir()),
+                                 sorted(p.name for p in arquivos))
+                for caminho in arquivos:
+                    caminho.write_bytes(antes[caminho])
+
+            # Sem a queda a rodada nova reescreve os três: a guarda acima não é vácua.
+            write_gated_pgn(
+                list(reversed(self.positions())), output_path, source_name="outro.pdf",
+                provenance=Cabecalho(source_name="outro.pdf"),
+            )
+            for caminho in arquivos:
+                self.assertNotEqual(caminho.read_bytes(), antes[caminho], caminho.name)
+
     def test_review_items_keep_pdf_order(self) -> None:
         positions = list(reversed(self.positions()))
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -858,6 +936,262 @@ class ExportGateTests(unittest.TestCase):
 
         self.assertEqual(verdict, "needs_review")
         self.assertIn("0.550", reason)
+
+
+class MesmaLeituraQueOsRelatoriosTests(unittest.TestCase):
+    """S-833: a exportação reconhece pela mesma função que os relatórios de campo medem.
+
+    `field_eval` mede `OcrService.recognize_page`; o lote, o `cvoff-export-pgn`, a Galeria, a fila e
+    as táticas passam por `iter_pdf_diagrams`. Com uma cópia da corrente em cada lado, as
+    coordenadas da borda (`DiagramContext.coordinates`) chegavam à orientação num e não no outro.
+    """
+
+    # Peão branco em e2: girar o mapeamento (ponto de vista das pretas) muda a FEN.
+    LIDA = "4k3/8/8/8/8/8/4P3/4K3"
+
+    def _ler_pelos_dois_caminhos(self):
+        from chess_diagram_ocr import inference, pdf_to_pgn, service
+        from chess_diagram_ocr.orientation import BoardCoordinates
+        from chess_diagram_ocr.service import OcrService, RecognitionOptions
+
+        contexto = DiagramContext(coordinates=BoardCoordinates(ranks_top_to_bottom=(1, 2, 3, 4, 5, 6, 7, 8)))
+        candidato = candidate_for(np.zeros((800, 800, 3), dtype=np.uint8))
+        pagina = np.zeros((10, 10, 3), dtype=np.uint8)
+        argumentos: list[dict] = []
+        real = inference.predict_with_orientation
+
+        def gravador(board_rgb, model, device, **kwargs):
+            argumentos.append(dict(kwargs))
+            return real(board_rgb, model, device, **kwargs)
+
+        def probabilidades(boards, *_a, **_k):
+            return [probs_for_fen(self.LIDA, 0.95) for _ in boards]
+
+        # O nome é remendado onde quer que o módulo o tenha importado: depois da S-833 a
+        # exportação não o importa mais, e o teste não pode depender de que importe.
+        remendos = [
+            patch.object(modulo, "predict_with_orientation", side_effect=gravador)
+            for modulo in (pdf_to_pgn, service)
+            if hasattr(modulo, "predict_with_orientation")
+        ]
+        remendos += [
+            patch("chess_diagram_ocr.inference.board_probabilities_batch", side_effect=probabilidades),
+            patch("chess_diagram_ocr.pdf_to_pgn.calibrador_do_livro", return_value=None),
+            patch("chess_diagram_ocr.service.contexts_for_pdf_page", return_value=[contexto]),
+            patch("chess_diagram_ocr.pdf_to_pgn._get_pdf_page_count", return_value=1),
+            patch("chess_diagram_ocr.pdf_to_pgn._render_pdf_page", return_value=pagina),
+            patch("chess_diagram_ocr.pdf_to_pgn._detect_page_diagrams", return_value=[candidato]),
+            patch("chess_diagram_ocr.pdf_to_pgn._page_contexts", return_value=[contexto]),
+            patch("chess_diagram_ocr.pdf_to_pgn.load_model", return_value=("model", "cpu")),
+        ]
+        for remendo in remendos:
+            remendo.start()
+            self.addCleanup(remendo.stop)
+
+        medido = OcrService(loader=lambda _caminho: ("model", "cpu")).recognize_page(
+            Path("sample.pdf"),
+            0,
+            pagina,
+            options=RecognitionOptions(colour_calibrator=lambda _fonte: None),
+            candidates=[candidato],
+        )
+        exportado = scan_pdf_positions(Path("sample.pdf"))
+        return argumentos, medido, exportado
+
+    def test_os_dois_caminhos_leem_igual_com_coordenadas_na_borda(self) -> None:
+        argumentos, medido, exportado = self._ler_pelos_dois_caminhos()
+
+        self.assertEqual(len(argumentos), 2)
+        self.assertEqual(argumentos[1], argumentos[0])
+        self.assertEqual(len(medido), 1)
+        self.assertEqual(len(exportado), 1)
+        lido, posicao = medido[0], exportado[0]
+        self.assertEqual(posicao.fen, lido.placement)
+        self.assertEqual(posicao.rotation, lido.rotation)
+        self.assertEqual(posicao.orientation_ambiguous, lido.orientation_ambiguous)
+        julgada = posicao.gate_confidence if posicao.gate_confidence is not None else posicao.min_confidence
+        self.assertAlmostEqual(julgada, lido.gate_confidence, places=6)
+        # E a regra das coordenadas decidiu nos dois: ponto de vista das pretas, sem dúvida.
+        self.assertIn("coordenadas da borda", posicao.orientation_reason)
+
+    def test_a_exportacao_nao_tem_corrente_propria(self) -> None:
+        from chess_diagram_ocr import pdf_to_pgn
+
+        fonte = Path(pdf_to_pgn.__file__).read_text(encoding="utf-8")
+        for nome in ("predict_with_orientation", "apply_next_move", "apply_stipulation", "apply_colour"):
+            with self.subTest(nome=nome):
+                self.assertFalse(nome in fonte, f"pdf_to_pgn.py ainda cita {nome}: a corrente mora no OcrService")
+
+
+class PgnDeOuroTests(unittest.TestCase):
+    """S-858: o PGN de cada ramo do construtor de headers, fixado byte a byte.
+
+    `build_pgn_games` foi partido em construtores por assunto. A ordem dos headers fora do
+    "Seven Tag Roster" é a ordem de inserção, então este texto pega tanto um header perdido
+    quanto um que trocou de lugar -- e as anotações da galeria por cima de tudo, que só vencem
+    se forem aplicadas por último.
+    """
+
+    ROQUE = "4k3/8/8/8/8/8/4P3/R3K2R"
+
+    def _posicoes(self) -> list[DiagramPosition]:
+        return [
+            DiagramPosition(0, 1, self.ROQUE, 0.9),
+            DiagramPosition(
+                1, 1, self.ROQUE, 0.8, min_confidence=0.4, is_legal=False, is_fatal=True, problems=("a", "b"),
+                rotation=180, side_to_move=SideToMove(chess.BLACK, "ocr"),
+                context=DiagramContext(
+                    caption="Legenda\nem duas linhas", side_to_move_confidence=0.55, exercise_number=17,
+                    players=("Alekhine", "Capablanca"), event="Nottingham", year=1936,
+                ),
+                detection_source="embedded", duplicate_of=(1, 2), colour_repairs=("e5", "d4"), next_move="Nf3",
+                next_move_repairs=("g1",), stipulation="#2", stipulation_closes=True, stipulation_keys=("Ra8",),
+                stipulation_repairs=("a1",), gate_confidence=0.77,
+            ),
+            DiagramPosition(
+                1, 2, self.ROQUE, 0.8, is_legal=False, is_fatal=False, side_to_move=SideToMove(chess.WHITE, "glifo"),
+                context=DiagramContext(), next_move="e4", next_move_repairs=("e2",), stipulation="#3",
+                stipulation_closes=False, stipulation_repairs=("h1",),
+            ),
+            DiagramPosition(
+                2, 1, "4k3/8/8/8/8/8/8/4K3", 0.7, is_legal=True, rotation=0,
+                side_to_move=SideToMove(chess.WHITE, "legality"), context=DiagramContext(players=("A", "B")),
+                stipulation="h#2", stipulation_keys=("Kd1",),
+            ),
+        ]
+
+    def test_o_pgn_de_cada_ramo_sai_igual_byte_a_byte(self) -> None:
+        from chess_diagram_ocr.gallery import DiagramAnnotation
+
+        anotacoes = {
+            (1, 1): DiagramAnnotation(headers={"Event": "Manual", "Round": "9"}, filled_from="base X"),
+            (2, 1): DiagramAnnotation(side_to_move="b", move_number=12, lichess_link=False),
+        }
+        texto = build_pgn_text(
+            self._posicoes(),
+            source_name="s.pdf",
+            review_reasons={(1, 1): "r", (1, 2): ""},
+            annotations=anotacoes,
+            lichess_links=True,
+            provenance_file="p.jsonl",
+        )
+        self.maxDiff = None
+        self.assertEqual(texto, OURO_S858)
+
+
+OURO_S858 = """[Event "ChessVisionOFF PDF OCR"]
+[Site "Local"]
+[Date "????.??.??"]
+[Round "1.1"]
+[White "?"]
+[Black "?"]
+[Result "*"]
+[Annotator "ChessVisionOFF"]
+[SetUp "1"]
+[FEN "4k3/8/8/8/8/8/4P3/R3K2R w - - 0 1"]
+[SourcePDF "s.pdf"]
+[Page "1"]
+[Diagram "1"]
+[ReadingOrder "column"]
+[OCRConfidence "0.900"]
+[ProvenanceFile "p.jsonl"]
+[ProvenanceKey "p0:d1"]
+
+{ https://lichess.org/analysis/4k3/8/8/8/8/8/4P3/R3K2R_w_-_-_0_1 } *
+
+[Event "Manual"]
+[Site "Local"]
+[Date "1936.??.??"]
+[Round "9"]
+[White "Alekhine"]
+[Black "Capablanca"]
+[Result "*"]
+[Annotator "ChessVisionOFF"]
+[SetUp "1"]
+[FEN "4k3/8/8/8/8/8/4P3/R3K2R b KQ - 0 1"]
+[SourcePDF "s.pdf"]
+[Page "2"]
+[Diagram "1"]
+[ReadingOrder "column"]
+[OCRConfidence "0.800"]
+[SideToMove "pretas"]
+[SideToMoveSource "ocr"]
+[SideToMoveConfidence "0.550"]
+[CastlingSource "inferred"]
+[ExerciseNumber "17"]
+[Caption "Legenda / em duas linhas"]
+[DetectionSource "embedded"]
+[DuplicateOf "1.2"]
+[OCRMinConfidence "0.400"]
+[OCRNextMove "Nf3 prova g1; gate 0.770"]
+[OCRColour "tinta trocou e5 d4"]
+[Stipulation "#2"]
+[StipulationCheck "fecha: 1.Ra8"]
+[OCRStipulation "#2 prova a1; gate 0.770"]
+[ProvenanceFile "p.jsonl"]
+[ProvenanceKey "p1:d1"]
+[OCRLegality "ilegal"]
+[OCRProblems "a; b"]
+[OCRRotation "180"]
+[Review "r"]
+[GameSource "base X"]
+
+{ https://lichess.org/analysis/4k3/8/8/8/8/8/4P3/R3K2R_b_KQ_-_0_1 } *
+
+[Event "ChessVisionOFF PDF OCR"]
+[Site "Local"]
+[Date "????.??.??"]
+[Round "2.2"]
+[White "?"]
+[Black "?"]
+[Result "*"]
+[Annotator "ChessVisionOFF"]
+[SetUp "1"]
+[FEN "4k3/8/8/8/8/8/4P3/R3K2R w KQ - 0 1"]
+[SourcePDF "s.pdf"]
+[Page "2"]
+[Diagram "2"]
+[ReadingOrder "column"]
+[OCRConfidence "0.800"]
+[SideToMove "brancas"]
+[SideToMoveSource "glifo"]
+[SideToMoveConfidence "1.000"]
+[CastlingSource "inferred"]
+[OCRNextMove "e4 prova e2"]
+[Stipulation "#3"]
+[StipulationCheck "não fecha"]
+[OCRStipulation "#3 prova h1"]
+[ProvenanceFile "p.jsonl"]
+[ProvenanceKey "p1:d2"]
+[OCRLegality "lado-a-jogar"]
+
+{ https://lichess.org/analysis/4k3/8/8/8/8/8/4P3/R3K2R_w_KQ_-_0_1 } *
+
+[Event "ChessVisionOFF PDF OCR"]
+[Site "Local"]
+[Date "????.??.??"]
+[Round "3.1"]
+[White "A"]
+[Black "B"]
+[Result "*"]
+[Annotator "ChessVisionOFF"]
+[SetUp "1"]
+[FEN "4k3/8/8/8/8/8/8/4K3 b - - 0 12"]
+[SourcePDF "s.pdf"]
+[Page "3"]
+[Diagram "1"]
+[ReadingOrder "column"]
+[OCRConfidence "0.700"]
+[SideToMove "pretas"]
+[SideToMoveSource "manual"]
+[Stipulation "h#2"]
+[StipulationCheck "não verificada"]
+[ProvenanceFile "p.jsonl"]
+[ProvenanceKey "p2:d1"]
+[OCRLegality "legal"]
+[OCRRotation "0"]
+
+*"""
 
 
 if __name__ == "__main__":

@@ -127,7 +127,7 @@ class RelatorioDizOMotorTests(unittest.TestCase):
         (pasta / "livro.pdf").write_bytes(b"")
         saida = pasta / "relatorio.json"
         with (
-            mock.patch("chess_diagram_ocr.text.leitor._ha_classificador", return_value=True),
+            mock.patch("chess_diagram_ocr.text.recognizer.classificador_configurado", return_value=object()),
             mock.patch.object(texto_estilo_motor, "medir", return_value={}),
             mock.patch("builtins.print"),
         ):

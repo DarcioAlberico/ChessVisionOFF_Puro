@@ -49,11 +49,17 @@ class AtrasoTests(unittest.TestCase):
         self.assertTrue(dica.ajustar_atraso())
         self.assertEqual(dica.atraso_em_vigor(), dica.ATRASO_DA_DICA)
 
-    def test_ajustar_nunca_levanta(self) -> None:
-        """Uma dica no tempo de fábrica é pior que a do projeto e melhor que uma janela fechada."""
+    def test_ajustar_nunca_levanta_e_diz_se_ajustou(self) -> None:
+        """Uma dica no tempo de fábrica é pior que a do projeto e melhor que uma janela fechada.
+
+        Não levantar não basta (S-872): o `bool` devolvido tem de dizer o que o estilo responde
+        depois -- o número pedido, se ajustou; o anterior, se não."""
         aplicacao()
         self.addCleanup(dica.ajustar_atraso)
-        dica.ajustar_atraso(-1)
+        self.assertTrue(dica.ajustar_atraso(700))
+        ajustou = dica.ajustar_atraso(-1)
+        self.assertIsInstance(ajustou, bool)
+        self.assertEqual(dica.atraso_em_vigor(), -1 if ajustou else 700)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

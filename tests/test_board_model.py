@@ -379,25 +379,6 @@ class HeatmapColorTests(unittest.TestCase):
         self.assertEqual(heatmap_color(0.0, 0.80), "#d64545")
 
 
-class NoTkinterTests(unittest.TestCase):
-    def test_o_modelo_nao_importa_tkinter(self) -> None:
-        """O critério de aceite literal da S-50: o modelo serve a Tk, a Qt e ao Streamlit."""
-        import ast
-        from pathlib import Path
-
-        from chess_diagram_ocr.ui import board_model
-
-        arvore = ast.parse(Path(board_model.__file__).read_text(encoding="utf-8"))
-        importados: set[str] = set()
-        for node in ast.walk(arvore):
-            if isinstance(node, ast.Import):
-                importados.update(alias.name.split(".")[0] for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                importados.add(node.module.split(".")[0])
-
-        self.assertNotIn("tkinter", importados)
-
-
 if __name__ == "__main__":
     unittest.main()
 

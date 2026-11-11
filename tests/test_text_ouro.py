@@ -10,6 +10,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 from unittest import mock
 
 from chess_diagram_ocr.text import ouro
@@ -222,6 +223,119 @@ class ManifestoTests(unittest.TestCase):
             self.assertEqual(_teste_valido(), ouro.carregar(caminho))
 
 
+class TodosOsDefeitosTests(unittest.TestCase):
+    """Um manifesto com um defeito de cada tipo, e a lista inteira, **na ordem** (S-861).
+
+    É a caracterização da partição de `problemas`: cada guarda já tem o seu teste acima, mas só esta
+    lista prende a ordem das mensagens e o texto de cada uma -- é o que a ferramenta de linha imprime.
+    """
+
+    def test_um_de_cada_e_a_ordem(self) -> None:
+        T, R, D, P = ouro.TESTE, ouro.RESERVA, ouro.DEV, ouro.PROSA
+        livros = [
+            L("", D, "eng"),
+            L(_id(1), T, "eng", entrou_em="2026/11/05"),
+            L(_id(2), T, "eng"), L(_id(2), D, "eng"),
+            L(_id(3), T, "eng", reprovado="auditoria: x"),
+            L(_id(4), T, "eng", diagramacao="vista"),
+            L(_id(5), T, "eng"),
+            L(_id(6), R, "eng", grupo=_id(4)),
+        ]
+        folhas = [
+            F("", 3, "eng", P, T),
+            F(_id(9), 4, "eng", P, T),
+            F(_id(1), 5, "eng", P, D),
+            F(_id(1), 6, "por", P, T),
+            F(_id(1), 0, "eng", P, T),
+            F(_id(3), 7, "eng", P, T), F(_id(3), 7, "eng", P, T),
+            F(_id(4), 8, "eng", P, T), F(_id(2), 9, "eng", P, T),
+        ]
+        m = _manifesto(livros, folhas, versao=0, congelado_em="30/10/2026",
+                       primeira_leitura_do_teste="2026-01-01", pendencias=("inventada",))
+        self.assertEqual(
+            [
+                "versão 0, esperada 1",
+                "congelado_em sem data AAAA-MM-DD: '30/10/2026'",
+                "o teste foi lido em 2026-01-01, antes de o manifesto ser congelado em 30/10/2026",
+                "livro sem identidade",
+                f"livro {_id(1)} com entrou_em '2026/11/05'",
+                f"livro {_id(3)} reprovado (auditoria: x) fora da reserva ou dentro do treino",
+                f"livro {_id(2)} em dois splits: ['dev', 'teste']",
+                "folha 3 sem identidade",
+                f"folha 4 de um livro que o manifesto não lista: {_id(9)}",
+                f"folha 5 de {_id(1)} no split dev, e o livro não",
+                f"folha 6 de {_id(1)} em 'por', e o livro em 'eng'",
+                f"folha 0 de {_id(1)}: a folha é em base 1",
+                f"folha 7 de {_id(3)} repetida",
+                "o teste tem 5 livros, e o mínimo é 8",
+                "o teste tem 1 línguas, e o mínimo é 3",
+                f"livros do teste com diagramação de livro dev: ['{_id(4)}']",
+                f"livros do teste sem folha: ['{_id(5)}']",
+                f"livro {_id(6)} é do grupo de um livro do teste e não está fora_do_treino",
+                "pendências sem regra: ['inventada']",
+            ],
+            ouro.problemas(m),
+        )
+
+    def test_sem_livro_no_teste_as_regras_do_teste_nao_valem(self) -> None:
+        """O manifesto antes do sorteio do teste: só dev e reserva, e nada a acusar."""
+        livros = [L(_id(1), ouro.DEV, "eng"), L(_id(2), ouro.RESERVA, "por", grupo=_id(1))]
+        self.assertEqual([], ouro.problemas(_manifesto(livros, [F(_id(1), 5, "eng", ouro.PROSA, ouro.DEV)])))
+
+    def test_a_pendencia_cumprida_que_nao_saiu(self) -> None:
+        tres = [L(_id(20 + i), ouro.TESTE, lingua) for i, lingua in enumerate(["eng", "por", "spa"])]
+        folhas = [F(x.identidade, 10, x.lingua, ouro.PROSA, ouro.TESTE) for x in tres]
+        m = _manifesto(tres, folhas, pendencias=(ouro.PENDENCIA_DE_LINGUA,))
+        self.assertEqual(
+            ["o teste tem 3 livros, e o mínimo é 8", "o teste já tem 3 línguas, e a pendência terceira_lingua não saiu"],
+            ouro.problemas(m),
+        )
+
+
+class LeituraTests(unittest.TestCase):
+    """O valor fora da lista não chega ao `Manifesto`: a leitura recusa, e `problemas` não o vê (S-855)."""
+
+    def _json(self) -> dict[str, Any]:
+        return ouro.para_json(_teste_valido())
+
+    def test_estrato_desconhecido_levanta_na_leitura(self) -> None:
+        dados = self._json()
+        dados["folhas"][0]["estrato"] = "titulo"
+        with self.assertRaisesRegex(ouro.ManifestoInvalido, "estrato 'titulo'"):
+            ouro.de_json(dados)
+
+    def test_cada_campo_fechado_levanta_na_leitura(self) -> None:
+        casos = (
+            ("livros", "split", "treino"),
+            ("livros", "lingua", "en"),
+            ("livros", "origem", ""),
+            ("livros", "diagramacao", "outra"),
+            ("folhas", "split", "treino"),
+            ("folhas", "lingua", "en"),
+        )
+        for lista, campo, valor in casos:
+            with self.subTest(lista=lista, campo=campo):
+                dados = self._json()
+                dados[lista][0][campo] = valor
+                with self.assertRaisesRegex(ouro.ManifestoInvalido, f"{campo} {valor!r}"):
+                    ouro.de_json(dados)
+
+    def test_chave_desconhecida_diz_qual_e(self) -> None:
+        """Era `TypeError` do construtor, sem dizer de que livro."""
+        dados = self._json()
+        dados["livros"][0]["cor"] = "azul"
+        with self.assertRaisesRegex(ouro.ManifestoInvalido, "cor"):
+            ouro.de_json(dados)
+
+    def test_o_arquivo_com_estrato_desconhecido_nao_carrega(self) -> None:
+        with TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / "ouro.json"
+            ouro.gravar(_teste_valido(), caminho)
+            caminho.write_bytes(caminho.read_bytes().replace(b'"estrato": "prosa"', b'"estrato": "titulo"', 1))
+            with self.assertRaises(ouro.ManifestoInvalido):
+                ouro.carregar(caminho)
+
+
 class SobrasTests(unittest.TestCase):
     """O estrato que falta se completa com **todas** as folhas do outro (achado B1 do crítico)."""
 
@@ -385,20 +499,14 @@ class CadaGuardaTests(unittest.TestCase):
         self._so(_manifesto([*m.livros, L(_id(71), ouro.RESERVA, "eng", reprovado="auditoria: x")], list(m.folhas)),
                  "reprovado")
 
-    def test_origem_e_diagramacao_invalidas(self) -> None:
-        m = _teste_valido()
-        self._so(_manifesto([*m.livros, L(_id(72), ouro.RESERVA, "eng", origem="")], list(m.folhas)), "origem ''")
-        self._so(_manifesto([*m.livros, L(_id(73), ouro.RESERVA, "eng", diagramacao="outra")], list(m.folhas)),
-                 "diagramação 'outra'")
-
     def test_data_com_lixo_no_fim(self) -> None:
         m = _teste_valido()
         self._so(_manifesto(list(m.livros), list(m.folhas), congelado_em="2026-10-30x"), "congelado_em")
         self._so(_manifesto(list(m.livros), list(m.folhas), primeira_leitura_do_teste="2026-11-02x"), "foi lido")
 
-    def test_lingua_fora_da_lista_e_folha_noutra_lingua(self) -> None:
+    def test_folha_noutra_lingua(self) -> None:
+        """A língua fora da lista não chega aqui: é `LeituraTests`."""
         m = _teste_valido()
-        self._so(_manifesto([*m.livros, L(_id(74), ouro.RESERVA, "en")], list(m.folhas)), "língua 'en'")
         self._so(_manifesto(list(m.livros), [*m.folhas, F(_id(0), 300, "por", ouro.PROSA, ouro.TESTE)]), "em 'por'")
 
     def test_as_linguas_sao_as_oito_do_acervo(self) -> None:
@@ -448,15 +556,13 @@ class CadaGuardaTests(unittest.TestCase):
         m = _teste_valido()
         self._so(_manifesto(list(m.livros), list(m.folhas), versao=2), "versão 2")
 
-    def test_livro_sem_identidade_e_split_invalido(self) -> None:
+    def test_livro_sem_identidade(self) -> None:
         m = _teste_valido()
         self._so(_manifesto([*m.livros, L("", ouro.RESERVA, "eng")], list(m.folhas)), "livro sem identidade")
-        self._so(_manifesto([*m.livros, L(_id(70), "treino", "eng")], list(m.folhas)), "split 'treino'")
 
-    def test_estrato_invalido_folha_zero_e_repetida(self) -> None:
+    def test_folha_zero_e_repetida(self) -> None:
         m = _teste_valido()
         base = list(m.folhas)
-        self._so(_manifesto(list(m.livros), [*base, F(_id(99), 300, "eng", "titulo", ouro.DEV)]), "estrato 'titulo'")
         self._so(_manifesto(list(m.livros), [*base, F(_id(99), 0, "eng", ouro.PROSA, ouro.DEV)]), "base 1")
         self._so(_manifesto(list(m.livros), [*base, base[0]]), "repetida")
 

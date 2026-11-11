@@ -49,11 +49,11 @@ from typing import Any
 
 import numpy as np
 
-from ..atomic_io import atomic_write_text
+from ..atomic_io import atomic_write_stream, atomic_write_text
 from ..config import DATA_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import estilo
-from . import add_verbose, cli_errors
+from . import add_json_argument, add_verbose, cli_errors, fronteira
 
 logger = logging.getLogger(__name__)
 
@@ -259,7 +259,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--conjunto", type=Path, default=CONJUNTO_PADRAO, help="O npz da S-661 (padrao: data/estilo/palavras.npz).")
     parser.add_argument("--epocas", type=int, default=6, help="Epocas de treino por rodada (padrao: 6).")
     parser.add_argument("--pesos", type=Path, default=PESOS_PADRAO, help="Onde gravar os pesos (padrao: models/estilo_palavra.pt).")
-    parser.add_argument("--json", type=Path, help="Grava o relatorio neste caminho.")
+    add_json_argument(parser)
     add_verbose(parser)
     return parser
 
@@ -276,7 +276,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Sem o conjunto em {args.conjunto}: rode antes o cvoff-texto-estilo-conjunto.")
         return 0
     torch.set_num_threads(max(1, torch.get_num_threads()))
-    dados = carregar(Path(args.conjunto))
+    with fronteira(f"--conjunto {args.conjunto}"):
+        dados = carregar(Path(args.conjunto))
     resumo = hashlib.sha1(Path(args.conjunto).read_bytes()).hexdigest()[:12]
     classes, alturas, livros = dados["classes"], dados["alturas"], dados["livros"]
     total = len(dados["identidades"])
@@ -352,12 +353,11 @@ def main(argv: list[str] | None = None) -> int:
         # Só quem passou ganha pesos: a rede final treina com **todos** os livros, o número de épocas
         # das rodadas e sem validação -- o portão já foi medido acima, fora do livro.
         rede, _ = treinar(dados, np.arange(len(classes)), np.zeros(0, np.int64), epocas=args.epocas, semente=SEMENTE)
-        args.pesos.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(
-            {"estado": rede.state_dict(), "classes": list(estilo.CLASSES), "altura": estilo.ALTURA,
-             "largura_maxima": estilo.LARGURA_MAXIMA, "semente": SEMENTE, "conjunto": resumo, "commit": git_commit()},
-            args.pesos,
-        )
+        pesos_finais = {
+            "estado": rede.state_dict(), "classes": list(estilo.CLASSES), "altura": estilo.ALTURA,
+            "largura_maxima": estilo.LARGURA_MAXIMA, "semente": SEMENTE, "conjunto": resumo, "commit": git_commit(),
+        }
+        atomic_write_stream(args.pesos, lambda fluxo: torch.save(pesos_finais, fluxo))
         pesos = str(args.pesos.name)
     relatorio: dict[str, Any] = {
         "item": "S-662 e S-663 · o classificador de estilo da palavra e o portão",

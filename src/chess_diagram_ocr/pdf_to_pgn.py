@@ -6,14 +6,16 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import chess.pgn
 import numpy as np
 
+from .atomic_io import atomic_write_text
 from .checkpoint import checkpoint_identity
 from .config import (
     ACCEPT_MIN_CONFIDENCE,
+    DEFAULT_DPI,
     DEFAULT_MAX_BOARDS,
     DEFAULT_MODEL_PATH,
     DEFAULT_ORIENTATION_MODE,
@@ -23,8 +25,7 @@ from .config import (
     OrientationMode,
     ReadingOrder,
 )
-from .cor_por_livro import apply_colour, calibrador_do_livro
-from .estipulacao import apply_stipulation
+from .cor_por_livro import calibrador_do_livro
 from .export_checkpoint import (
     DEFAULT_CHECKPOINT_EVERY,
     CheckpointWriter,
@@ -32,18 +33,18 @@ from .export_checkpoint import (
     load_partial,
     partial_path_for,
 )
-from .fen_utils import check_position, square_name
-from .gallery import DiagramAnnotation, lichess_analysis_url, load_annotations
-from .inference import BoardPrediction, load_model, predict_with_orientation
-from .lance_seguinte import apply_next_move
+from .fen_utils import square_name
+from .gallery import DiagramAnnotation, GaleriaDeOutroLivro, lichess_analysis_url, load_annotations
+from .inference import BoardPrediction, load_model
 from .pdf_io import PdfSource as _PdfSource
 from .pdf_text import DiagramContext
 from .provenance import hash_board_rgb
 from .proveniencia import Cabecalho, chave, hash_do_arquivo, write_sidecar
-from .semantics import SideToMove, compose_fen, infer_castling_rights, infer_side_to_move
+from .semantics import SideSource, SideToMove, compose_fen, infer_castling_rights
 
 if TYPE_CHECKING:
     from .detection import DiagramCandidate
+    from .service import RecognizedDiagram
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,50 @@ class DiagramPosition:
     repairs: tuple[tuple[str, str, str], ...] = ()
     """`(casa, lida, final)` de cada troca do decodificador, da tinta ou do lance (A11)."""
 
+    @classmethod
+    def from_recognized(cls, lido: RecognizedDiagram, *, page_index: int) -> DiagramPosition:
+        """A posição que vai ao PGN, a partir do que `OcrService.recognize_page` leu (S-833).
+
+        Nada aqui decide: cada campo é o que o reconhecimento já respondeu, na forma do PGN --
+        casas por nome (`e5`) em vez de índice, e o diagrama numerado a partir de 1.
+        `gate_confidence` é o de `RecognizedDiagram`, e fica `None` quando não houve reparo
+        externo, que é o que o header `[OCR...]` sempre disse (o portão julga `min_confidence`).
+        """
+        prediction = lido.prediction
+        decode = prediction.decode if prediction is not None else None
+        return cls(
+            page_index=page_index,
+            diagram_index=lido.index + 1,
+            fen=lido.placement,
+            confidence=lido.mean_confidence,
+            min_confidence=lido.min_confidence,
+            bbox_pdf=lido.bbox_pdf,
+            image_hash=hash_board_rgb(lido.board_rgb),
+            square_confidences=tuple(round(float(c), 4) for c in lido.square_confidences),
+            repairs=tuple(
+                (square_name(sq), _piece_letter(before), _piece_letter(after))
+                for sq, before, after in (decode.changed_squares if decode is not None else [])
+            ),
+            colour_repairs=tuple(square_name(c) for c in lido.colour_repairs),
+            next_move=lido.next_move,
+            next_move_repairs=tuple(square_name(c) for c in lido.next_move_repairs),
+            stipulation=lido.stipulation,
+            stipulation_closes=lido.stipulation_closes,
+            stipulation_keys=lido.stipulation_keys,
+            stipulation_repairs=tuple(square_name(c) for c in lido.stipulation_repairs),
+            stipulation_reason=lido.stipulation_reason,
+            gate_confidence=lido.gate_confidence if lido.external_repairs else None,
+            is_legal=lido.is_legal,
+            is_fatal=lido.is_fatal,
+            problems=lido.problems,
+            rotation=lido.rotation,
+            orientation_ambiguous=lido.orientation_ambiguous,
+            orientation_reason=lido.orientation_reason,
+            side_to_move=_lado_lido(lido),
+            context=lido.context,
+            detection_source=lido.detection_source,
+        )
+
     @property
     def full_fen(self) -> str:
         """A FEN que vai para o PGN, com o lado a jogar decidido e o roque inferido.
@@ -218,6 +263,23 @@ class DiagramPosition:
     @property
     def page_number(self) -> int:
         return self.page_index + 1
+
+
+
+def _lado_lido(lido: RecognizedDiagram) -> SideToMove:
+    """O lado a jogar de volta na forma da `semantics`, de onde `RecognizedDiagram` o tirou.
+
+    A leitura guarda a procedência como texto porque a interface acrescenta as suas
+    (`"queue"`); na varredura ela é sempre uma das da `semantics`, e o que não for cai em
+    `"default"`, que é a resposta honesta para uma procedência que não se reconhece.
+    """
+    cor = chess.WHITE if lido.side_to_move == "w" else chess.BLACK
+    for fonte in get_args(SideSource):
+        if fonte == lido.side_to_move_source:
+            return SideToMove(color=cor, source=fonte, reason=lido.side_to_move_reason,
+                              conflicting=lido.side_conflicting)
+    return SideToMove(color=cor, source="default", reason=lido.side_to_move_reason,
+                      conflicting=lido.side_conflicting)
 
 
 Verdict = Literal["accepted", "needs_review", "rejected"]
@@ -499,7 +561,7 @@ def iter_pdf_diagrams(
     pdf_source: PdfSource,
     model_path: Path = DEFAULT_MODEL_PATH,
     *,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     max_boards_per_page: int = DEFAULT_MAX_BOARDS,
     orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
     device: str | None = None,
@@ -584,17 +646,6 @@ def _own_model_session(model_path: Path, device: str | None) -> Iterator[tuple[A
     yield load_model(model_path, device=device)
 
 
-def _motor_para(context: Any) -> Any:
-    """O motor UCI só quando a exigência deste diagrama precisa de um (mate em 3+), como em
-    `OcrService._stipulation_engine`; `None` nos outros casos e quando a máquina não tem motor."""
-    from .estipulacao import LANCES_DA_BUSCA, motor_padrao
-
-    exigencia = getattr(context, "stipulation", None) if context is not None else None
-    if exigencia is None or exigencia.lances <= LANCES_DA_BUSCA:
-        return None
-    return motor_padrao()
-
-
 def _scan_pages(
     pdf_source: PdfSource,
     model: Any,
@@ -613,10 +664,27 @@ def _scan_pages(
     progress_callback: ProgressCallback | None,
     page_callback: PageCallback | None,
 ) -> Iterator[ScannedDiagram]:
-    """O laço de páginas, com o modelo já em mãos. Separado só para manter o `with` legível."""
+    """O laço de páginas, com o modelo já em mãos.
+
+    **O reconhecimento é o `OcrService.recognize_page`, o mesmo que os relatórios de campo
+    medem** (S-833). Aqui ficava uma cópia da corrente -- orientação, cor, lado, lance seguinte,
+    exigência, legalidade, portão -- que já tinha se separado da original: as coordenadas da
+    borda não chegavam à orientação, e o portão era calculado de outro jeito. O que sobra aqui é
+    o que só a varredura faz: renderizar, detectar na ordem de leitura pedida e ler o contexto
+    pelo leitor de legenda que ela recebeu.
+    """
+    from .service import OcrService, RecognitionOptions
+
     # C5: o calibrador de cor do livro, uma vez por PDF (o perfil da suíte quando
     # ela está importável; `None` sem perfil -- e o tabuleiro responde sozinho).
     calibrador_de_cor = calibrador_do_livro(pdf_source)
+    servico = OcrService(loader=lambda _caminho: (model, resolved_device))
+    opcoes = RecognitionOptions(
+        orientation=orientation,
+        max_boards=max_boards_per_page,
+        dpi=dpi,
+        colour_calibrator=lambda _fonte: calibrador_de_cor,
+    )
     seen = 0
 
     for page_index in range(start_page, last_page_exclusive):
@@ -637,83 +705,23 @@ def _scan_pages(
             if read_text
             else []
         )
+        lidos = (
+            servico.recognize_page(
+                pdf_source, page_index, page_rgb, options=opcoes, candidates=candidates, contexts=contexts
+            )
+            if candidates
+            else []
+        )
 
         page_positions: list[DiagramPosition] = []
-        for diagram_index, candidate in enumerate(candidates, start=1):
-            oriented = predict_with_orientation(
-                candidate.board_rgb,
-                model,
-                resolved_device,
-                mode=orientation,
-            )
-            prediction = oriented.prediction
-            context = contexts[diagram_index - 1] if diagram_index - 1 < len(contexts) else None
-            # C5: a cor pela tinta, pelo mesmo caminho da janela (`OcrService._predict_boards`).
-            prediction, trocas_cor, _motivo_cor = apply_colour(
-                prediction, candidate.board_rgb, oriented, calibrador_de_cor)
-            side = infer_side_to_move(prediction.fen_board, context)
-            # C11: o lance seguinte devolvido à posição, pelo mesmo caminho da janela.
-            prediction, reparo = apply_next_move(prediction, context, side)
-            if reparo is not None and reparo.trocas:
-                side = infer_side_to_move(prediction.fen_board, context)
-            # C12: a exigência do problema, pelo mesmo caminho da janela (`_stipulation_engine`).
-            prediction, exigencia = apply_stipulation(
-                prediction, context, side, motor=_motor_para(context))
-            if exigencia is not None and exigencia.trocas:
-                side = infer_side_to_move(prediction.fen_board, context)
-
-            # Legalidade re-avaliada com o lado a jogar decidido, e nao com o "w" fixo que a
-            # inferencia usou: e o que faz o xeque invertido deixar de ser "ilegal" quando a
-            # S-17 descobre que a vez era das pretas.
-            resolved = check_position(compose_fen(prediction.fen_board, side))
-
-            gate_confidence: float | None = None
-            excluded = (set(reparo.casas if reparo is not None else []) | {t.casa for t in trocas_cor}
-                        | set(exigencia.casas if exigencia is not None else []))
-            if excluded:
-                others = [float(c) for i, c in enumerate(prediction.square_confidences) if i not in excluded]
-                gate_confidence = min(others) if others else None
-
-            decode = prediction.decode
-            position = DiagramPosition(
-                page_index=page_index,
-                diagram_index=diagram_index,
-                fen=prediction.fen_board,
-                confidence=prediction.mean_confidence,
-                min_confidence=prediction.min_confidence,
-                bbox_pdf=candidate.bbox_pdf,
-                image_hash=hash_board_rgb(candidate.board_rgb),
-                square_confidences=tuple(round(float(c), 4) for c in prediction.square_confidences),
-                repairs=tuple(
-                    (square_name(sq), _piece_letter(before), _piece_letter(after))
-                    for sq, before, after in (decode.changed_squares if decode is not None else [])
-                ),
-                colour_repairs=tuple(square_name(t.casa) for t in trocas_cor),
-                next_move=reparo.lance if reparo is not None else "",
-                next_move_repairs=tuple(square_name(c) for c in reparo.casas) if reparo is not None else (),
-                stipulation=(exigencia.estipulacao.rotulo
-                             if exigencia is not None and exigencia.estipulacao is not None else ""),
-                stipulation_closes=exigencia.fecha if exigencia is not None else None,
-                stipulation_keys=exigencia.chaves if exigencia is not None else (),
-                stipulation_repairs=(tuple(square_name(c) for c in exigencia.casas)
-                                     if exigencia is not None else ()),
-                stipulation_reason=exigencia.motivo if exigencia is not None else "",
-                gate_confidence=gate_confidence,
-                is_legal=resolved.is_legal,
-                is_fatal=resolved.is_fatal,
-                problems=resolved.problems,
-                rotation=oriented.rotation,
-                orientation_ambiguous=oriented.ambiguous,
-                orientation_reason=oriented.reason,
-                side_to_move=side,
-                context=context,
-                detection_source=candidate.source,
-            )
+        for candidate, lido in zip(candidates, lidos, strict=True):
+            position = DiagramPosition.from_recognized(lido, page_index=page_index)
             page_positions.append(position)
             seen += 1
+            assert lido.prediction is not None  # recognize_page sempre lê
             yield ScannedDiagram(
                 position=position,
-                prediction=prediction,
+                prediction=lido.prediction,
                 board_rgb=candidate.board_rgb,
                 detector_score=candidate.detector_score,
             )
@@ -728,7 +736,7 @@ def scan_pdf_positions(
     pdf_source: PdfSource,
     model_path: Path = DEFAULT_MODEL_PATH,
     *,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     max_boards_per_page: int = DEFAULT_MAX_BOARDS,
     orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
     device: str | None = None,
@@ -808,120 +816,197 @@ def build_pgn_games(
     original da S-67, e um padrão que a atropelasse tornaria a anotação inútil.
     """
     games: list[chess.pgn.Game] = []
-
     for position in positions:
-        context = position.context
-        annotation = (annotations or {}).get((position.page_index, position.diagram_index))
-        side_to_move = position.annotated_side_to_move(annotation)
+        identidade = (position.page_index, position.diagram_index)
+        annotation = (annotations or {}).get(identidade)
+        reason = (review_reasons or {}).get(identidade)
         game = chess.pgn.Game()
-        game.headers["Event"] = (context.event if context and context.event else None) or event_name
-        game.headers["Site"] = "Local"
-        game.headers["Round"] = f"{position.page_number}.{position.diagram_index}"
-        players = context.players if context and context.players else ("?", "?")
-        game.headers["White"], game.headers["Black"] = players
-        if context is not None and context.year is not None:
-            game.headers["Date"] = f"{context.year}.??.??"
-        game.headers["Result"] = "*"
-        game.headers["Annotator"] = "ChessVisionOFF"
-        game.headers["SetUp"] = "1"
-        game.headers["FEN"] = position.annotated_fen(annotation)
-        game.headers["SourcePDF"] = source_name
-        game.headers["Page"] = str(position.page_number)
-        game.headers["Diagram"] = str(position.diagram_index)
-        game.headers["ReadingOrder"] = reading_order
-        game.headers["OCRConfidence"] = f"{position.confidence:.3f}"
-
-        if side_to_move is not None:
-            game.headers["SideToMove"] = side_to_move.label
-            game.headers["SideToMoveSource"] = side_to_move.source
-            # So quando quem decidiu foi o OCR (S-43). Escrever a confianca de uma decisao
-            # de legalidade -- que pode ter derrubado uma leitura de OCR de 0,55 -- diria
-            # que a resposta gravada vale 0,55, e ela nao veio de la. E 1,0 em todo jogo de
-            # um livro com camada de texto e ruido que ensina a ignorar o header.
-            if side_to_move.source in _OCR_SOURCES and context is not None:
-                game.headers["SideToMoveConfidence"] = f"{context.side_to_move_confidence:.3f}"
-            if infer_castling_rights(position.fen) != "-":
-                # So quando ha o que declarar: escrever a proveniencia de um "-" nao informa
-                # nada e enche o header de ruido.
-                game.headers["CastlingSource"] = "inferred"
-        if context is not None:
-            if context.exercise_number is not None:
-                game.headers["ExerciseNumber"] = str(context.exercise_number)
-            if context.caption:
-                game.headers["Caption"] = _flatten_caption(context.caption)
-        if position.detection_source is not None:
-            game.headers["DetectionSource"] = position.detection_source
-        if position.duplicate_of is not None:
-            page_number, diagram_index = position.duplicate_of
-            game.headers["DuplicateOf"] = f"{page_number}.{diagram_index}"
-        if position.min_confidence is not None:
-            game.headers["OCRMinConfidence"] = f"{position.min_confidence:.3f}"
-        if position.next_move_repairs:
-            # C11: a casa trocada por evidência externa e a confiança que o gate julgou. A
-            # `OCRMinConfidence` acima continua sendo a da matriz -- o PGN não mente sobre ela.
-            game.headers["OCRNextMove"] = (
-                f"{position.next_move} prova {' '.join(position.next_move_repairs)}"
-                + (f"; gate {position.gate_confidence:.3f}" if position.gate_confidence is not None else ""))
-        if position.colour_repairs:
-            # C5: a cor que a tinta contradisse, trocada pelo calibrador do livro.
-            game.headers["OCRColour"] = "tinta trocou " + " ".join(position.colour_repairs)
-        if position.stipulation:
-            # C12: a exigência impressa e o que ela disse da leitura. `Stipulation` é o header
-            # que os leitores de PGN de problemas já conhecem (`#2`); `StipulationCheck` diz
-            # se a posição exportada a cumpre -- «fecha», «não fecha» ou «não verificada».
-            game.headers["Stipulation"] = position.stipulation
-            if position.stipulation_closes is True:
-                veredito = "fecha" + (f": 1.{position.stipulation_keys[0]}" if position.stipulation_keys else "")
-            elif position.stipulation_closes is False:
-                veredito = "não fecha"
-            else:
-                veredito = "não verificada"
-            game.headers["StipulationCheck"] = veredito
-            if position.stipulation_repairs:
-                game.headers["OCRStipulation"] = (
-                    f"{position.stipulation} prova {' '.join(position.stipulation_repairs)}"
-                    + (f"; gate {position.gate_confidence:.3f}" if position.gate_confidence is not None else ""))
-        if provenance_file:
-            # A11: o PGN aponta para o sidecar; a chave é a mesma identidade do `[Diagram]`.
-            game.headers["ProvenanceFile"] = provenance_file
-            game.headers["ProvenanceKey"] = chave(position.page_index, position.diagram_index)
-        if position.is_legal is not None:
-            game.headers["OCRLegality"] = position.legality_label
-            if not position.is_legal and position.problems:
-                game.headers["OCRProblems"] = "; ".join(position.problems)
-        if position.rotation is not None:
-            # Registrado sempre, e nao so quando girou: sem isso nao ha como saber depois se
-            # a leitura de um diagrama suspeito foi feita de pe ou de cabeca para baixo.
-            game.headers["OCRRotation"] = str(position.rotation)
-
-        reason = (review_reasons or {}).get((position.page_index, position.diagram_index))
-        if reason:
-            game.headers["Review"] = reason
-
-        if annotation is not None:
-            # Por ultimo, e de proposito: o que a pessoa escreveu na galeria vence tudo que
-            # foi inferido acima. `RESERVED_HEADERS` ja tirou `FEN`, `SetUp` e `Result` da
-            # jogada -- aqueles mudam pelos campos proprios, que sabem recompor a posicao.
-            for nome, valor in annotation.headers.items():
-                game.headers[nome] = valor
-            if annotation.filled_from:
-                # A evidencia do casamento (S-72). Sem ela, `[White "Ljubojevic, Ljubomir"]`
-                # num PGN nao diz se alguem digitou aquilo ou se as 64 casas bateram com uma
-                # partida registrada -- e as duas coisas valem muito diferente.
-                game.headers["GameSource"] = annotation.filled_from
-
-        quer_link = annotation.lichess_link if annotation is not None else None
-        if quer_link is None:
-            quer_link = lichess_links
-        if quer_link:
+        # A ordem das partes é a ordem dos headers no arquivo, e a anotação vem por último.
+        for parte in (
+            _headers_de_identidade(position, annotation, source_name, event_name, reading_order),
+            _headers_do_lado_a_jogar(position, annotation),
+            _headers_do_contexto(position.context),
+            _headers_da_deteccao(position),
+            _headers_dos_reparos(position),
+            _headers_da_estipulacao(position),
+            _headers_de_proveniencia(position, provenance_file),
+            _headers_de_legalidade(position),
+            {"Review": reason} if reason else {},
+            _headers_da_anotacao(annotation),
+        ):
+            game.headers.update(parte)
+        if _quer_link(annotation, lichess_links):
             # Comentario, e nao header: o link e para uma pessoa clicar, e leitor de PGN
             # mostra comentario junto do diagrama. Header seria metadado de maquina.
             game.comment = lichess_analysis_url(game.headers["FEN"])
-
         games.append(game)
-
     return games
 
+
+Headers = dict[str, str]
+"""Uma parte dos headers de um jogo, devolvida por um construtor por assunto (S-858)."""
+
+
+def _headers_de_identidade(
+    position: DiagramPosition,
+    annotation: DiagramAnnotation | None,
+    source_name: str,
+    event_name: str,
+    reading_order: ReadingOrder,
+) -> Headers:
+    """Quem jogou, de onde a posição saiu e a FEN -- o que todo jogo tem."""
+    context = position.context
+    white, black = context.players if context and context.players else ("?", "?")
+    headers = {
+        "Event": (context.event if context and context.event else None) or event_name,
+        "Site": "Local",
+        "Round": f"{position.page_number}.{position.diagram_index}",
+        "White": white,
+        "Black": black,
+    }
+    if context is not None and context.year is not None:
+        headers["Date"] = f"{context.year}.??.??"
+    return headers | {
+        "Result": "*",
+        "Annotator": "ChessVisionOFF",
+        "SetUp": "1",
+        "FEN": position.annotated_fen(annotation),
+        "SourcePDF": source_name,
+        "Page": str(position.page_number),
+        "Diagram": str(position.diagram_index),
+        "ReadingOrder": reading_order,
+        "OCRConfidence": f"{position.confidence:.3f}",
+    }
+
+
+def _headers_do_lado_a_jogar(position: DiagramPosition, annotation: DiagramAnnotation | None) -> Headers:
+    side_to_move = position.annotated_side_to_move(annotation)
+    if side_to_move is None:
+        return {}
+    headers = {"SideToMove": side_to_move.label, "SideToMoveSource": side_to_move.source}
+    # So quando quem decidiu foi o OCR (S-43). Escrever a confianca de uma decisao
+    # de legalidade -- que pode ter derrubado uma leitura de OCR de 0,55 -- diria
+    # que a resposta gravada vale 0,55, e ela nao veio de la. E 1,0 em todo jogo de
+    # um livro com camada de texto e ruido que ensina a ignorar o header.
+    if side_to_move.source in _OCR_SOURCES and position.context is not None:
+        headers["SideToMoveConfidence"] = f"{position.context.side_to_move_confidence:.3f}"
+    if infer_castling_rights(position.fen) != "-":
+        # So quando ha o que declarar: escrever a proveniencia de um "-" nao informa
+        # nada e enche o header de ruido.
+        headers["CastlingSource"] = "inferred"
+    return headers
+
+
+def _headers_do_contexto(context: DiagramContext | None) -> Headers:
+    """O número do exercício e a legenda, quando a página os tem."""
+    headers: Headers = {}
+    if context is not None and context.exercise_number is not None:
+        headers["ExerciseNumber"] = str(context.exercise_number)
+    if context is not None and context.caption:
+        headers["Caption"] = _flatten_caption(context.caption)
+    return headers
+
+
+def _headers_da_deteccao(position: DiagramPosition) -> Headers:
+    """De onde o recorte veio, se repete outro, e a casa mais insegura da leitura."""
+    headers: Headers = {}
+    if position.detection_source is not None:
+        headers["DetectionSource"] = position.detection_source
+    if position.duplicate_of is not None:
+        page_number, diagram_index = position.duplicate_of
+        headers["DuplicateOf"] = f"{page_number}.{diagram_index}"
+    if position.min_confidence is not None:
+        headers["OCRMinConfidence"] = f"{position.min_confidence:.3f}"
+    return headers
+
+
+def _sufixo_do_gate(position: DiagramPosition) -> str:
+    return f"; gate {position.gate_confidence:.3f}" if position.gate_confidence is not None else ""
+
+
+def _headers_dos_reparos(position: DiagramPosition) -> Headers:
+    headers: Headers = {}
+    if position.next_move_repairs:
+        # C11: a casa trocada por evidência externa e a confiança que o gate julgou. A
+        # `OCRMinConfidence` continua sendo a da matriz -- o PGN não mente sobre ela.
+        headers["OCRNextMove"] = (
+            f"{position.next_move} prova {' '.join(position.next_move_repairs)}" + _sufixo_do_gate(position)
+        )
+    if position.colour_repairs:
+        # C5: a cor que a tinta contradisse, trocada pelo calibrador do livro.
+        headers["OCRColour"] = "tinta trocou " + " ".join(position.colour_repairs)
+    return headers
+
+
+def _veredito_da_estipulacao(position: DiagramPosition) -> str:
+    if position.stipulation_closes is True:
+        return "fecha" + (f": 1.{position.stipulation_keys[0]}" if position.stipulation_keys else "")
+    if position.stipulation_closes is False:
+        return "não fecha"
+    return "não verificada"
+
+
+def _headers_da_estipulacao(position: DiagramPosition) -> Headers:
+    """C12: a exigência impressa e o que ela disse da leitura.
+
+    `Stipulation` é o header que os leitores de PGN de problemas já conhecem (`#2`);
+    `StipulationCheck` diz se a posição exportada a cumpre -- «fecha», «não fecha» ou «não
+    verificada».
+    """
+    if not position.stipulation:
+        return {}
+    headers = {"Stipulation": position.stipulation, "StipulationCheck": _veredito_da_estipulacao(position)}
+    if position.stipulation_repairs:
+        headers["OCRStipulation"] = (
+            f"{position.stipulation} prova {' '.join(position.stipulation_repairs)}" + _sufixo_do_gate(position)
+        )
+    return headers
+
+
+def _headers_de_proveniencia(position: DiagramPosition, provenance_file: str) -> Headers:
+    """A11: o PGN aponta para o sidecar; a chave é a mesma identidade do `[Diagram]`."""
+    if not provenance_file:
+        return {}
+    return {
+        "ProvenanceFile": provenance_file,
+        "ProvenanceKey": chave(position.page_index, position.diagram_index),
+    }
+
+
+def _headers_de_legalidade(position: DiagramPosition) -> Headers:
+    headers: Headers = {}
+    if position.is_legal is not None:
+        headers["OCRLegality"] = position.legality_label
+        if not position.is_legal and position.problems:
+            headers["OCRProblems"] = "; ".join(position.problems)
+    if position.rotation is not None:
+        # Registrado sempre, e nao so quando girou: sem isso nao ha como saber depois se
+        # a leitura de um diagrama suspeito foi feita de pe ou de cabeca para baixo.
+        headers["OCRRotation"] = str(position.rotation)
+    return headers
+
+
+def _headers_da_anotacao(annotation: DiagramAnnotation | None) -> Headers:
+    """O que a pessoa escreveu na galeria, que vence tudo que foi inferido.
+
+    Por isso entra por ultimo. `RESERVED_HEADERS` ja tirou `FEN`, `SetUp` e `Result` da
+    jogada -- aqueles mudam pelos campos proprios, que sabem recompor a posicao.
+    """
+    if annotation is None:
+        return {}
+    headers = dict(annotation.headers)
+    if annotation.filled_from:
+        # A evidencia do casamento (S-72). Sem ela, `[White "Ljubojevic, Ljubomir"]`
+        # num PGN nao diz se alguem digitou aquilo ou se as 64 casas bateram com uma
+        # partida registrada -- e as duas coisas valem muito diferente.
+        headers["GameSource"] = annotation.filled_from
+    return headers
+
+
+def _quer_link(annotation: DiagramAnnotation | None, lichess_links: bool) -> bool:
+    """A decisão do diagrama, quando ele declarou uma; senão o padrão da exportação (S-67)."""
+    declarado = annotation.lichess_link if annotation is not None else None
+    return lichess_links if declarado is None else declarado
 
 def build_pgn_text(
     positions: Iterable[DiagramPosition],
@@ -1016,14 +1101,17 @@ def write_gated_pgn(
         lichess_links=lichess_links,
         provenance_file=sidecar_name,
     )
-    output_path.write_text(payload + "\n" if payload else "", encoding="utf-8")
+    atomic_write_text(output_path, payload + "\n" if payload else "")
 
     review_items = sorted(
         needs_review + rejected,
         key=lambda item: (item[0].page_index, item[0].diagram_index),
     )
     review_path: Path | None = None
-    if review_items:
+    if not review_items:
+        # O `.review.pgn` da rodada anterior não pode ficar ao lado do PGN de agora (S-818).
+        review_output_path(output_path).unlink(missing_ok=True)
+    else:
         review_path = review_output_path(output_path)
         review_payload = build_pgn_text(
             [position for position, _ in review_items],
@@ -1035,7 +1123,7 @@ def write_gated_pgn(
             lichess_links=lichess_links,
             provenance_file=sidecar_name,
         )
-        review_path.write_text(review_payload + "\n" if review_payload else "", encoding="utf-8")
+        atomic_write_text(review_path, review_payload + "\n" if review_payload else "")
 
     return ExportReport(
         accepted=accepted,
@@ -1057,7 +1145,7 @@ def save_pdf_positions_to_pgn(
     output_path: Path,
     model_path: Path = DEFAULT_MODEL_PATH,
     *,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     max_boards_per_page: int = DEFAULT_MAX_BOARDS,
     orientation: OrientationMode = DEFAULT_ORIENTATION_MODE,
     device: str | None = None,
@@ -1183,7 +1271,13 @@ def save_pdf_positions_to_pgn(
     # uma vez na numeracao dos diagramas.
     anotacoes: Mapping[tuple[int, int], DiagramAnnotation] | None = None
     if annotations is None and isinstance(pdf_source, (str, Path)):
-        anotacoes = load_annotations(Path(pdf_source), reading_order=reading_order).as_mapping()
+        try:
+            anotacoes = load_annotations(Path(pdf_source), reading_order=reading_order).as_mapping()
+        except GaleriaDeOutroLivro as exc:
+            # A galeria de mesmo nome é de outro livro (S-878): este não tem anotação nenhuma, e
+            # exportá-lo sem elas é a verdade. Derrubar a exportação faria o lote falhar o
+            # segundo de dois livros de mesmo nome, que é o caso que ele agora separa.
+            logger.warning("%s; exportando sem anotações da galeria.", exc)
     elif annotations is not None:
         anotacoes = annotations
 

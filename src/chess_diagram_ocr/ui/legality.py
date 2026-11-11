@@ -19,6 +19,12 @@ import chess
 
 from ..fen_utils import PositionCheck, check_position, reading_index_from_square, square_name
 
+__all__ = [
+    "ILLEGAL_SAVE_TITLE",
+    "explain_position",
+    "illegal_save_question",
+]
+
 
 @dataclass(frozen=True)
 class LegalityProblem:
@@ -169,6 +175,9 @@ def _problems_for(board: chess.Board, status: chess.Status) -> tuple[LegalityPro
     return tuple(problems)
 
 
+NENHUM_LADO_FECHA = "nenhum lado a jogar torna a posição legal"
+
+
 def explain_position(fen: str) -> LegalityExplanation:
     """Diagnóstico completo da posição, pronto para o painel de legalidade da S-21."""
     check: PositionCheck = check_position(fen)
@@ -188,11 +197,21 @@ def explain_position(fen: str) -> LegalityExplanation:
         symbol = piece.symbol()
         counts[symbol] = counts.get(symbol, 0) + 1
 
+    problems = _problems_for(board, check.status)
+    fatal = check.is_fatal
+    if not check.is_legal and not fatal and check.legal_turn is None:
+        # S-890: nenhuma das duas vezes fecha (reis adjacentes, os dois reis em xeque). Trocar
+        # a vez, que é o que "lado a jogar" manda fazer, não conserta nada: é erro das peças,
+        # e a gravação tem de perguntar como pergunta diante de qualquer outro fatal.
+        fatal = True
+        casas = tuple(sorted({*_check_squares(board, chess.WHITE), *_check_squares(board, chess.BLACK)}))
+        problems = (LegalityProblem(text=NENHUM_LADO_FECHA, squares=casas, fatal=True), *problems)
+
     return LegalityExplanation(
         fen=check.fen,
         is_legal=check.is_legal,
-        is_fatal=check.is_fatal,
-        problems=_problems_for(board, check.status),
+        is_fatal=fatal,
+        problems=problems,
         piece_counts=counts,
     )
 
@@ -216,7 +235,8 @@ def illegal_save_question(fen: str) -> str | None:
 
     Só o fatal pergunta. "O lado que não joga está em xeque" nunca chegou a bloquear gravação
     -- é palpite sobre o turno, não sobre as peças --, e transformá-lo em pergunta poria uma
-    caixa no caminho de um salvamento que sempre funcionou.
+    caixa no caminho de um salvamento que sempre funcionou. Quando nenhuma das duas vezes
+    fecha, já não é palpite sobre o turno, e `explain_position` o dá como fatal (S-890).
     """
     explicacao = explain_position(fen)
     if not explicacao.is_fatal:

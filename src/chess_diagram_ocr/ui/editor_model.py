@@ -31,6 +31,7 @@ from chess_diagram_ocr.service import RecognitionOrigin, RecognizedDiagram
 
 __all__ = [
     "DiagramEditorModel",
+    "DiagramState",
     "EditorBinding",
     "SaveKind",
     "SaveTarget",
@@ -89,10 +90,50 @@ class SaveTarget:
     """Valor de `corrected_by` (S-52): **como** a amostra chegou ao rótulo."""
 
 
+@dataclass(frozen=True)
+class DiagramState:
+    """Tudo o que uma edição muda num diagrama: a posição, a vez **e a procedência** (S-888).
+
+    É o estado que a pilha de desfazer do Resultado guarda. Ela guardava `(placement, side)`, e a
+    procedência morava fora: desfazer a segunda opinião devolvia a leitura e deixava a rota
+    `segunda-opiniao` e as casas roxas; desfazer o livro deixava a nota «PGN do livro»; e
+    desfazer até a leitura passava por `apply_placement` e `set_side`, que marcam edição à mão
+    -- a página ficava com uma pendência que ninguém fez, presa no cache e perguntada ao fechar.
+
+    **`edited_by_hand` e `side_source` voltam junto**, e por isso continuam honestos depois de
+    um `Ctrl+Z`: «a pessoa mexeu neste diagrama?» é `edited_by_hand or side_source == "manual"`
+    ou a posição diferente da leitura, sem histórico a consultar. É a pergunta de quem adota
+    algo em segundo plano por cima do editor (o PGN do livro que chega atrasado, S-894).
+
+    O padrão (`DiagramState()`) é o de um editor vazio.
+    """
+
+    placement: str = ""
+    side: str = "w"
+    side_source: str = "default"
+    side_conflicting: bool = False
+    edited_by_hand: bool = False
+    second_opinion: tuple[int, ...] | None = None
+    """As casas disputadas pelo segundo leitor, ou `None` se ele não leu. `()` é «leu e concorda»
+    -- conta para a rota de rótulo do mesmo jeito."""
+    from_book: str | None = None
+    book_squares: tuple[int, ...] | None = None
+    net_corrected: bool = False
+
+
+def touched(item: RecognizedDiagram, fen: str) -> bool:
+    """Se o que está no editor já não é a leitura deste diagrama tal como chegou. Pura.
+
+    Uma peça arrastada, uma FEN diferente da lida (à mão ou adotada de outro leitor) ou a vez
+    escolhida pela pessoa. Não consulta a pilha: desde a S-888 desfazer devolve também
+    `edited_by_hand` e a procedência da vez, e a correção desfeita deixa de contar.
+    """
+    return item.edited_by_hand or fen != item.placement or item.side_to_move_source == "manual"
+
+
 def unsaved_hand_edit(item: RecognizedDiagram, fen: str, side: str) -> bool:
     """Se este diagrama tem correção à mão que ainda não foi gravada (A7). Pura."""
-    edited = item.edited_by_hand or fen != item.placement or item.side_to_move_source == "manual"
-    if not edited:
+    if not touched(item, fen):
         return False
     return item.saved_placement != fen or (item.saved_side is not None and item.saved_side != side)
 
@@ -281,6 +322,65 @@ class DiagramEditorModel:
         idx = self.clamped_index() if index is None else index
         return self.side_edits[idx] if 0 <= idx < len(self.side_edits) else "w"
 
+    def state_at(self, index: int | None = None) -> DiagramState:
+        """O estado completo do diagrama, para a pilha de desfazer (S-888). Fora da faixa, o vazio."""
+        idx = self.clamped_index() if index is None else index
+        if not (0 <= idx < len(self.items) and idx < len(self.fen_edits)):
+            return DiagramState()
+        item = self.items[idx]
+        return DiagramState(
+            placement=self.fen_edits[idx],
+            side=self.side_at(idx),
+            side_source=item.side_to_move_source,
+            side_conflicting=item.side_conflicting,
+            edited_by_hand=item.edited_by_hand,
+            second_opinion=self.second_opinion.get(idx),
+            from_book=self.from_book.get(idx),
+            book_squares=self.book_squares.get(idx),
+            net_corrected=idx in self.net_corrected,
+        )
+
+    def touched_at(self, index: int) -> bool:
+        """Se o diagrama `index` já não está como foi lido (`touched`). Fora da faixa, `False`.
+
+        É a pergunta de quem adota algo em segundo plano por cima do editor: o PGN do livro que
+        chega depois de a pessoa ter corrigido o diagrama não pode trocar a correção (S-894).
+        """
+        if not (0 <= index < len(self.items) and index < len(self.fen_edits)):
+            return False
+        return touched(self.items[index], self.fen_edits[index])
+
+    def restore(self, state: DiagramState, index: int | None = None) -> bool:
+        """Repõe um estado da pilha, procedência inclusive. Devolve se o índice existe.
+
+        **Não passa por `apply_placement` nem por `set_side`**, que marcam edição à mão: voltar
+        à leitura é voltar a não ter edição nenhuma (S-888).
+        """
+        idx = self.clamped_index() if index is None else index
+        if not (0 <= idx < len(self.items) and idx < len(self.fen_edits) and idx < len(self.side_edits)):
+            return False
+        item = self.items[idx]
+        self.fen_edits[idx] = state.placement
+        self.side_edits[idx] = state.side
+        item.set_side_to_move(state.side, source=state.side_source)
+        item.side_conflicting = state.side_conflicting
+        item.edited_by_hand = state.edited_by_hand
+        for marcas, valor in ((self.second_opinion, state.second_opinion),
+                              (self.book_squares, state.book_squares)):
+            if valor is None:
+                marcas.pop(idx, None)
+            else:
+                marcas[idx] = valor
+        if state.from_book is None:
+            self.from_book.pop(idx, None)
+        else:
+            self.from_book[idx] = state.from_book
+        if state.net_corrected:
+            self.net_corrected.add(idx)
+        else:
+            self.net_corrected.discard(idx)
+        return True
+
     # ----------------------------------------------------------------------------- edição
 
     def set_fen(self, fen: str, index: int | None = None) -> None:
@@ -418,6 +518,7 @@ class DiagramEditorModel:
         return label_route(
             from_net=index in self.net_corrected,
             from_second_opinion=index in self.second_opinion,
+            from_book=index in self.from_book,
             from_queue=self.binding is EditorBinding.REVIEW,
             read_placement=self.items[index].placement if 0 <= index < len(self.items) else "",
             saved_placement=fen,

@@ -24,6 +24,7 @@ from PyQt6.QtCore import QPoint, QRect, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QImage, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap, QWheelEvent
 from PyQt6.QtWidgets import QScrollArea, QScrollBar, QWidget
 
+from chess_diagram_ocr.config import DEFAULT_DPI
 from chess_diagram_ocr.qt import tema
 from chess_diagram_ocr.qt.imagens import qimage_de_rgb, reduzir_rgb
 from chess_diagram_ocr.qt.trabalho import Tarefa, manter_viva
@@ -407,7 +408,7 @@ class VisorDePagina(QScrollArea):
         """Sobe a cada `mostrar_pagina`: um reescalonamento de uma página que já saiu é lixo."""
         self._reescalonamento: Tarefa | None = None
         self._reescalar_de_novo = False
-        self._dpi = 220
+        self._dpi = DEFAULT_DPI
         self._destaque: tuple[float, ...] | None = None
         """O bloco de texto contornado, em pontos da página (S-642)."""
         self._caixas: PageBoxes | None = None

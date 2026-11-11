@@ -56,9 +56,9 @@ class _Aba(unittest.TestCase):
 
     def cursor_em(self, deslocamento: int, fim: int | None = None) -> None:
         cursor = self.painel.editor.textCursor()
-        cursor.setPosition(self.painel._mapa.posicao(deslocamento))
+        cursor.setPosition(self.painel.espelho.mapa.posicao(deslocamento))
         if fim is not None:
-            cursor.setPosition(self.painel._mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
+            cursor.setPosition(self.painel.espelho.mapa.posicao(fim), QTextCursor.MoveMode.KeepAnchor)
         self.painel.editor.setTextCursor(cursor)
 
     def concorda(self) -> None:
@@ -88,7 +88,7 @@ class ParagrafoTests(_Aba):
             for alinhamento in rico.ALINHAMENTOS:
                 with self.subTest(paragrafo=indice, alinhamento=alinhamento):
                     self.cursor_em(self.inicio_de(indice) + 2)
-                    self.painel.alinhar(alinhamento)
+                    self.painel.ferramentas.alinhar(alinhamento)
                     self.concorda()
 
     def test_o_estilo_chega_a_cada_paragrafo(self) -> None:
@@ -96,7 +96,7 @@ class ParagrafoTests(_Aba):
             for estilo in rico.ESTILOS:
                 with self.subTest(paragrafo=indice, estilo=estilo):
                     self.cursor_em(self.inicio_de(indice) + 2)
-                    self.painel.aplicar_estilo(estilo)
+                    self.painel.ferramentas.aplicar_estilo(estilo)
                     self.concorda()
 
     def test_o_centro_do_paragrafo_do_meio_e_visto_na_tela(self) -> None:
@@ -178,7 +178,7 @@ class MiniaturaTests(_Aba):
         ):
             with self.subTest(alinhamento=alinhamento):
                 self.cursor_em(*self.marca())
-                self.painel.alinhar(alinhamento)
+                self.painel.ferramentas.alinhar(alinhamento)
                 self.assertEqual(self.bloco_da_figura().blockFormat().alignment(), flag)
                 self.concorda()
 
@@ -201,7 +201,7 @@ class MiniaturaTests(_Aba):
         # E a tradução continua certa: a marca é achada onde ela está.
         inicio, fim = self.marca()
         self.cursor_em(inicio, fim)
-        self.assertEqual(self.painel._intervalo(), (inicio, fim))
+        self.assertEqual(self.painel.espelho.intervalo(), (inicio, fim))
 
     def test_copiar_a_folha_nao_traz_linha_a_mais(self) -> None:
         self.painel.selecionar_tudo()

@@ -208,8 +208,10 @@ class FormatoAntigoTests(unittest.TestCase):
             arquivo.de_json(dados)
         dados["versao"] = 1
         dados["documento"]["origem"]["esquema"] = pagina.ESQUEMA + 1
-        with self.assertRaises(PaginaInvalida):
+        # Quem abre o arquivo só pega `ArquivoInvalido` (S-848), e a folha mais nova continua sendo a causa.
+        with self.assertRaises(arquivo.ArquivoInvalido) as recusa:
             arquivo.de_json(dados)
+        self.assertIsInstance(recusa.exception.__cause__, PaginaInvalida)
 
 
 class IdaEVoltaTests(FormatoNovoLigado):

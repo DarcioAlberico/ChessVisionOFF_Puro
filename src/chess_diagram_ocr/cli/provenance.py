@@ -23,7 +23,7 @@ import logging
 from pathlib import Path
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR, DEFAULT_SAMPLES_DIR
+from ..config import DEFAULT_SAMPLES_DIR
 from ..labels import LabelStore
 from ..logging_setup import configure_logging, default_log_file
 from ..provenance import (
@@ -36,7 +36,16 @@ from ..provenance import (
     match_samples,
     samples_without_provenance,
 )
-from . import EXIT_BAD_INPUT, add_dataset_arguments, add_dpi_argument, add_verbose, cli_errors
+from . import (
+    EXIT_BAD_INPUT,
+    add_dataset_arguments,
+    add_dpi_argument,
+    add_json_argument,
+    add_pdf_dir_argument,
+    add_verbose,
+    cli_errors,
+    fronteira,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +59,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--index", type=Path, default=DEFAULT_INDEX_PATH, help="Índice de dHash dos diagramas.")
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    add_pdf_dir_argument(parser)
     add_dataset_arguments(parser, splits=False, samples=False)
     parser.add_argument(
         "--samples-dir", type=Path, default=DEFAULT_SAMPLES_DIR, help="Pasta das imagens de treino a casar."
@@ -86,14 +95,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-backup", dest="backup", action="store_false", help="Não copia o labels.csv antes de gravar procedência."
     )
-    parser.add_argument("--json", type=Path, default=None, help="Grava o relatório em JSON.")
+    add_json_argument(parser)
     parser.add_argument("--show-distances", type=int, default=12, help="Faixas do histograma listadas.")
     add_verbose(parser)
     return parser.parse_args(argv)
 
 
 def _run_build(args: argparse.Namespace) -> int:
-    base = ProvenanceIndex.load(args.index)
+    with fronteira(f"--index {args.index}"):
+        base = ProvenanceIndex.load(args.index)
     if base.entries and base.dpi != args.dpi:
         print(f"O índice existente foi construído com dpi={base.dpi}; use --dpi {base.dpi} ou apague-o.")
         return EXIT_BAD_INPUT
@@ -166,7 +176,8 @@ def main(argv: list[str] | None = None) -> int:
     if not args.match:
         return 0
 
-    indice = ProvenanceIndex.load(args.index)
+    with fronteira(f"--index {args.index}"):
+        indice = ProvenanceIndex.load(args.index)
     if not indice.entries:
         print(f"Índice vazio ou inexistente: {args.index}")
         print("Construa-o primeiro: cvoff-provenance --build --book \"1937 Kemeri.pdf\"")

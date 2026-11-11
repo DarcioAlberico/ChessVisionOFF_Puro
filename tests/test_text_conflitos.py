@@ -22,6 +22,7 @@ import numpy as np
 from chess_diagram_ocr.text.conflitos import (
     Conflito,
     DecisaoInvalida,
+    Plano,
     achar,
     aplicar,
     conferir,
@@ -191,7 +192,7 @@ class AplicarTests(BaseDeTeste):
         decisoes = {achados[0].sha256: {"vencedor": "digit_1", "rotulos": achados[0].rotulos, "motivo": "e um 1"}}
         manifesto = aplicar(conferir(achados, decisoes), self.base, self.quarentena)
 
-        self.assertEqual(desfazer(manifesto), 1)
+        self.assertEqual(desfazer(manifesto).voltaram, 1)
         depois = sorted(p.relative_to(self.base).as_posix() for p in self.base.rglob("*.png"))
         self.assertEqual(antes, depois)
 
@@ -201,8 +202,178 @@ class AplicarTests(BaseDeTeste):
         decisoes = {achados[0].sha256: {"vencedor": "digit_1", "rotulos": achados[0].rotulos, "motivo": "e um 1"}}
         manifesto = aplicar(conferir(achados, decisoes), self.base, self.quarentena)
         dados = json.loads(manifesto.read_text(encoding="utf-8"))
-        self.assertEqual(dados["movidos"], [{"classe": "lower_l", "arquivo": "l0.png"}])
+        self.assertEqual(dados["movidos"], [{"classe": "lower_l", "arquivo": "l0.png", "estado": "movido"}])
         self.assertEqual(dados["por_motivo"], {"rotulo errado": 1})
+
+
+class DesfazerSempreVoltaTests(BaseDeTeste):
+    """A promessa "nada é apagado" vale de qualquer pasta e depois de qualquer queda (S-817)."""
+
+    def _plano_indecidivel(self) -> Plano:
+        self.base_com_um_conflito()
+        achados = achar(self.base, tarefas=2)
+        decisoes = {achados[0].sha256: {"vencedor": None, "rotulos": achados[0].rotulos, "motivo": "1 ou l"}}
+        return conferir(achados, decisoes)
+
+    def _na_base(self) -> list[str]:
+        return sorted(p.relative_to(self.base).as_posix() for p in self.base.rglob("*.png"))
+
+    def test_desfazer_de_outra_pasta_devolve_tudo(self) -> None:
+        """A base dentro da raiz do projeto, e o `desfazer` rodado de outra pasta.
+
+        O manifesto gravava `base` relativa à raiz, e `desfazer` a resolvia contra a pasta
+        atual: não achava nada, dizia "0 recortes voltaram" e saía com 0.
+        """
+        import os
+        from unittest import mock
+
+        from chess_diagram_ocr import config
+
+        plano = self._plano_indecidivel()
+        antes = self._na_base()
+        with mock.patch.object(config, "PROJECT_ROOT", self.raiz):
+            manifesto = aplicar(plano, self.base, self.quarentena)
+        outra = self.raiz / "outra_pasta"
+        outra.mkdir()
+        anterior = os.getcwd()
+        os.chdir(outra)
+        self.addCleanup(os.chdir, anterior)
+
+        volta = desfazer(manifesto)
+
+        self.assertEqual((volta.voltaram, volta.faltam), (4, []))
+        self.assertEqual(antes, self._na_base())
+
+    def test_queda_no_meio_da_quarentena_e_desfazivel(self) -> None:
+        """O terceiro movimento falha: os dois que já saíram têm caminho de volta.
+
+        O manifesto só era gravado depois de todos os movimentos; a queda no meio deixava
+        arquivos na quarentena sem mapa nenhum.
+        """
+        import shutil
+        from unittest import mock
+
+        plano = self._plano_indecidivel()
+        antes = self._na_base()
+        mover_de_verdade = shutil.move
+        chamadas = {"n": 0}
+
+        def cai_no_terceiro(origem: str, destino: str) -> object:
+            chamadas["n"] += 1
+            if chamadas["n"] == 3:
+                raise OSError("disco cheio")
+            return mover_de_verdade(origem, destino)
+
+        manifesto = self.quarentena / "manifesto.json"
+        with mock.patch("chess_diagram_ocr.text.conflitos.shutil.move", side_effect=cai_no_terceiro):
+            with self.assertRaises(OSError):
+                aplicar(plano, self.base, self.quarentena, manifesto=manifesto)
+
+        self.assertEqual(len(self._na_base()), len(antes) - 2)
+        estados = [item["estado"] for item in json.loads(manifesto.read_text(encoding="utf-8"))["movidos"]]
+        self.assertEqual(estados, ["movido", "movido", "pendente", "pendente"])
+
+        volta = desfazer(manifesto)
+        self.assertEqual(volta.voltaram, 2)
+        self.assertEqual(antes, self._na_base())
+
+    def test_vencedor_inexistente_e_divergente(self) -> None:
+        """`vencedor` digitado errado no JSON: nenhuma pasta ganha, e todas iam embora."""
+        self.base_com_um_conflito()
+        achados = achar(self.base, tarefas=2)
+        decisoes = {achados[0].sha256: {"vencedor": "digit_l", "rotulos": achados[0].rotulos, "motivo": "typo"}}
+        plano = conferir(achados, decisoes)
+        self.assertEqual(plano.divergentes, [achados[0].sha256])
+        self.assertEqual((plano.mover, plano.por_motivo), ([], {}))
+
+    def test_desfazer_que_nao_devolve_nada_sai_com_erro(self) -> None:
+        """Zero de N pela linha de comando é falha, não "0 recortes voltaram" e código 0."""
+        import contextlib
+        import io
+
+        from chess_diagram_ocr.cli import texto_conflitos
+
+        manifesto = aplicar(self._plano_indecidivel(), self.base, self.quarentena)
+        for movido in self.quarentena.rglob("*.png"):
+            movido.unlink()  # o que o manifesto diz ter movido sumiu da quarentena
+
+        with contextlib.redirect_stdout(io.StringIO()) as saida:
+            codigo = texto_conflitos.main(["--desfazer", str(manifesto)])
+        self.assertNotEqual(codigo, 0)
+        self.assertIn("0 de 4", saida.getvalue())
+
+    def test_manifesto_antigo_relativo_volta_contra_a_raiz(self) -> None:
+        """Os manifestos já gravados têm caminho relativo à raiz e não têm `estado`."""
+        from unittest import mock
+
+        from chess_diagram_ocr import config
+
+        self.base_com_um_conflito()
+        (self.quarentena / "lower_l").mkdir(parents=True)
+        (self.base / "lower_l" / "l0.png").rename(self.quarentena / "lower_l" / "l0.png")
+        manifesto = self.raiz / "antigo.json"
+        manifesto.write_text(
+            json.dumps({"base": "base", "quarentena": "quarentena", "movidos": [{"classe": "lower_l", "arquivo": "l0.png"}]}),
+            encoding="utf-8",
+        )
+        with mock.patch.object(config, "PROJECT_ROOT", self.raiz):
+            volta = desfazer(manifesto)
+        self.assertEqual(volta.voltaram, 1)
+        self.assertTrue((self.base / "lower_l" / "l0.png").exists())
+
+
+class ComandoTests(BaseDeTeste):
+    """O `cvoff-texto-conflitos` de ponta a ponta: relata, desenha, aplica e desfaz (S-863)."""
+
+    def _main(self, *argv: object) -> tuple[int, str]:
+        import contextlib
+        import io
+
+        from chess_diagram_ocr.cli import texto_conflitos
+
+        with contextlib.redirect_stdout(io.StringIO()) as saida:
+            codigo = texto_conflitos.main([str(a) for a in argv])
+        return codigo, saida.getvalue()
+
+    def test_o_julgado_e_aplicado_relatado_e_desfeito(self) -> None:
+        self.base_com_um_conflito()
+        achado = achar(self.base, tarefas=2)[0]
+        decisoes = self.raiz / "decisoes.json"
+        decisoes.write_text(
+            json.dumps([{"sha256": achado.sha256, "rotulos": achado.rotulos, "vencedor": "digit_1", "motivo": "o 1 tem serifa"}]),
+            encoding="utf-8",
+        )
+        relatorio = self.raiz / "relatorio.json"
+        comum = ["--base", self.base, "--decisoes", decisoes, "--quarentena", self.quarentena, "--relatorio", relatorio]
+
+        codigo, saida = self._main(*comum, "--folha", self.raiz / "folha.png", "--aplicar")
+
+        self.assertEqual(codigo, 0, saida)
+        self.assertIn("grupos em conflito: 1", saida)
+        self.assertFalse((self.base / "lower_l" / "l0.png").exists(), "o perdedor saiu da base")
+        self.assertTrue((self.raiz / "folha.png").exists())
+        dados = json.loads(relatorio.read_text(encoding="utf-8"))
+        self.assertEqual((dados["grupos_em_conflito"], dados["com_vencedor"], dados["a_mover"]["total"]), (1, 1, 1))
+        self.assertEqual(dados["decisoes"][0]["vencedor"], "digit_1")
+        self.assertIn("NAO MEDIDA", dados["quase_duplicata"])
+
+        manifesto = next(linha.split("--desfazer ")[1] for linha in saida.splitlines() if "--desfazer " in linha)
+        codigo, saida = self._main("--desfazer", manifesto.strip())
+        self.assertEqual(codigo, 0, saida)
+        self.assertTrue((self.base / "lower_l" / "l0.png").exists(), "o desfazer devolveu o perdedor")
+
+    def test_sem_decisao_nada_se_move(self) -> None:
+        self.base_com_um_conflito()
+        codigo, saida = self._main(
+            "--base", self.base, "--decisoes", self.raiz / "nao_ha.json", "--relatorio", self.raiz / "r.json", "--aplicar"
+        )
+        self.assertEqual(codigo, 0, saida)
+        self.assertIn("SEM DECISAO: 1", saida)
+        self.assertTrue((self.base / "lower_l" / "l0.png").exists())
+
+    def test_base_que_nao_existe_e_entrada_invalida(self) -> None:
+        codigo, saida = self._main("--base", self.raiz / "nao_ha", "--relatorio", self.raiz / "r.json")
+        self.assertEqual(codigo, 2, saida)
 
 
 class DecisoesReaisTests(unittest.TestCase):

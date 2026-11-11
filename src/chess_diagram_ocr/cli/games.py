@@ -3,7 +3,9 @@
     cvoff-games --all                        # relata, sem escrever nada
     cvoff-games --all --apply                # grava lance, vez e headers nas anotações
     cvoff-games --all --census               # o estado do acervo; não abre a base
+    cvoff-games --limpar-cache               # apaga do cache o que é de outro conjunto de bases
     cvoff-games --build-index                # o índice por nome; relê só o que mudou (S-532)
+    cvoff-games --build-index --podar        # idem, e tira do índice a base que saiu da pasta (S-809)
     cvoff-games --build-tree                 # a árvore de aberturas por posição (S-535)
     cvoff-games --book "Karpov 1" --names    # só o caminho por nome, ~150 s
     cvoff-games --all --database uma.pgn     # uma base só; repetível
@@ -37,6 +39,7 @@ import argparse
 import json
 import logging
 import multiprocessing as mp
+import sqlite3
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -45,7 +48,6 @@ from typing import Any
 from ..arvore_de_aberturas import DEFAULT_TREE_PATH, PROFUNDIDADE
 from ..arvore_de_aberturas import construir as construir_arvore
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR
 from ..gallery import DEFAULT_GALLERY_DIR, load_annotations, save_annotations
 from ..gallery_scan import GalleryIndex, load_index
 from ..games_cache import DEFAULT_STORE_PATH, open_store
@@ -64,11 +66,20 @@ from ..games_db import (
     scan_by_players,
     scan_by_positions,
     tamanho_da_base,
+    uri_somente_leitura,
 )
 from ..games_index import DEFAULT_INDEX_PATH, build_index
 from ..logging_setup import configure_logging, default_log_file
 from ..ui.gallery_model import GalleryModel
-from . import EXIT_BAD_INPUT, EXIT_FAILURE, add_verbose, cli_errors
+from . import (
+    EXIT_BAD_INPUT,
+    EXIT_FAILURE,
+    add_gallery_dir_argument,
+    add_pdf_dir_argument,
+    add_verbose,
+    cli_errors,
+    fronteira,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +116,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=[],
         help=f"um .pgn. Repetível. Padrão: TODOS os .pgn de {DEFAULT_DATABASE_DIR}",
     )
-    parser.add_argument("--gallery-dir", type=Path, default=DEFAULT_GALLERY_DIR, help="Pasta dos índices da Galeria.")
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
+    add_gallery_dir_argument(parser, DEFAULT_GALLERY_DIR)
+    add_pdf_dir_argument(parser)
     parser.add_argument("--workers", type=int, default=None, help="processos na busca por posição. 1 = sem paralelismo.")
     parser.add_argument(
         "--max-games",
@@ -138,6 +149,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="ignora o cache e pergunta tudo de novo. Para conferir o próprio cache.",
     )
     parser.add_argument(
+        "--limpar-cache",
+        action="store_true",
+        help=(
+            "apaga do cache as posições respondidas por outro conjunto de bases e sai (S-806). É o "
+            "único caminho que apaga: abrir com outra base só deixa de usá-las."
+        ),
+    )
+    parser.add_argument(
         "--census",
         action="store_true",
         help="conta o que a base identificou e por qual regra. Não abre o .pgn e não grava.",
@@ -148,6 +167,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "constrói ou põe em dia o índice por nome e sai: relê só os arquivos que mudaram (S-532). "
             "Do zero, ~9 min por gigabase. Torna a busca por nome interativa."
+        ),
+    )
+    parser.add_argument(
+        "--podar",
+        action="store_true",
+        help=(
+            "com --build-index: tira do índice as bases que não existem mais na pasta (S-809). Sem "
+            "isto, uma rodada com parte das bases acrescenta e atualiza, e não apaga nada."
         ),
     )
     parser.add_argument(
@@ -390,11 +417,20 @@ def _census(indices: dict[Path, GalleryIndex], args: argparse.Namespace) -> int:
 
     Sai antes de qualquer varredura de propósito: um instrumento que precisasse de 30 minutos
     para dizer o estado do acervo não seria consultado, e o que não se consulta não mede nada.
+
+    **Abre o cache só para ler (S-806)**, e sob as mesmas bases que a varredura usaria
+    (`_bases`): era aqui que um `--census --database X` apagava o cache do acervo inteiro.
     """
-    with open_store(args.cache, database=args.database or database_paths()) as cache:
+    with open_store(args.cache, database=_bases(args), somente_leitura=True) as cache:
         perguntadas, com_resposta = len(cache), cache.answered
         if not perguntadas:
-            print(f"Cache vazio em {args.cache}. Para produzi-lo:  cvoff-games --all")
+            if cache.guardadas:
+                print(
+                    f"O cache em {args.cache} guarda {cache.guardadas} posição(ões), todas respondidas por "
+                    "outro conjunto de bases: nenhuma vale para este. Para responder a este:  cvoff-games --all"
+                )
+            else:
+                print(f"Cache vazio em {args.cache}. Para produzi-lo:  cvoff-games --all")
             return EXIT_BAD_INPUT
 
         placares = []
@@ -440,11 +476,29 @@ def _census(indices: dict[Path, GalleryIndex], args: argparse.Namespace) -> int:
     return 0
 
 
+def _exige_banco(caminho: Path, *, rotulo: str) -> None:
+    """Um banco SQLite apontado que existe e não é banco sai 2 antes do trabalho (S-857).
+
+    O que não existe passa: o cache nasce vazio na primeira corrida. Até a S-857 um `--cache`
+    corrompido levantava `sqlite3.DatabaseError` no meio do comando, e ele não era `ValueError`
+    nem `OSError`: caía na saída 1, "falha inesperada".
+    """
+    if not Path(caminho).exists():
+        return
+    with fronteira(f"{rotulo} {caminho}"):
+        conexao = sqlite3.connect(uri_somente_leitura(Path(caminho)), uri=True)
+        try:
+            conexao.execute("PRAGMA schema_version").fetchone()
+        finally:
+            conexao.close()
+
+
 @cli_errors
 def main(argv: list[str] | None = None) -> int:
     mp.freeze_support()  # o bundle da S-55 congela o processo; sem isto, `spawn` o reexecuta
     args = parse_args(argv)
     configure_logging(verbose=args.verbose, log_file=default_log_file())
+    _exige_banco(args.cache, rotulo="--cache")
 
     # O indice por nome nao depende de livro nenhum: ele descreve a base, e e construido uma
     # vez para o acervo inteiro. Por isso sai antes de resolver quais livros processar.
@@ -456,12 +510,25 @@ def main(argv: list[str] | None = None) -> int:
         # `indexacao`, e nao `partidas`: mais abaixo o mesmo nome recebe o dicionario de
         # `scan_by_players`, e uma variavel com dois tipos na mesma funcao e o tipo de
         # coincidencia que o verificador aponta e o leitor nao.
-        indexacao = build_index(bases, args.index, progress=_index_progress())
+        indexacao = build_index(bases, args.index, progress=_index_progress(), podar=args.podar)
         print(
             f"índice: {indexacao.partidas} partidas em {args.index} ({args.index.stat().st_size / 1e6:.0f} MB); "
             f"nesta rodada {indexacao.relidas} lidas de {indexacao.arquivos_relidos} arquivo(s), "
             f"{indexacao.arquivos_pulados} arquivo(s) sem mudança, {indexacao.arquivos_removidos} removido(s)"
         )
+        return 0
+
+    # A limpeza do cache, como o indice: descreve a base e nao depende de livro nenhum. Sem base
+    # nenhuma a vista -- a pasta vazia, o disco fora do ar -- "tudo que nao e desta base" seria o
+    # arquivo inteiro, e o comando recusa em vez de apagar (S-806).
+    if args.limpar_cache:
+        bases = _bases(args)
+        if not bases:
+            logger.error("Nenhuma base encontrada: sem saber que bases valem, limpar apagaria o cache inteiro.")
+            return EXIT_BAD_INPUT
+        with open_store(args.cache, database=bases) as cache:
+            removidas = cache.limpar()
+            print(f"cache: {removidas} posição(ões) de outro conjunto de bases apagadas; {len(cache)} ficam")
         return 0
 
     # A árvore por posição, como o índice acima: ela descreve a base e não depende de livro
@@ -508,7 +575,8 @@ def main(argv: list[str] | None = None) -> int:
         # que se vai fazer com o resultado. Separar as duas coisas e o que permite mudar o
         # `--max-games`, ou corrigir a regra de preenchimento, sem pagar a base de novo.
         print(f"casamentos lidos de {args.from_matches}")
-        casamentos_por_livro = _matches_from_json(args.from_matches, list(indices))
+        with fronteira(f"--from-matches {args.from_matches}"):
+            casamentos_por_livro = _matches_from_json(args.from_matches, list(indices))
         return _finish(indices, casamentos_por_livro, args)
 
     print(f"livros: {len(indices)}  |  modo: {args.mode}")

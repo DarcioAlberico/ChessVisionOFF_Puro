@@ -23,6 +23,108 @@ from collections.abc import Mapping, Sequence
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
+__all__ = [
+    "ABRIR_FOLHA_DO_CADERNO",
+    "ALINHAR",
+    "ANTERIOR",
+    "ASPA_ABRE",
+    "ASPA_FECHA",
+    "BOTOES_PADRAO",
+    "BUSCA_CURINGAS",
+    "BUSCA_PALAVRA_INTEIRA",
+    "BUSCA_SEM_ACHADO_FRASE",
+    "BUSCA_SEM_ACHADO_TITULO",
+    "BUSCA_SEM_AGULHA_FRASE",
+    "BUSCA_SEM_AGULHA_TITULO",
+    "CABECALHOS_DO_PGN",
+    "CAIXA",
+    "COLECAO_VAZIA_FRASE",
+    "COLECAO_VAZIA_TITULO",
+    "CONJUNTO",
+    "COPIAR",
+    "COPIAR_FEN",
+    "CORRIGIR_PELA_REDE",
+    "COR_RAPIDA",
+    "DATASET_LENDO_FRASE",
+    "DATASET_LENDO_TITULO",
+    "DESCARTAR_EDICOES_TITULO",
+    "DETALHES_DO_DIAGRAMA",
+    "DIAGRAMAS_DA_PAGINA",
+    "DICA_DO_CORPO_EM_PONTOS",
+    "DICA_DO_RODAPE_DA_FOLHA",
+    "DISPENSAR",
+    "DISTRIBUICAO",
+    "DIVERGENCIAS_DECLARADAS",
+    "ESCONDER_INCERTEZA",
+    "FILTRO_SEM_RESULTADO_FRASE",
+    "FILTRO_SEM_RESULTADO_TITULO",
+    "FOLHA_POR_LER_FRASE",
+    "GALERIA_LEGENDA_VAZIA",
+    "GALERIA_VAZIA_FRASE",
+    "GALERIA_VAZIA_TITULO",
+    "LADO_A_JOGAR",
+    "MAPA_DE_INCERTEZA",
+    "MENSAGENS_ANTERIORES",
+    "MENSAGENS_ANTERIORES_TITULO",
+    "MENSAGENS_ANTERIORES_VAZIO",
+    "MODO_FOCO_BARRA",
+    "NADA_A_REVISAR",
+    "NENHUM_PDF_ABERTO",
+    "NOME_DO_ESTILO",
+    "ORIENTACAO_COMPARAR",
+    "ORIENTACAO_VOLTAR",
+    "PARTIDAS_VAZIAS_FRASE",
+    "PARTIDAS_VAZIAS_TITULO",
+    "PASTA_DE_PECAS",
+    "POSICAO_SEM_PARTIDA_FRASE",
+    "POSICAO_SEM_PARTIDA_TITULO",
+    "PRIMEIRO",
+    "PRODUTO",
+    "PROXIMO",
+    "REPARADAS_ESCONDER",
+    "REPARADAS_MOSTRAR",
+    "REVISAO_VAZIA_FRASE",
+    "REVISAO_VAZIA_TITULO",
+    "ROTULOS_DE_LINGUA",
+    "ROTULOS_DE_MOTOR",
+    "SEGUNDA_OPINIAO",
+    "SEGUNDA_OPINIAO_DICA",
+    "SEM_MOTOR_DICA",
+    "SEM_MOTOR_STATUS",
+    "SETA",
+    "SIDE_LABELS",
+    "SIDE_SOURCE_CONFLICT",
+    "SIDE_SOURCE_LABELS",
+    "TAMANHO_DO_LOTE",
+    "TAXA_DE_APRENDIZADO",
+    "TEXTO_VAZIO_FRASE",
+    "TEXTO_VAZIO_TITULO",
+    "TRADUZIDOS_PELO_QT",
+    "ULTIMO",
+    "VARRER_LIVRO",
+    "VERSAO",
+    "VIRAR_TABULEIRO",
+    "WORDS_REQUIRING_ACCENTS",
+    "detection_source_label",
+    "dica_da_cor_rapida",
+    "estipulacao_conferida",
+    "folha_por_ler",
+    "frase_de_edicoes_nao_gravadas",
+    "frase_de_remocao",
+    "ler_a_folha",
+    "nome_acessivel_do_tabuleiro",
+    "orientacao_ambigua",
+    "reparadas_em_casas",
+    "resumo_da_legenda",
+    "sem_orfa",
+    "side_source_label",
+    "sobre_o_produto",
+    "status_da_fila",
+    "titulo_da_janela",
+    "titulo_de_falha",
+    "trocar_o_lado_para",
+]
+
 SIDE_SOURCE_LABELS: dict[str, str] = {
     "text": "declarado no texto do PDF",
     "ocr": "lido por OCR da legenda",
@@ -51,14 +153,6 @@ DETECTION_SOURCE_LABELS: dict[str, str] = {
     "hybrid": "imagem embutida, alinhada pelo contorno",
 }
 """Como o diagrama foi localizado (S-12). Vale para auditar o dataset por fonte."""
-
-ORIENTATION_LABELS: dict[str, str] = {
-    "auto": "Automática",
-    "0": "0 graus",
-    "180": "180 graus",
-}
-"""Tri-estado da S-13, no lugar do checkbox que valia para a página inteira."""
-
 
 def side_source_label(source: str, *, conflicting: bool = False) -> str:
     """Rótulo de procedência do lado a jogar, ou `""` quando não há o que dizer."""
@@ -133,14 +227,6 @@ ESCONDER_INCERTEZA = "Esconder incerteza"
 padrão**, e a caixa é o gesto de quem já conferiu a página e quer ver as peças limpas. Marcar
 para esconder, e não marcar para mostrar, é o sentido do padrão: a caixa nasce desmarcada."""
 
-ZOOM_DO_TABULEIRO = "Zoom do tabuleiro"
-"""Era "Zoom board". "Zoom" fica: entrou no português e não tem substituto de uma palavra."""
-
-ZOOM_DA_PAGINA = "Zoom PDF"
-"""O rótulo do zoom do visualizador. Estava cravado em `ui/pdf_panel.py`, e a S-225 lhe deu um
-segundo cliente -- o deslizador da pele "Foco". Dois rótulos escritos à mão para o mesmo controle
-é como eles divergem, que é o defeito que a S-324 mediu nos comandos."""
-
 VIRAR_TABULEIRO = "Virar o tabuleiro"
 """Era "Virar board" -- verbo em português e substantivo em inglês na mesma frase de duas palavras."""
 
@@ -158,10 +244,6 @@ programa é quem corrige diagramas -- a aba de configuração não é documenta�
 
 CABECALHOS_DO_PGN = "Cabeçalhos do PGN"
 """Era "Headers do PGN". "PGN" fica (é o nome do formato); "headers" tem tradução de uso corrente."""
-
-LIVRO_EM_PDF = "Livro em PDF"
-"""Era `PDF (direita)`: um grupo cujo nome descrevia a **posição dele na tela**. Além de não
-nomear nada, ele mente assim que alguém arrasta o divisor."""
 
 STATUS_DA_FILA: dict[str, str] = {"pending": "pendente", "done": "revisado", "skipped": "pulado"}
 """O estado de um item da fila de revisão, como a tela o escreve (S-166).
@@ -322,9 +404,9 @@ Revisão 409,3 kpx a **0,00 %** -- e, na Galeria, duas frases dizendo a mesma co
 outra, com o botão que resolve a 645 px do vazio que ele preenche.
 
 Cada um tem **três** partes, e as três são obrigatórias: o título diz o que falta, a frase diz por
-que a região está vazia e o que a enche, e o botão faz. A frase de Texto continua sendo
-`EDITOR_VAZIO`, que já nomeava os dois caminhos de saída pelos rótulos que estão nos botões -- ela
-só deixou de ser `placeholderText`, que não quebra linha e era cortada em 77 px em qualquer janela
+que a região está vazia e o que a enche, e o botão faz. A frase de Texto é `TEXTO_VAZIO_FRASE`,
+herdeira da `EDITOR_VAZIO` (que saiu na S-895, sem leitor), e nomeia os caminhos de saída pelos
+rótulos que estão nos botões -- ela só deixou de ser `placeholderText`, que não quebra linha e era cortada em 77 px em qualquer janela
 abaixo de 1350 px."""
 
 def folha_por_ler(numero: int) -> str:
@@ -395,20 +477,7 @@ NENHUM_PDF_ABERTO = "nenhum livro aberto"
 """O que o rótulo do bloco [Livro] diz enquanto não há PDF. Era literal no painel (F9-C2).
 
 "PDF" é o formato do arquivo; "livro" é o que a pessoa abriu. O resto da janela já diz livro --
-`LIVRO_EM_PDF`, `VARRER_LIVRO`, o rodapé --, e esta era a última frase que dizia a sigla."""
-
-EDITOR_VAZIO = (
-    f"Nenhuma folha lida. Use {ASPA_ABRE}Ler folha{ASPA_FECHA} para transcrever a página aberta "
-    f"no visualizador, ou {ASPA_ABRE}Achar no texto…{ASPA_FECHA} para procurar numa folha já lida."
-)
-"""O que o editor de texto diz quando não há folha nenhuma nele (F9).
-
-**Estado vazio sem orientação reprova sozinho** (carta dos críticos, §3.3), e a aba Texto era
-exatamente isso: um retângulo branco de 940x880 px sem uma palavra -- a captura
-`depois_claro_1920x1080_texto.png` é meio ecrã de nada. A frase nomeia os **dois** caminhos de
-saída, e nomeia-os pelo rótulo que está no botão logo acima: quem lê a frase não precisa procurar
-o que ela quer dizer.
-"""
+`VARRER_LIVRO`, o rodapé --, e esta era a última frase que dizia a sigla."""
 
 DIAGRAMAS_DA_PAGINA = "Diagramas reconhecidos nesta página"
 """O nome acessível da lista do topo da aba Resultado (F9-C2, defeito nº 1).
@@ -426,46 +495,8 @@ de por que a posição é ilegal --, e um controle que recebe foco e não tem no
 "texto estático" e mais nada. A derivação automática de `qt/acessibilidade.py` não o alcança de
 propósito: nomear todo `QLabel` por classe encheria a janela de "texto" repetido."""
 
-CONJUNTO_DE_PECAS = "Conjunto de peças"
-"""O rótulo da escolha da S-230, na Configuração.
-
-Ao lado dos outros rótulos de campo e não no menu de aparência: conjunto é eixo próprio, e a
-pergunta que ele responde -- com que desenho as peças aparecem -- não é a pergunta da pele."""
-
 PASTA_DE_PECAS = "Pasta de peças"
 
-ORIENTACAO_DO_DIAGRAMA = "Orientação do diagrama"
-"""O rótulo da linha de orientação, na aba Configuração.
-
-Ele vira constante na S-448 porque passou a ser lido **duas** vezes: uma para desenhar a linha e
-outra em `ROTULOS_DA_CONFIGURACAO`, de onde sai a largura da coluna. Dois literais iguais em dois
-lugares é o defeito que a S-166 fechou no resto da janela."""
-
-ROTULOS_DA_CONFIGURACAO: tuple[str, ...] = (
-    "Modelo (.pt)",
-    "CSV labels",
-    "Pasta samples",
-    PASTA_DE_PECAS,
-    ORIENTACAO_DO_DIAGRAMA,
-    "DPI",
-    "Max diagramas",
-    "Épocas",
-    TAMANHO_DO_LOTE,
-    TAXA_DE_APRENDIZADO,
-)
-"""Os dez rótulos do formulário de Configuração, num lugar só (S-448).
-
-A coluna de rótulo sai do mais longo deles -- hoje `ORIENTACAO_DO_DIAGRAMA`, com 22 caracteres --,
-e é isso que faz "nenhum rótulo é cortado" e "todos os campos começam na mesma coluna" valerem por
-construção, e não por conferência.
-
-**Antes eram três medidas diferentes do mesmo formulário**: `16` cravado em `campos._linha`, `24`
-no rótulo da orientação, e o que o `ttk.Spinbox` do `_spin_row` resolvesse por conta própria. Com
-`16`, "Taxa de aprendizado" -- 19 caracteres -- era desenhado como `Taxa de aprendizad`.
-
-Moram aqui e não no `app_tkinter` porque são texto que a pessoa lê, que é o que este módulo guarda
-desde a S-166 -- e porque um rótulo novo que entrasse no formulário sem passar por aqui voltaria a
-ser cortado sem ninguém notar."""
 """O caminho dos 12 PNGs do usuário. Só vale com o conjunto "Pasta do usuário" escolhido."""
 
 ALINHAR = "Alinhar"
@@ -985,7 +1016,10 @@ def frase_do_cache_limpo(quantas: int, tamanho: int) -> str:
     """O rodapé depois de «Limpar o cache de leitura» (S-725). Só a leitura guardada sai: o caderno fica."""
     if not quantas:
         return "O cache de leitura já estava vazio."
-    return f"Cache de leitura limpo: {quantas} folha(s), {tamanho / (1024 * 1024):.1f} MB. As folhas do caderno não mudam.".replace(".0 MB", " MB")
+    from . import formato  # aqui, e não no topo: `formato` importa este módulo
+
+    megas = formato.decimal(tamanho / (1024 * 1024), 1).removesuffix(",0")
+    return f"Cache de leitura limpo: {quantas} folha(s), {megas} MB. As folhas do caderno não mudam."
 
 
 NADA_A_REVISAR = "Nenhuma palavra a revisar nesta folha."

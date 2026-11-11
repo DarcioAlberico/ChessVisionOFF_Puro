@@ -163,7 +163,7 @@ def _aparar_uma(linha: list[Caixa], *, mediana: int) -> list[Caixa]:
         # 11 de 26.730 na varredura do acervo. Fica como veio, e os recortes das outras folhas não mudam.
         if c.y1 >= piso or c.y2 <= teto:
             return c
-        return Caixa(c.x1, max(c.y1, teto), c.x2, min(c.y2, piso), c.angulo)
+        return Caixa(c.x1, max(c.y1, teto), c.x2, min(c.y2, piso))
 
     return [sem_excesso(c) for c in miolo]
 

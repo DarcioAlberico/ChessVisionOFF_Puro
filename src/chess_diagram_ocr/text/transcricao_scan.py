@@ -36,7 +36,10 @@ from typing import Any
 
 import numpy as np
 
+from ..arquivo_do_dono import ler_texto
 from ..atomic_io import atomic_write_bytes
+from ..config import DEFAULT_DPI
+from ..ui.livros import caminho_canonico
 from . import dado_corrigido as _dado_corrigido
 from . import procedencia as _procedencia
 from . import regua_prosa as _regua
@@ -52,7 +55,7 @@ CAMADA = "camada"
 PARTIDAS = (VAZIO, CAMADA)
 ACORDO_MINIMO = 0.999
 """O acordo de caractere que uma folha duplicada tem de ter, ou ela volta para transcrição. Dez vezes mais fino que o alvo M3."""
-DPI = 220
+DPI = DEFAULT_DPI
 """O da régua (`bancada_prosa.DPI_PADRAO`): a faixa que a pessoa olha é a imagem que os motores vão ler."""
 FOLHAS_PARA_ESTIMAR = 2
 OCIOSO_MAXIMO = 300.0
@@ -90,7 +93,7 @@ def declarar_backup(pasta: str | Path, backup: str | Path, *, hoje: str | None =
     """Escreve onde o backup mora. A declaração fica na própria pasta, e a `--acordo` a confere."""
     recusar_no_repositorio(pasta)
     recusar_no_repositorio(backup)
-    if Path(pasta).resolve() == Path(backup).resolve():
+    if caminho_canonico(pasta) == caminho_canonico(backup):
         raise SemBackup("o backup é a própria pasta da transcrição: isso não é backup.")
     Path(pasta).mkdir(parents=True, exist_ok=True)
     Path(backup).mkdir(parents=True, exist_ok=True)
@@ -103,7 +106,7 @@ def backup_declarado(pasta: str | Path) -> Path | None:
     if not arquivo.is_file():
         return None
     try:
-        return Path(json.loads(arquivo.read_text(encoding="utf-8"))["backup"])
+        return Path(json.loads(ler_texto(arquivo, do_usuario=False))["backup"])
     except (ValueError, KeyError, TypeError):
         # Declaração ilegível é declaração que não há: o caderno recusa gravar, e a tela diz. Levantar aqui mataria o processo num slot.
         logger.warning("A declaração de backup em %s está ilegível.", arquivo)

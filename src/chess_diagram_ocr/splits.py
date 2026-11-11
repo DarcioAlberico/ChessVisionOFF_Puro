@@ -26,7 +26,6 @@ import csv
 import hashlib
 import io
 import logging
-import os
 from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 from typing import Literal
@@ -121,42 +120,25 @@ def group_keys(
     return keys
 
 
-def groups_by_book(provenance: Mapping[str, str]) -> list[list[str]]:
-    """Agrupa as amostras por livro de origem, para o split por livro da S-07/S-52.
-
-    `provenance` é `{nome do arquivo: source_pdf}`; amostra sem procedência fica de fora e
-    continua com split individual, que é o comportamento de hoje.
-
-    **Por que isto importa.** O split de hoje é por hash do nome do arquivo, agrupado por
-    diagrama duplicado. Com ele, o mesmo livro aparece nos três conjuntos, e o número do
-    `test` responde "quão bem o modelo lê um diagrama parecido com os que viu" -- não "quão
-    bem ele lê um livro que nunca viu". A segunda pergunta é a do produto, e ela precisa que
-    o livro inteiro caia de um lado só.
-
-    **Duas ressalvas honestas, e as duas são consequência do desenho da S-07.**
-
-    1. `ensure_splits` **nunca move uma amostra já registrada**, e é essa garantia que mantém
-       o conjunto de teste confiável ao longo do tempo. Então agrupar por livro só passa a
-       valer de fato para amostras novas ou numa reatribuição do zero (`--fresh`): as 3.313 já
-       registradas continuam onde estão, com o livro espalhado entre os três conjuntos.
-    2. Um acervo de 27 livros dá 27 grupos, e 10% deles é 2,7 livros. A granularidade do
-       split cai muito: um livro grande pode levar sozinho mais que a fatia inteira de teste.
-       Isso não é defeito do agrupamento, é o que agrupar por livro significa -- e é preciso
-       olhar a distribuição resultante antes de adotá-lo.
-    """
-    por_livro: dict[str, list[str]] = {}
-    for filename, book in provenance.items():
-        if not book:
-            continue
-        por_livro.setdefault(book, []).append(filename)
-    return [sorted(membros) for _livro, membros in sorted(por_livro.items()) if len(membros) > 1]
-
-
-def groups_by_origin(origins: Mapping[str, tuple[str, str, str]]) -> list[list[str]]:
+def groups_by_origin(
+    origins: Mapping[str, tuple[str, str, str]], livros: Mapping[str, str] | None = None
+) -> list[list[str]]:
     """Agrupa as amostras que são **o mesmo diagrama impresso** (S-98).
 
     `origins` é `{nome do arquivo: (source_pdf, source_page, source_diagram)}`; amostra sem
     procedência fica de fora e continua com o guarda de imagem, que é o de hoje.
+
+    **O livro é a identidade, não o nome (S-844).** `livros` é `{source_pdf: identidade}`, e
+    a identidade é o hash do conteúdo do PDF (D2 da solidez, opção a), derivado na fronteira
+    por `training.identidade_dos_livros`. O acervo guarda o mesmo arquivo sob nomes
+    diferentes, e com a chave pelo nome a mesma página reextraída com recorte deslocado sob o
+    outro nome sorteava split por conta própria. Nome ausente de `livros` (o PDF não está na
+    pasta) é a própria identidade, que é o de antes. A identidade só junta, nunca separa: um
+    nome tem um conteúdo só.
+
+    O alcance da opção (a) é o arquivo **byte a byte igual**. A cópia `_hq` e a tradução de um
+    mesmo livro são outros bytes e outra paginação, e continuam livros distintos; no acervo de
+    2026-11-09 nenhum par de PDFs tem o mesmo conteúdo.
 
     **Por que o guarda de imagem não bastava.** `duplicate_groups_touching` agrupa por
     `placement` idêntico **e** dHash ≤ 3, e o 3 foi calibrado para *"a mesma amostra salva
@@ -182,7 +164,8 @@ def groups_by_origin(origins: Mapping[str, tuple[str, str, str]]) -> list[list[s
         pdf, page, diagram = origem
         if not pdf or not page:
             continue
-        por_origem.setdefault((pdf, page, diagram), []).append(filename)
+        livro = (livros or {}).get(pdf, pdf)
+        por_origem.setdefault((livro, page, diagram), []).append(filename)
     return [sorted(membros) for _chave, membros in sorted(por_origem.items()) if len(membros) > 1]
 
 
@@ -249,7 +232,8 @@ def save_splits(path: Path, splits: Mapping[str, Split]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     buffer = io.StringIO(newline="")
-    writer = csv.writer(buffer, lineterminator=os.linesep)
+    # LF, e nao `os.linesep` (S-822): a mesma particao dava bytes diferentes no Windows.
+    writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(["filename", "split"])
     writer.writerows(sorted(splits.items()))
 
@@ -268,6 +252,7 @@ def ensure_splits(
     *,
     groups: Iterable[Iterable[str]] = (),
     with_provenance: Collection[str] = (),
+    forced: Mapping[str, Split] | None = None,
     val_pct: int = DEFAULT_VAL_PCT,
     test_pct: int = DEFAULT_TEST_PCT,
     salt: str = SPLIT_SALT,
@@ -289,6 +274,12 @@ def ensure_splits(
     volta a ser sorteada. E o aviso que existia para isso, o `ValueError("Dataset vazio")` de
     `Trainer.prepare`, só aparece **depois** da poda. Um `--csv` digitado errado bastava, e o
     botão "Treinar modelo" da janela não tem portão nenhum antes daqui.
+
+    **`forced` decide antes do sorteio, e o arquivo é gravado uma vez (S-838).** É
+    `{amostra nova: split}`, e vence o hash e a herança de grupo; amostra já registrada não se
+    move por ele. Existe para a página de campo, que vai para `test`. Quando ela era movida
+    *depois* desta função gravar, uma queda entre as duas gravações deixava no disco o `train`
+    sorteado -- e na rodada seguinte a amostra já não era nova, então ficava lá.
     """
     names = list(filenames)
     existing = load_splits(splits_path)
@@ -318,10 +309,11 @@ def ensure_splits(
             result[name] = existing[name]
             continue
 
-        # Amostra nova: se o grupo dela já tem split definido, herda; senão, calcula.
+        # Amostra nova: o split forçado, se há (S-838); senão, se o grupo dela já tem split
+        # definido, herda; senão, calcula.
         representative = keys[name]
         inherited = existing.get(representative) or do_grupo.get(representative) or result.get(representative)
-        result[name] = inherited or assign_split(representative, val_pct=val_pct, test_pct=test_pct, salt=salt)
+        result[name] = (forced or {}).get(name) or inherited or assign_split(representative, val_pct=val_pct, test_pct=test_pct, salt=salt)
         added += 1
 
     removed = set(existing) - set(names)

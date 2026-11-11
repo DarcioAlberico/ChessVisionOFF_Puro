@@ -210,6 +210,53 @@ class RegrasDaSuiteTests(unittest.TestCase):
             self.assertEqual("17...♘e5", fundida("7...♘e5", "(17...Ae5"))
 
 
+class OrigemDeCadaTokenTests(unittest.TestCase):
+    """De onde veio cada token, e com que confiança: o que a marca por palavra lê (S-861).
+
+    As regras acima conferem o texto; estas conferem `origem`, `do_glifo` e `confianca`, que o texto
+    não mostra e que a partição de `fundir` não pode trocar de lado.
+    """
+
+    def _tokens(self, glifo: str, leitor: str, **opcoes: object) -> list[tuple[str, str, str, float | None]]:
+        existe_aqui = fusao.existe_no(frozenset({"wins", "white", "with", "knight", "of"}))
+        tokens = fusao.fundir(glifo, leitor, existe=existe_aqui, **opcoes)  # type: ignore[arg-type]
+        return [(t.texto, t.origem, t.do_glifo, t.confianca) for t in tokens]
+
+    def test_barra_do_leitor_contra_letra_fica_a_letra(self) -> None:
+        self.assertEqual([("I", "glifo", "I", None), ("wins", "outro", "wins", None)], self._tokens("I wins", "| wins"))
+        self.assertEqual([("white", "outro", "white", None)], self._tokens("white", "white |"))
+
+    def test_so_a_versao_do_glifo_existe(self) -> None:
+        self.assertEqual(
+            [("with", "glifo", "with", None), ("knigbt", "outro", "knigbt", None)],
+            self._tokens("with knigbt", "wilh knigbt"),
+        )
+
+    def test_a_palavra_colada_no_lance_sai_do_lance(self) -> None:
+        self.assertEqual(
+            [("white", "outro", "white", None), ("of", "outro", "", None), ("2.exf6", "glifo", "of2.exf6", None)],
+            self._tokens("white of2.exf6", "white of 2.exf6"),
+        )
+
+    def test_a_confianca_e_de_quem_escreveu(self) -> None:
+        self.assertEqual(
+            [("white", "outro", "white", 0.9), ("wins", "glifo", "wins", None)],
+            self._tokens("white wins", "white wims", confiancas_do_leitor=[0.9, 0.4], confiancas_do_glifo=[0.8, None]),
+        )
+        self.assertEqual(
+            [("white", "outro", "white", None), ("wins", "outro", "wins", None), ("♘f3", "glifo", "♘f3", 0.6)],
+            self._tokens("white wins ♘f3", "white wins", confiancas_do_glifo=[0.8, 0.7, 0.6]),
+        )
+        self.assertEqual(
+            [("white", "outro", "white", 0.9), ("wins", "outro", "", 0.3)],
+            self._tokens("white", "white wins", confiancas_do_leitor=[0.9, 0.3]),
+        )
+
+    def test_confiancas_que_nao_casam_com_os_tokens_recusam(self) -> None:
+        with self.assertRaises(ValueError):
+            self._tokens("white", "white wins", confiancas_do_leitor=[0.9])
+
+
 class MarcaPorPalavraTests(unittest.TestCase):
     def _linha(self, n: int) -> list[fusao.Token]:
         return [fusao.Token("white", "outro", "white", 0.99) for _ in range(n)]

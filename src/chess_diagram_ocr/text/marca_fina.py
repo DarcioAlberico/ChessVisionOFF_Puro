@@ -218,7 +218,7 @@ def aspas(
                 outra = caixas[k + 1]
                 if outra.x1 - caixa.x2 <= FOLGA_DAS_ASPAS * max(caixa.largura, outra.largura):
                     novas.append(
-                        Caixa(caixa.x1, min(caixa.y1, outra.y1), outra.x2, max(caixa.y2, outra.y2), caixa.angulo)
+                        Caixa(caixa.x1, min(caixa.y1, outra.y1), outra.x2, max(caixa.y2, outra.y2))
                     )
                     saida.append((ASPAS, min(conf, lidos[k + 1][1])))
                     k += 2

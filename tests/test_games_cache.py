@@ -8,13 +8,16 @@ lê o acervo**.
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import sqlite3
 import tempfile
 import unittest
-from contextlib import closing
+import zipfile
+from contextlib import closing, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 import chess
 
@@ -26,6 +29,7 @@ from chess_diagram_ocr.games_cache import (
     PositionStore,
     database_fingerprint,
     open_store,
+    same_database,
 )
 from chess_diagram_ocr.games_db import PositionHit, PositionIndex, scan_by_positions
 from chess_diagram_ocr.games_index import index_fingerprint
@@ -189,17 +193,18 @@ class ArquivoTests(unittest.TestCase):
             self.assertEqual(lido.missing({UMA}), set())
             self.assertEqual(lido.to_index({UMA}).counts[UMA], 1)
 
-    def test_base_trocada_descarta_o_cache_inteiro(self) -> None:
+    def test_base_trocada_nao_responde_pelo_cache_da_outra(self) -> None:
         """As contagens de uma base não valem para outra, e é a contagem que autoriza
-        preencher header (S-74). Meio cache seria procedência inventada."""
+        preencher header (S-74). Meio cache seria procedência inventada -- e, desde a S-806, as
+        linhas da outra ficam guardadas, sem responder, em vez de apagadas."""
         self._grava()
         outra = self.raiz / "outra.pgn"
         outra.write_text('[Event "y"]\n' * 50, encoding="utf-8")
-        with self.assertLogs("chess_diagram_ocr.games_cache", level="WARNING"):
-            lido = open_store(self.arquivo, database=outra)
-        self.addCleanup(lido.close)
-        self.assertEqual(len(lido), 0)
-        self.assertEqual(lido.missing({UMA}), {UMA}, "tudo volta a ser perguntado")
+        with open_store(self.arquivo, database=outra) as lido:
+            self.assertEqual(len(lido), 0)
+            self.assertEqual(lido.missing({UMA}), {UMA}, "tudo volta a ser perguntado")
+        with open_store(self.arquivo, database=self.base) as de_volta:
+            self.assertEqual(de_volta.missing({UMA}), set(), "e a base de antes reencontra o que era dela")
 
     def test_arquivo_ilegivel_responde_vazio_em_vez_de_derrubar(self) -> None:
         """Falhar para o lado do vazio significa "varra" -- o comportamento anterior ao cache.
@@ -217,9 +222,9 @@ class ArquivoTests(unittest.TestCase):
 
     def test_base_inexistente_nao_derruba_o_fingerprint(self) -> None:
         impressao = database_fingerprint(self.raiz / "nao_existe.pgn")
-        self.assertEqual(impressao["files"][0]["size"], 0)
+        self.assertIsNone(impressao["files"][0]["size"], "desconhecido, e não zero (S-807)")
 
-    def test_acrescentar_uma_base_descarta_o_cache(self) -> None:
+    def test_acrescentar_uma_base_deixa_o_cache_sem_responder(self) -> None:
         """**A parte da S-93 que mais importa para a honestidade dos números.** Uma base a mais
         muda a contagem de *todas* as posições já perguntadas: a que estava em uma partida pode
         estar em três. Um cache que sobrevivesse a isso responderia "partida única" sobre uma
@@ -228,8 +233,7 @@ class ArquivoTests(unittest.TestCase):
         self._grava()
         outra = self.raiz / "outra.pgn"
         outra.write_text('[Event "y"]\n', encoding="utf-8")
-        with self.assertLogs("chess_diagram_ocr.games_cache", level="WARNING"):
-            lido = open_store(self.arquivo, database=[self.base, outra])
+        lido = open_store(self.arquivo, database=[self.base, outra])
         self.addCleanup(lido.close)
         self.assertEqual(len(lido), 0)
         self.assertEqual(lido.missing({UMA}), {UMA}, "tudo volta a ser perguntado")
@@ -293,14 +297,12 @@ class ArquivoTests(unittest.TestCase):
         with open_store(self.arquivo, database=self.base) as lido:
             self.assertEqual(lido.missing({UMA}), set(), "o conteúdo não mudou, o cache vale")
 
-    def test_o_tamanho_continua_descartando_o_cache(self) -> None:
+    def test_o_tamanho_continua_separando_as_bases(self) -> None:
         """O que saiu foi o `mtime`, e não a guarda: base com outro conteúdo tem outro tamanho."""
         self._grava()
         self.base.write_text('[Event "x"]\n' * 99, encoding="utf-8")
-        with self.assertLogs("chess_diagram_ocr.games_cache", level="WARNING"):
-            lido = open_store(self.arquivo, database=self.base)
-        self.addCleanup(lido.close)
-        self.assertEqual(len(lido), 0)
+        with open_store(self.arquivo, database=self.base) as lido:
+            self.assertEqual(len(lido), 0)
 
     def test_a_marca_do_cache_e_a_mesma_regra_da_marca_do_indice(self) -> None:
         """Duas perguntas iguais -- "é a mesma base?" -- não podem ter duas respostas."""
@@ -313,6 +315,53 @@ class ArquivoTests(unittest.TestCase):
             for parte in index_fingerprint(bases).split("|")
         ]
         self.assertEqual(do_cache, do_indice)
+
+    # ------------------------------------------- a impressão de membro de .zip (S-807)
+
+    def _zip(self, nome: str, conteudo: str, membro: str = "games.pgn") -> Path:
+        recipiente = self.raiz / nome
+        with zipfile.ZipFile(recipiente, "w", compression=zipfile.ZIP_DEFLATED) as zipado:
+            zipado.writestr(membro, conteudo)
+        return recipiente / membro
+
+    def test_impressao_de_membro_de_zip_muda_com_o_conteudo(self) -> None:
+        """Um membro reescrito com 50 vezes o conteúdo é outra base, e o cache tem de notar.
+
+        A impressão do cache fazia `stat()` no caminho do membro, que não existe no disco: o
+        `OSError` virava tamanho 0, e todo membro de `.zip` tinha o mesmo tamanho para sempre.
+        """
+        membro = self._zip("z.zip", '[Event "x"]\n')
+        antes = database_fingerprint(membro)
+        self._zip("z.zip", '[Event "x"]\n' * 50)
+        depois = database_fingerprint(membro)
+        self.assertFalse(same_database(antes, depois), f"{antes} e {depois} descrevem a mesma base")
+
+    def test_dois_zips_com_mesmo_membro_sao_bases_diferentes(self) -> None:
+        """`a.zip/games.pgn` e `b.zip/games.pgn` não são a mesma base, mesmo com o mesmo conteúdo."""
+        uma = self._zip("a.zip", '[Event "x"]\n')
+        outra = self._zip("b.zip", '[Event "x"]\n')
+        self.assertFalse(same_database(database_fingerprint(uma), database_fingerprint(outra)))
+        self.assertNotEqual(index_fingerprint(uma), index_fingerprint(outra))
+
+    def test_tamanho_que_nao_le_e_desconhecido_e_nao_zero(self) -> None:
+        """Uma base fora do ar não tem tamanho 0: ela tem tamanho desconhecido.
+
+        Com o 0, o arquivo que sumiu e o arquivo vazio de mesmo nome eram a mesma base -- no
+        cache e no índice, que liam o tamanho por dois caminhos com o mesmo defeito.
+        """
+        vazia = self.raiz / "vazia.pgn"
+        vazia.write_bytes(b"")
+        presente_cache, presente_indice = database_fingerprint(vazia), index_fingerprint(vazia)
+        vazia.unlink()
+        self.assertFalse(same_database(presente_cache, database_fingerprint(vazia)))
+        self.assertNotEqual(presente_indice, index_fingerprint(vazia))
+
+    def test_cache_e_indice_dizem_o_mesmo_de_um_membro_de_zip(self) -> None:
+        """A mesma pergunta respondida por uma função só: nome qualificado e tamanho do membro."""
+        membro = self._zip("z.zip", '[Event "x"]\n' * 7)
+        (do_cache,) = database_fingerprint(membro)["files"]
+        self.assertEqual(f"{do_cache['name']}:{do_cache['size']}", index_fingerprint(membro))
+        self.assertEqual(do_cache["name"], "z.zip/games.pgn")
 
     # ------------------------------------------------------ o esquema, travado (S-140)
 
@@ -529,6 +578,161 @@ class PassadaDescartadaTests(unittest.TestCase):
         precisar lembrar de dizer que ele está completo."""
         self.assertTrue(PositionIndex().complete)
         self.assertTrue(self.cache.to_index(None).complete)
+
+
+class CacheQueNaoSeApagaTests(unittest.TestCase):
+    """**O incidente de 2026-10-18** (S-806): ~9.810 linhas, ~56 minutos de varredura, apagadas.
+
+    `open_store` esvaziava a tabela sempre que a lista de bases de agora não batia com a gravada.
+    Quem chegava lá sem querer: um `--census --database X`, que diz "não abre a base"; um `--all`
+    com um disco fora do ar, porque `_bases()` tira a base que não existe; um `stat` que falha. O
+    cache agora guarda cada linha sob a impressão com que foi feita, e só a limpeza explícita apaga.
+    """
+
+    LINHAS = 500
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.raiz = Path(self.pasta.name)
+        self.a = self.raiz / "a.pgn"
+        self.a.write_text('[Event "a"]\n', encoding="utf-8")
+        self.b = self.raiz / "b.pgn"
+        self.b.write_text('[Event "b"]\n' * 3, encoding="utf-8")
+        self.cache = self.raiz / "cache.sqlite"
+        self.colocacoes = [f"8/8/8/8/8/{n}p6/8/4k3" for n in range(self.LINHAS)]
+        with open_store(self.cache, database=[self.a, self.b]) as loja:
+            achadas = indice(**{c: [partida("Anderssen")] for c in self.colocacoes[:10]})
+            self.assertEqual(loja.update(achadas, set(self.colocacoes)), self.LINHAS)
+
+    def _linhas_de_ab(self) -> int:
+        with open_store(self.cache, database=[self.a, self.b]) as loja:
+            return len(loja)
+
+    def _cli(self, argv: list[str]) -> int:
+        from chess_diagram_ocr.cli import games as cli_games
+
+        with mock.patch.object(cli_games, "configure_logging"), redirect_stdout(io.StringIO()) as saida:
+            codigo = cli_games.main(argv)
+        self.saida = saida.getvalue()
+        return codigo
+
+    def _censo(self, *extra: str) -> int:
+        galeria = self.raiz / "galeria"
+        galeria.mkdir(exist_ok=True)
+        entrada = {"page_index": 0, "diagram_index": 0, "placement": self.colocacoes[0]}
+        (galeria / "Livro.index.json").write_text(json.dumps({"entries": [entrada]}), encoding="utf-8")
+        argv = ["--census", "--all", "--gallery-dir", str(galeria), "--pdf-dir", str(self.raiz)]
+        return self._cli([*argv, "--cache", str(self.cache), *extra])
+
+    def test_census_com_subconjunto_nao_apaga_o_cache(self) -> None:
+        self._censo("--database", str(self.a))
+        self.assertEqual(self._linhas_de_ab(), self.LINHAS)
+
+    def test_census_nao_grava_no_arquivo(self) -> None:
+        """O censo é instrumento: abre o cache só para ler, e o arquivo sai como entrou."""
+        antes = self.cache.read_bytes()
+        self.assertEqual(self._censo("--database", str(self.a), "--database", str(self.b)), 0)
+        self.assertIn(f"cache: {self.LINHAS} posição(ões) perguntada(s), 10 com resposta", self.saida)
+        self.assertEqual(self.cache.read_bytes(), antes)
+
+    def test_stat_falho_nao_esvazia(self) -> None:
+        """A base fora do ar no meio de uma abertura não é "outra base": é base desconhecida."""
+        fora = self.raiz / "b.pgn.fora"
+        self.b.replace(fora)
+        with open_store(self.cache, database=[self.a, self.b]) as loja:
+            self.assertEqual(len(loja), 0, "o que não se confere não responde")
+        fora.replace(self.b)
+        self.assertEqual(self._linhas_de_ab(), self.LINHAS)
+
+    def test_outra_base_nao_responde_e_a_volta_encontra_tudo(self) -> None:
+        with open_store(self.cache, database=[self.a]) as so_a:
+            self.assertEqual(so_a.missing({self.colocacoes[0]}), {self.colocacoes[0]})
+            so_a.update(indice(), {self.colocacoes[1]})
+        self.assertEqual(self._linhas_de_ab(), self.LINHAS)
+        with open_store(self.cache, database=[self.a]) as so_a:
+            self.assertEqual(len(so_a), 1, "e a resposta de [a] ficou ao lado, sob a impressão dela")
+
+    def test_limpar_cache_apaga_so_o_que_e_de_outra_impressao(self) -> None:
+        with open_store(self.cache, database=[self.a]) as so_a:
+            so_a.update(indice(), {self.colocacoes[1]})
+        argv = ["--limpar-cache", "--cache", str(self.cache), "--database", str(self.a), "--database", str(self.b)]
+        self.assertEqual(self._cli(argv), 0)
+        self.assertEqual(self._linhas_de_ab(), self.LINHAS)
+        with open_store(self.cache, database=[self.a]) as so_a:
+            self.assertEqual(len(so_a), 0)
+
+    def test_limpar_cache_sem_base_recusa(self) -> None:
+        """Sem base nenhuma à vista -- a pasta vazia, o disco fora -- limpar apagaria tudo."""
+        from chess_diagram_ocr.cli import EXIT_BAD_INPUT
+
+        argv = ["--limpar-cache", "--cache", str(self.cache), "--database", str(self.raiz / "sumiu.pgn")]
+        self.assertEqual(self._cli(argv), EXIT_BAD_INPUT)
+        self.assertEqual(self._linhas_de_ab(), self.LINHAS)
+
+    def test_o_aviso_da_janela_nao_promete_descarte(self) -> None:
+        """A janela de escolha de bases avisa o que a busca aproveita -- e ninguém mais descarta."""
+        from chess_diagram_ocr.ui.escolha_de_bases import cache_note
+
+        antes = self.cache.read_bytes()
+        self.assertIn(f"{self.LINHAS} posição(ões) já respondidas continuam valendo", cache_note([self.a, self.b], store_path=self.cache))
+        so_a = cache_note([self.a], store_path=self.cache)
+        self.assertIn("não valem para este", so_a)
+        self.assertIn("continuam guardadas", so_a)
+        self.assertEqual(self.cache.read_bytes(), antes)
+
+    def test_so_a_limpeza_explicita_apaga_linha(self) -> None:
+        """Guarda por `grep`, com piso de um achado: a própria limpeza."""
+        fontes = Path(games_cache.__file__).resolve().parent
+        achados = [
+            f"{caminho.relative_to(fontes).as_posix()}:{numero}"
+            for caminho in sorted(fontes.rglob("*.py"))
+            for numero, linha in enumerate(caminho.read_text(encoding="utf-8").splitlines(), 1)
+            if "DELETE FROM positions" in linha
+        ]
+        self.assertEqual(len(achados), 1, achados)
+        self.assertTrue(achados[0].startswith("games_cache.py:"), achados)
+
+
+class CacheVersaoUmTests(unittest.TestCase):
+    """O cache gravado antes da S-806: uma linha por colocação e a marca da base em `meta`."""
+
+    def setUp(self) -> None:
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.raiz = Path(self.pasta.name)
+        self.base = self.raiz / "base.pgn"
+        self.base.write_text('[Event "x"]\n', encoding="utf-8")
+        self.cache = self.raiz / "cache.sqlite"
+        marca = {"files": [{"name": "base.pgn", "size": self.base.stat().st_size, "mtime": 1}]}
+        with closing(sqlite3.connect(self.cache)) as conexao:
+            conexao.execute(
+                "CREATE TABLE positions (placement TEXT NOT NULL PRIMARY KEY, count INTEGER NOT NULL, "
+                "games TEXT NOT NULL) WITHOUT ROWID"
+            )
+            conexao.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            conexao.execute("INSERT INTO meta VALUES ('version', '1'), ('database', ?)", (json.dumps(marca),))
+            jogos = json.dumps([partida("Anderssen").to_dict()])
+            conexao.executemany("INSERT INTO positions VALUES (?, ?, ?)", [(UMA, 1, jogos), (AUSENTE, 0, "[]")])
+            conexao.commit()
+
+    def test_o_leitor_responde_sobre_o_arquivo_antigo_sem_grava_lo(self) -> None:
+        antes = self.cache.read_bytes()
+        with open_store(self.cache, database=self.base, somente_leitura=True) as loja:
+            self.assertEqual(loja.get(UMA).count, 1)
+            self.assertEqual(loja.missing({UMA, AUSENTE, OUTRA}), {OUTRA})
+        self.assertEqual(self.cache.read_bytes(), antes)
+
+    def test_a_abertura_para_gravar_migra_sem_perder_linha(self) -> None:
+        with open_store(self.cache, database=self.base) as loja:
+            self.assertEqual(len(loja), 2)
+            self.assertEqual(loja.get(UMA).games[0].headers["White"], "Anderssen")
+        outra = self.raiz / "outra.pgn"
+        outra.write_text("x", encoding="utf-8")
+        with open_store(self.cache, database=outra) as loja:
+            self.assertEqual(len(loja), 0)
+        with open_store(self.cache, database=self.base) as loja:
+            self.assertEqual(len(loja), 2, "a outra base não apagou as linhas migradas")
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -200,7 +200,7 @@ class FiacaoTests(unittest.TestCase):
             with (
                 mock.patch.object(leitor, "linhas_do_glifo", return_value=([cru], [])),
                 mock.patch("chess_diagram_ocr.detection.hybrid.detect_diagrams_in_pdf_page", return_value=[]),
-                mock.patch.object(leitor, "_ha_classificador", return_value=True),
+                mock.patch.object(leitor, "_reconhecedor_configurado", return_value=mock.MagicMock(name="glifo")),
             ):
                 pagina = leitor.ler_pagina(
                     pdf, 0, motor=motor, lingua="deu", imagem_rgb=np.full((500, 400, 3), 255, np.uint8), dpi=72, **extra  # type: ignore[arg-type]

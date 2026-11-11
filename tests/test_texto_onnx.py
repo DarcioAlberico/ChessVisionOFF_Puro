@@ -29,7 +29,6 @@ from chess_diagram_ocr.text.onnx_glifos import (
     caminho_do_metadado_onnx,
     exportar_glifos_onnx,
     ler_metadado_onnx,
-    preparar_recortes,
 )
 
 try:
@@ -73,16 +72,6 @@ def _recortes(n: int) -> list[np.ndarray]:
     return [gerador.integers(0, 256, size=(20 + i % 30, 14 + i % 25), dtype=np.uint8) for i in range(n)]
 
 
-class PreparoTests(unittest.TestCase):
-    def test_the_onnx_side_prepares_crops_exactly_like_the_torch_side(self) -> None:
-        """O consumidor ONNX não importa torch e repete o preparo; um desvio aqui muda as classes."""
-        with tempfile.TemporaryDirectory() as tmp:
-            classificador = carregar_classificador(_par(Path(tmp)), device="cpu")
-            recortes = _recortes(40)
-            esperado = classificador._entrada(recortes).numpy()  # noqa: SLF001
-            np.testing.assert_array_equal(preparar_recortes(recortes), esperado)
-
-
 @unittest.skipUnless(HAS_ONNXRUNTIME, "onnxruntime nao instalado (extra opcional)")
 class ExportacaoTests(unittest.TestCase):
     def test_onnx_probabilities_match_torch_within_the_s30_tolerance(self) -> None:
@@ -97,6 +86,24 @@ class ExportacaoTests(unittest.TestCase):
 
             self.assertTrue(report.passes, f"divergência {report.max_abs_diff:.2e}")
             self.assertEqual(report.samples, 300)
+
+    def test_the_two_backends_read_the_same_characters(self) -> None:
+        """S-854: o preparo e a decisão são uma função só; o que sobra de diferença é o motor.
+
+        Recortes em cinza e em RGB, de tamanhos variados: o caractere é o mesmo em todos, e a
+        confiança e a margem diferem no máximo 1e-4 (a tolerância da S-30).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            meta = _par(raiz)
+            onnx = ClassificadorDeGlifoOnnx(exportar_glifos_onnx(raiz / "g.onnx", meta))
+            torch_ = carregar_classificador(meta, device="cpu")
+            recortes = _recortes(150) + [np.stack([r, r, r], axis=-1) for r in _recortes(150)]
+
+            pelo_torch, pelo_onnx = torch_.classificar(recortes), onnx.classificar(recortes)
+            self.assertEqual([c for c, _ in pelo_torch], [c for c, _ in pelo_onnx])
+            np.testing.assert_allclose([p for _, p in pelo_torch], [p for _, p in pelo_onnx], atol=1e-4, rtol=0)
+            np.testing.assert_allclose(torch_.margem(recortes), onnx.margem(recortes), atol=1e-4, rtol=0)
 
     def test_the_sidecar_carries_classes_in_index_order_and_the_temperature(self) -> None:
         """É o `.json` que traduz índice em caractere em outro programa; a ordem é o contrato."""

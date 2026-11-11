@@ -25,8 +25,9 @@ from unittest import mock
 
 import numpy as np
 
-from chess_diagram_ocr import gallery_scan
+from chess_diagram_ocr import gallery, gallery_scan
 from chess_diagram_ocr.cli import scan as cli_scan
+from chess_diagram_ocr.gallery import GaleriaDeOutroLivro
 from chess_diagram_ocr.gallery_scan import GalleryEntry, GalleryIndex, build_gallery_index
 
 LEGAL = "4k3/8/8/8/8/8/8/4K3"
@@ -238,6 +239,8 @@ class AcervoVarridoSemJanelaTests(unittest.TestCase):
             mock.patch.object(cli_scan, "build_gallery_index", _varre),
             mock.patch.object(cli_scan, "save_index", lambda pdf, indice: self.indices.setdefault(Path(pdf).name, indice)),
             mock.patch.object(cli_scan, "load_index", lambda pdf: self.indices.get(Path(pdf).name)),
+            # Não há modelo aqui: a varredura é de mentira, e a fronteira da S-857 o carregaria.
+            mock.patch.object(cli_scan, "exige_checkpoint"),
         ]
         for remendo in remendos:
             remendo.start()
@@ -320,3 +323,41 @@ class AcervoVarridoSemJanelaTests(unittest.TestCase):
         o relatório do acervo não pode reintroduzi-lo."""
         relatorio = cli_scan.ScanReport(books=[cli_scan.BookResult(pdf="a.pdf", diagrams=3, complete=False)])
         self.assertIn("parcial", "\n".join(relatorio.as_lines()))
+
+
+class DonoDoIndiceTests(unittest.TestCase):
+    """S-878: o índice é nomeado pelo `stem`, e dois livros de mesmo nome dividiam o arquivo."""
+
+    def setUp(self) -> None:
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        self.raiz = Path(pasta.name)
+        self.galeria = self.raiz / "gallery"
+        self.livro_a = self.raiz / "a" / "Livro.pdf"
+        self.livro_b = self.raiz / "b" / "Livro.pdf"
+        for livro in (self.livro_a, self.livro_b):
+            livro.parent.mkdir()
+            livro.write_bytes(b"%PDF-1.4\n")
+
+    def test_indice_de_outro_livro_de_mesmo_nome_e_recusado(self) -> None:
+        do_a = GalleryIndex(source_pdf=str(self.livro_a), entries=[GalleryEntry(3, 0, LEGAL)])
+        gallery_scan.save_index(self.livro_a, do_a, directory=self.galeria)
+
+        with self.assertRaises(GaleriaDeOutroLivro) as recusa:
+            gallery_scan.load_index(self.livro_b, directory=self.galeria)
+        self.assertIn(str(self.livro_a.resolve()), str(recusa.exception))
+        with self.assertRaises(GaleriaDeOutroLivro):
+            gallery_scan.save_index(self.livro_b, GalleryIndex(), directory=self.galeria)
+        voltou = gallery_scan.load_index(self.livro_a, directory=self.galeria)
+        assert voltou is not None
+        self.assertEqual([entrada.key for entrada in voltou.entries], [(3, 0)])
+
+    def test_indice_antigo_com_caminho_relativo_continua_lido(self) -> None:
+        r"""Parte dos índices do dono grava `PDF\Livro.pdf`, relativo à raiz do projeto."""
+        caminho = gallery_scan.index_path_for(self.livro_a, directory=self.galeria)
+        caminho.parent.mkdir()
+        caminho.write_bytes(json.dumps({"version": 1, "source_pdf": "a\\Livro.pdf", "entries": []}).encode())
+        with mock.patch.object(gallery, "PROJECT_ROOT", self.raiz):
+            self.assertIsNotNone(gallery_scan.load_index(self.livro_a, directory=self.galeria))
+            with self.assertRaises(GaleriaDeOutroLivro):
+                gallery_scan.load_index(self.livro_b, directory=self.galeria)

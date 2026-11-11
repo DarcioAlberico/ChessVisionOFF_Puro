@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
+import secrets
 import warnings
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -41,6 +42,7 @@ __all__ = [
     "BoardUnitDataset",
     "DatasetEntry",
     "ROTAS_HUMANAS",
+    "amostra_canonica",
     "append_training_sample",
     "board_groups",
     "migrate_labels_csv",
@@ -115,6 +117,11 @@ class BoardFenDataset(Dataset):
 
         Não é o mesmo que "de outro split": é "de split nenhum", e significa que a amostra
         está invisível a **todos** os três datasets. Separá-los é o que permite avisar."""
+        self.skipped_invalid_fen: list[str] = []
+        """Rótulos descartados por FEN vazia ou inválida (S-841). Até a S-841 este era o único
+        descarte da carga sem contador e sem log: um rótulo estragado sumia do treino calado."""
+        self.skipped_missing_image: list[str] = []
+        """Rótulos descartados porque a imagem não está em `samples_dir`."""
         self._board_cache: OrderedDict[int, np.ndarray] = OrderedDict()
         self.cache_hits = 0
         self.cache_misses = 0
@@ -134,14 +141,12 @@ class BoardFenDataset(Dataset):
         if not self.csv_path.exists():
             return
 
-        missing_files: list[str] = []
         for entry in LabelStore(self.csv_path).read():
             fen = entry.fen
-            if not fen or not is_syntactically_valid_fen(fen):
-                continue
-
             filename = entry.filename
 
+            # O split vem antes da FEN (S-841): cada dataset conta só o que descartou dos seus,
+            # e a linha estragada do treino não aparece como descarte da validação.
             if self.split is not None:
                 if self.splits is None:
                     raise ValueError("Para filtrar por split é necessário informar o mapa `splits`.")
@@ -151,6 +156,10 @@ class BoardFenDataset(Dataset):
                     continue
                 if registrado != self.split:
                     continue
+
+            if not fen or not is_syntactically_valid_fen(fen):
+                self.skipped_invalid_fen.append(filename)
+                continue
 
             if self.skip_illegal:
                 position = check_position(fen)
@@ -162,15 +171,23 @@ class BoardFenDataset(Dataset):
 
             img_path = self.samples_dir / filename
             if not img_path.exists():
-                missing_files.append(filename)
+                self.skipped_missing_image.append(filename)
                 continue
             self.entries.append(entry)
 
-        if missing_files:
-            preview = ", ".join(sorted(set(missing_files))[:3])
-            suffix = "..." if len(set(missing_files)) > 3 else ""
+        if self.skipped_invalid_fen:
+            logger.warning(
+                "%d rótulo(s) ignorados por FEN vazia ou inválida. Primeiros casos: %s",
+                len(self.skipped_invalid_fen),
+                ", ".join(self.skipped_invalid_fen[:3]),
+            )
+
+        if self.skipped_missing_image:
+            ausentes = sorted(set(self.skipped_missing_image))
+            preview = ", ".join(ausentes[:3])
+            suffix = "..." if len(ausentes) > 3 else ""
             warnings.warn(
-                f"{len(missing_files)} linhas ignoradas por imagem ausente: {preview}{suffix}",
+                f"{len(self.skipped_missing_image)} linhas ignoradas por imagem ausente: {preview}{suffix}",
                 RuntimeWarning,
                 stacklevel=2,
             )
@@ -208,6 +225,28 @@ class BoardFenDataset(Dataset):
             )
 
         self.index_map = [(entry_idx, sq) for entry_idx in range(len(self.entries)) for sq in range(64)]
+        if any(self.descartes.values()):
+            logger.info(
+                "Carga de %s%s: %d amostra(s); descartes: %s.",
+                self.csv_path.name,
+                f" ({self.split})" if self.split else "",
+                len(self.entries),
+                ", ".join(f"{motivo}={quantos}" for motivo, quantos in self.descartes.items()),
+            )
+
+    @property
+    def descartes(self) -> dict[str, int]:
+        """Quantos rótulos a carga descartou, por motivo (S-841). Vai para o metadado do checkpoint.
+
+        Rótulo de outro split não é descarte: é de outro dataset. Os ilegais mantidos por
+        `illegal_ok` também não; estão em `kept_illegal`.
+        """
+        return {
+            "fen_invalida": len(self.skipped_invalid_fen),
+            "sem_split": len(self.skipped_without_split),
+            "ilegal": len(self.skipped_illegal),
+            "imagem_ausente": len(self.skipped_missing_image),
+        }
 
     def __len__(self) -> int:
         return len(self.index_map)
@@ -483,6 +522,34 @@ def _fen_with_side(fen: str, side_to_move: str | None) -> tuple[str, str]:
     return f"{parts[0]} {declared} - - 0 1", declared
 
 
+def amostra_canonica(board_rgb: np.ndarray) -> np.ndarray:
+    """O tabuleiro como ele vai para o PNG da amostra: `BOARD_SIZE` de lado, em BGR.
+
+    O PNG não perde nada, então é também o que `read_image` devolve da amostra gravada -- quem
+    quer saber se uma imagem já está no dataset compara com isto (S-820).
+    """
+    board = board_rgb
+    if board.shape[:2] != (BOARD_SIZE, BOARD_SIZE):
+        board = cv2.resize(board, (BOARD_SIZE, BOARD_SIZE))
+    return cv2.cvtColor(board, cv2.COLOR_RGB2BGR)
+
+
+def _reservar_amostra(samples_dir: Path, instante: datetime) -> Path:
+    """Cria, vazio e exclusivo, o arquivo da amostra nova (S-820).
+
+    O nome saía só do relógio, e o passo dele nesta máquina é ~1,5 ms: duas gravações no mesmo
+    passo davam o mesmo nome, e a segunda imagem apagava a primeira. O sufixo aleatório separa as
+    duas, e o `"xb"` garante que nenhuma gravação reuse o arquivo de outra, sorteio repetido incluso.
+    """
+    while True:
+        caminho = samples_dir / f"board_{instante.strftime('%Y%m%d_%H%M%S_%f')}_{secrets.token_hex(3)}.png"
+        try:
+            with open(caminho, "xb"):
+                return caminho
+        except FileExistsError:
+            continue
+
+
 def append_training_sample(
     board_rgb: np.ndarray,
     fen: str,
@@ -526,29 +593,28 @@ def append_training_sample(
     csv_path.parent.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc)
-    filename = f"board_{timestamp.strftime('%Y%m%d_%H%M%S_%f')}.png"
-    image_path = samples_dir / filename
-
-    board = board_rgb
-    if board.shape[:2] != (BOARD_SIZE, BOARD_SIZE):
-        board = cv2.resize(board, (BOARD_SIZE, BOARD_SIZE))
-    board_bgr = cv2.cvtColor(board, cv2.COLOR_RGB2BGR)
-    write_image(image_path, board_bgr)
-
-    LabelStore(csv_path).append(
-        DatasetEntry(
-            filename=filename,
-            fen=fen,
-            side_to_move=resolved_side,
-            source_pdf=source_pdf,
-            source_page=str(source_page),
-            source_diagram=str(source_diagram),
-            detection_source=detection_source,
-            created_at=timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            corrected_by=corrected_by,
-            illegal_ok=ILLEGAL_OK if position.is_fatal else "",
+    image_path = _reservar_amostra(samples_dir, timestamp)
+    gravada = False
+    try:
+        write_image(image_path, amostra_canonica(board_rgb))
+        LabelStore(csv_path).append(
+            DatasetEntry(
+                filename=image_path.name,
+                fen=fen,
+                side_to_move=resolved_side,
+                source_pdf=source_pdf,
+                source_page=str(source_page),
+                source_diagram=str(source_diagram),
+                detection_source=detection_source,
+                created_at=timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                corrected_by=corrected_by,
+                illegal_ok=ILLEGAL_OK if position.is_fatal else "",
+            )
         )
-    )
+        gravada = True
+    finally:
+        if not gravada:  # o arquivo reservado não pode sobrar sem linha, nem vazio
+            image_path.unlink(missing_ok=True)
     return image_path
 
 

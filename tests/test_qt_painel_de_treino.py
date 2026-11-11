@@ -16,6 +16,7 @@ existe depois de o Qt desenhar, e são quatro coisas que quebram caladas:
 
 from __future__ import annotations
 
+import json
 import time
 import unittest
 from datetime import date, timedelta
@@ -28,6 +29,7 @@ from test_engine import _launcher
 
 from chess_diagram_ocr import placar as placar_mod
 from chess_diagram_ocr import revisao_arquivo, revisao_espacada, taticas, taticas_arquivo
+from chess_diagram_ocr.arquivo_do_dono import Lida, gravavel
 from chess_diagram_ocr.engine import EngineAnalyzer
 
 if TEM_PYQT:
@@ -185,11 +187,11 @@ class JanelaDeTreinoTests(unittest.TestCase):
 
     def test_fechar_grava_o_baralho(self) -> None:
         caminho = self.pasta / "revisao.json"
-        janela = self.janela(gravar=lambda baralho: revisao_arquivo.gravar(baralho, caminho=caminho))
+        janela = self.janela(gravar=lambda baralho: revisao_arquivo.gravar(Lida(revisao_arquivo.BaralhoDoArquivo(baralho), caminho)))
         janela.jogar(chess.Move.from_uci("f3f7"))
         janela.reject()
         self.app.processEvents()
-        self.assertEqual([_exercicio().chave], list(revisao_arquivo.carregar(caminho=caminho)))
+        self.assertEqual([_exercicio().chave], list(revisao_arquivo.carregar(caminho=caminho).valor.estados))
 
     def test_um_item_ja_revisto_hoje_nao_volta_na_fila_de_hoje(self) -> None:
         """**E a fila vazia diz quando o material volta, sem desenhar tabuleiro** (S-540, r2). A
@@ -219,18 +221,17 @@ class JanelaDeTreinoTests(unittest.TestCase):
         baralho de revisão; o placar vivia num objeto na memória e `placar.json` **nunca era
         criado**. A spec afirmava "sobrevive a desligar ✅" sobre um arquivo que não existia."""
         caminho = self.pasta / "placar.json"
-        placar = placar_mod.carregar(caminho=caminho)
-        janela = self.janela(placar=placar)
+        leitura = placar_mod.carregar(caminho=caminho)
+        janela = self.janela(placar=leitura.valor, gravar_placar=lambda _p: placar_mod.gravar(gravavel(leitura)))
         self.assertFalse(caminho.exists())
         janela.jogar(chess.Move.from_uci("f3f7"))
         self.assertTrue(caminho.exists(), "uma gravação por lance, como na sala (S-541)")
-        self.assertEqual(1, placar_mod.carregar(caminho=caminho).do_livro(LIVRO).certos)
+        self.assertEqual(1, placar_mod.carregar(caminho=caminho).valor.do_livro(LIVRO).certos)
 
-    def test_placar_sem_origem_nao_grava_na_arvore_do_programa(self) -> None:
-        """`Placar()` de teste, ou de quem colou uma posição à mão, não veio do disco -- e
-        `placar.gravar` cairia em `CAMINHO_PADRAO`, que é `data/placar.json` da instalação."""
+    def test_placar_sem_quem_grave_conta_so_na_memoria(self) -> None:
+        """`Placar()` de teste, ou de quem colou uma posição à mão, não veio do disco: sem
+        `gravar_placar`, a janela não tem para onde mandá-lo, e não manda."""
         placar = placar_mod.Placar()
-        self.assertIsNone(placar.origem)
         janela = self.janela(placar=placar)
         janela.jogar(chess.Move.from_uci("f3f7"))
         self.assertEqual(1, placar.sessao.total, "conta na memória")
@@ -389,8 +390,8 @@ class TreinoNaSalaTests(unittest.TestCase):
         painel.push_move(chess.Move.from_uci("e2e4"))
         painel.alternar_treino()
         painel.alternar_treino()
-        self.assertEqual(0, painel.placar.sessao.total, "a sessão zera")
-        self.assertEqual(1, painel.placar.total.total, "o livro não zera")
+        self.assertEqual(0, painel.treino.placar.sessao.total, "a sessão zera")
+        self.assertEqual(1, painel.treino.placar.total.total, "o livro não zera")
 
     def test_o_placar_esta_no_disco_depois_do_lance(self) -> None:
         """Uma gravação por lance: o arquivo tem alguns bytes, e o que se perde numa queda é a
@@ -399,7 +400,7 @@ class TreinoNaSalaTests(unittest.TestCase):
         self._com_linha(painel, livro=LIVRO)
         painel.alternar_treino()
         painel.push_move(chess.Move.from_uci("e2e4"))
-        lido = placar_mod.carregar(caminho=self.pasta / "placar.json")
+        lido = placar_mod.carregar(caminho=self.pasta / "placar.json").valor
         self.assertEqual(1, lido.total.total)
 
     def test_sem_motor_a_frase_do_erro_nao_promete_numero(self) -> None:
@@ -409,7 +410,7 @@ class TreinoNaSalaTests(unittest.TestCase):
         painel.push_move(chess.Move.from_uci("d2d4"))
         self.assertIn("não é o lance da linha", painel.lbl_status.text())
         self.assertNotIn("perde", painel.lbl_status.text())
-        self.assertEqual(1, painel.placar.sessao.errados)
+        self.assertEqual(1, painel.treino.placar.sessao.errados)
 
     def test_com_motor_a_frase_e_escrita_duas_vezes(self) -> None:
         """O veredicto chega na hora; o preço chega quando o motor termina."""
@@ -419,9 +420,9 @@ class TreinoNaSalaTests(unittest.TestCase):
             painel.alternar_treino()
             painel.push_move(chess.Move.from_uci("d2d4"))
             self.assertIn("perguntando ao motor", painel.lbl_status.text())
-            self.assertTrue(_girar(self.app, lambda: painel.placar.sessao.total > 0))
+            self.assertTrue(_girar(self.app, lambda: painel.treino.placar.sessao.total > 0))
             self.assertIn("d4", painel.lbl_status.text())
-            self.assertTrue(painel._medidor_da_perda().esperar(5000))
+            self.assertTrue(painel.treino._medidor_da_perda().esperar(5000))
             self.app.processEvents()
 
     def test_o_lance_da_linha_e_certo_e_anda(self) -> None:
@@ -430,7 +431,7 @@ class TreinoNaSalaTests(unittest.TestCase):
         painel.alternar_treino()
         painel.push_move(chess.Move.from_uci("e2e4"))
         self.assertEqual("e4", painel.estudo.no.san())
-        self.assertEqual(1, painel.placar.sessao.certos)
+        self.assertEqual(1, painel.treino.placar.sessao.certos)
 
     def test_o_fim_da_linha_nao_cobra_lance(self) -> None:
         painel = self.sala()
@@ -486,7 +487,9 @@ class TaticasNaSalaTests(unittest.TestCase):
         estado = revisao_espacada.estado_inicial(
             _exercicio().chave, revisao_espacada.FACIL, hoje=date.today() + timedelta(days=1)
         )
-        revisao_arquivo.gravar({estado.chave: estado}, caminho=self.pasta / "revisao.json")
+        revisao_arquivo.gravar(
+            Lida(revisao_arquivo.BaralhoDoArquivo({estado.chave: estado}), self.pasta / "revisao.json")
+        )
         painel = self.sala()
         janela = painel.treinar_a_agenda()
         self.addCleanup(descartar, janela)
@@ -503,7 +506,30 @@ class TaticasNaSalaTests(unittest.TestCase):
         janela.jogar(chess.Move.from_uci("f3f7"))
         alvo = self.pasta / "placar.json"
         self.assertTrue(alvo.exists())
-        self.assertEqual(1, placar_mod.carregar(caminho=alvo).do_livro(LIVRO).certos)
+        self.assertEqual(1, placar_mod.carregar(caminho=alvo).valor.do_livro(LIVRO).certos)
+
+    def test_item_ruim_do_baralho_e_do_placar_sobrevive_a_sessao(self) -> None:
+        """**S-813, de ponta a ponta.** Um item do baralho e um livro do placar que não leem não
+        entram na sessão, mas a sessão que os grava os devolve iguais."""
+        taticas_arquivo.gravar(LIVRO, [_exercicio()], pasta=self.pasta / "taticas")
+        item_ruim = {"chave": "outro.pdf#3#0", "vencimento": "isto-nao-e-data"}
+        livro_ruim = {"livro": "outro.pdf", "certos": "x"}
+        baralho = self.pasta / "revisao.json"
+        placar = self.pasta / "placar.json"
+        baralho.write_text(json.dumps({"esquema": 1, "itens": [item_ruim]}), encoding="utf-8")
+        placar.write_text(json.dumps({"esquema": 1, "livros": [livro_ruim]}), encoding="utf-8")
+        painel = self.sala()
+        janela = painel.treinar_a_agenda()
+        self.addCleanup(descartar, janela)
+        janela.jogar(chess.Move.from_uci("f3f7"))
+        janela.reject()
+        self.app.processEvents()
+        itens = json.loads(baralho.read_text(encoding="utf-8"))["itens"]
+        self.assertIn(item_ruim, itens)
+        self.assertIn(_exercicio().chave, [item.get("chave") for item in itens])
+        livros = json.loads(placar.read_text(encoding="utf-8"))["livros"]
+        self.assertIn(livro_ruim, livros)
+        self.assertEqual(1, placar_mod.carregar(caminho=placar).valor.do_livro(LIVRO).certos)
 
     def test_os_dois_comandos_tem_metodo_e_botao_no_mais(self) -> None:
         from chess_diagram_ocr.ui import barra_da_sala

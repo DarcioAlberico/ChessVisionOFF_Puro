@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from chess_diagram_ocr import settings as preferencias
+from chess_diagram_ocr.ui import strings
 
 __all__ = ["ABAS", "CAMPOS", "FORA_DA_JANELA", "Campo", "dpi", "ler", "max_boards", "trocar"]
 
@@ -63,11 +64,12 @@ ABAS: tuple[tuple[str, str], ...] = (
     ("recognition", "Reconhecimento"),
     ("ocr", "OCR"),
     ("engine", "Motor de análise"),
-    ("remote_fen", "Segunda opinião"),
+    ("local_reader", "Segunda opinião"),
 )
-"""`(seção, título da aba)`, na ordem em que aparecem. A seção `local_reader` entra na aba
-da segunda opinião: as duas são a mesma pergunta (quem mais lê o diagrama) com respostas
-que diferem no que importa -- uma sai da máquina, a outra não."""
+"""`(seção, título da aba)`, na ordem em que aparecem.
+
+A aba da segunda opinião era a da seção `remote_fen`, com o leitor local hospedado nela; desde
+a S-882 ela é só do leitor local, porque a remota saiu da janela (ver `FORA_DA_JANELA`)."""
 
 CAMPOS: tuple[Campo, ...] = (
     # --- treino: o que custa dezenas de minutos por clique
@@ -75,9 +77,9 @@ CAMPOS: tuple[Campo, ...] = (
           "Quantas passagens pelo dataset o treino do modelo de peças faz ao clicar em "
           "Treinar. Mais épocas: mais tempo e, até certo ponto, um modelo melhor -- o "
           "treino só grava por cima quando a validação melhora.", 1, 200, 1),
-    Campo("training.batch_size", "Tamanho do lote", INTEIRO,
+    Campo("training.batch_size", strings.TAMANHO_DO_LOTE, INTEIRO,
           "Casas por passo do treino. Maior é mais rápido e usa mais memória.", 1, 512, 8),
-    Campo("training.lr", "Taxa de aprendizado", DECIMAL,
+    Campo("training.lr", strings.TAXA_DE_APRENDIZADO, DECIMAL,
           "Passo do otimizador. 0,001 é o padrão medido; dez vezes maior costuma divergir.",
           1e-6, 1.0, 1e-4, decimais=6),
     Campo("training.ocr_iterations", "Iterações do ajuste fino do OCR", INTEIRO,
@@ -119,16 +121,22 @@ CAMPOS: tuple[Campo, ...] = (
           "232 MiB de pesos e ~7 s na primeira leitura."),
     Campo("local_reader.path", "Pasta do leitor local", CAMINHO,
           "Clone de tsoj/Chess_diagram_to_FEN com os pesos baixados."),
-    Campo("remote_fen.enabled", "Segunda opinião remota", INTERRUPTOR,
-          "Envia a IMAGEM do diagrama para o serviço abaixo. Desligado por padrão; o programa "
-          "pede confirmação nomeando o host antes do primeiro envio."),
-    Campo("remote_fen.endpoint", "Endereço do serviço remoto", TEXTO,
-          "https://… — sem endereço o recurso não existe, de propósito."),
-    Campo("remote_fen.timeout", "Tempo limite (s)", DECIMAL, "", 1.0, 300.0, 1.0, decimais=1),
+)
+
+_SEM_CHAMADOR = (
+    "a segunda opinião remota não tem chamador na interface (S-882): nenhum módulo de `qt/` ou "
+    "`ui/` usa `net_correction.build_provider`, e o botão «2ª opinião» só usa o leitor local -- "
+    "o campo volta à janela junto com o recurso"
 )
 
 FORA_DA_JANELA: dict[str, str] = {
     "remote_fen.acknowledged_host": "é o consentimento gravado ao aceitar o aviso, não uma escolha",
+    # Os três mostrados até a S-882: a janela prometia um recurso que não existe, e nenhuma imagem
+    # sai da máquina. A guarda `test_todo_campo_da_janela_tem_quem_o_leia` os impede de voltar
+    # sem quem os leia.
+    "remote_fen.enabled": _SEM_CHAMADOR,
+    "remote_fen.endpoint": _SEM_CHAMADOR,
+    "remote_fen.timeout": _SEM_CHAMADOR,
     # As três do `main` (S-536), chegadas no merge do religa: quem as edita é o formulário do motor
     # (`qt/preferencias.py`), que as aplica ao motor aberto sem reabrir a janela.
     "engine.hash_mb": "editada no formulário do motor (`qt/preferencias.py`, S-536), que a aplica sem reabrir",

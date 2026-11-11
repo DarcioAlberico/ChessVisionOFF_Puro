@@ -81,7 +81,7 @@ class EstadoVazio(QWidget):
         self.botao: QPushButton | None = None
         if rotulo_do_botao and acao is not None:
             self.botao = QPushButton(rotulo_do_botao, self)
-            self.botao.clicked.connect(acao)  # type: ignore[arg-type]
+            self.botao.clicked.connect(acao)
             # **Neutro, e não a ênfase da tela** (§7 item 10): a tela inteira tem direito a uma
             # ênfase, e ela é `ler_melhor`. O que faz este botão ser achado é ele estar **dentro**
             # do vazio, e não a cor dele.

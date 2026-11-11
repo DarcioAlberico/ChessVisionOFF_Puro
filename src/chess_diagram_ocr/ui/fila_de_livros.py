@@ -32,6 +32,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from . import formato
 from .tabela import Coluna
 
 __all__ = [
@@ -103,10 +104,10 @@ caiu é comparar por magnitude, e isso não se faz com números encostados à es
 def _segundos(valor: float) -> str:
     """`33 s`, `4,2 min`, `1,3 h` -- na unidade em que quem esperou pensa no número."""
     if valor < 90:
-        return f"{valor:.0f} s"
+        return f"{formato.decimal(valor, 0)} s"
     if valor < 5400:
-        return f"{valor / 60:.1f} min".replace(".", ",")
-    return f"{valor / 3600:.1f} h".replace(".", ",")
+        return f"{formato.decimal(valor / 60, 1)} min"
+    return f"{formato.decimal(valor / 3600, 1)} h"
 
 
 @dataclass(frozen=True)

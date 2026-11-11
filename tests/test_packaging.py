@@ -17,6 +17,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import varredura
 from ambiente_de_teste import pasta_temporaria
 from subprocesso import rodar_roteiro
 
@@ -225,6 +226,64 @@ class LogQueNaoCresceParaSempreTests(unittest.TestCase):
         self.assertEqual(len(arquivos), 1)
         self.assertTrue(str(arquivos[0].baseFilename).startswith(str(self.pasta)))
 
+    def _gravado(self) -> str:
+        """O texto do arquivo de log, depois de esvaziar o buffer dos handlers."""
+        for handler in self.raiz.handlers:
+            handler.flush()
+        return (self.pasta / "cvoff.log").read_text(encoding="utf-8")
+
+    def test_caminho_na_pasta_do_usuario_sai_com_til_no_arquivo(self) -> None:
+        """A mensagem de erro diz onde está o log, e isso convida a anexá-lo a um relato (S-909)."""
+        livro = Path.home() / "Livros" / "Nunn.pdf"
+        self.setup.configure_logging(log_file=self.pasta / "cvoff.log")
+
+        logging.getLogger("teste.s909").warning("Não abriu %s nem %s", livro, livro.as_posix())
+
+        gravado = self._gravado()
+        self.assertIn(str(Path("~") / "Livros" / "Nunn.pdf"), gravado)
+        self.assertIn("~/Livros/Nunn.pdf", gravado)
+        self.assertNotIn(str(Path.home()), gravado)
+        self.assertNotIn(Path.home().as_posix(), gravado)
+
+    def test_o_rastro_de_excecao_tambem_sai_com_til(self) -> None:
+        """O traceback traz o caminho de cada quadro, e o programa instalado mora na pasta do usuário."""
+        self.setup.configure_logging(log_file=self.pasta / "cvoff.log")
+
+        try:
+            raise OSError(f"sem acesso a {Path.home() / 'Livros'}")
+        except OSError:
+            logging.getLogger("teste.s909").exception("falhou")
+
+        gravado = self._gravado()
+        self.assertIn("OSError: sem acesso a ~", gravado)
+        self.assertNotIn(str(Path.home()), gravado)
+
+    def test_sem_verboso_o_arquivo_fica_sem_debug_mas_com_o_rastro(self) -> None:
+        """Texto do livro e FEN só em DEBUG, que deixa de ser o padrão do arquivo (S-909).
+
+        O traceback que o `cli.run_main` manda em DEBUG para não sujar a tela continua indo
+        ao arquivo: é para ele que o arquivo existe (S-126).
+        """
+        self.setup.configure_logging(log_file=self.pasta / "cvoff.log")
+        teste = logging.getLogger("teste.s909")
+
+        teste.debug("FEN lida: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")
+        try:
+            raise ValueError("o comando quebrou")
+        except ValueError:
+            teste.debug("O comando falhou.", exc_info=True)
+
+        gravado = self._gravado()
+        self.assertNotIn("rnbqkbnr", gravado)
+        self.assertIn("ValueError: o comando quebrou", gravado)
+
+    def test_com_verboso_o_arquivo_recebe_debug(self) -> None:
+        self.setup.configure_logging(verbose=True, log_file=self.pasta / "cvoff.log")
+
+        logging.getLogger("teste.s909").debug("FEN lida: 8/8/8/8/8/8/8/8")
+
+        self.assertIn("FEN lida: 8/8/8/8/8/8/8/8", self._gravado())
+
 
 class TamanhoDaJanelaTests(unittest.TestCase):
     """`qt/janela.py` não volta a crescer sem alguém decidir (S-136/S-506).
@@ -257,8 +316,13 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 1850
+    LIMITE = 1856
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.850 e 2.299 -> 1.856 na integração com a Solidez (2026-11-11)**: as três fatias da S-31 deste ramo tiraram da
+    janela a sessão, a montagem e a tabela de comandos; a `main` mexeu nos mesmos métodos (S-800, S-826, S-867,
+    S-906). O que ela mudou neles foi para `qt/sessao_da_janela.py`, e na classe ficaram o relógio da gravação
+    adiada e o prazo dele, que são fiação da janela.
 
     **1.937 -> 1.850 com a tabela de comandos fora da janela (S-31, fatia 3, 2026-11-06)**:
     `_comandos` virou `montagem_da_janela.tabela_de_comandos`, e a classe segue respondendo por
@@ -276,6 +340,27 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     `_confirmar_fechamento` foram para `qt/sessao_da_janela.py`, e as quatro larguras, que a sessão
     também lê, para `ui/geometria.py` (a janela as reexporta). Extração pura, com a janela idêntica
     em offscreen antes e depois. Na classe ficaram os três delegados que o Qt e os testes chamam.
+
+    **2.304 -> 2.299 com a resposta da leitura decidida em `ui/` (S-867, 2026-11-09)**: a guarda de
+    tela, o que selecionar, o duplo clique pendente e a frase do cancelamento viraram
+    `page_results.responder_a_leitura`; `_chegaram_itens` só aplica, e o ramo de cancelamento de
+    `_falhou` virou uma chamada a ele. As caixas da chegada reusam `_caixas_sem_desaprender`.
+
+    **2.313 -> 2.304 com a tarefa sem pai em todos os painéis (S-826, 2026-11-09)**: o `_se_viva`
+    da janela virou `trabalho.slot_se_vivo`, que os painéis usam também, e a espera do `closeEvent`
+    passou a ser `trabalho.esperar_as_tarefas` -- a de todas, e não só a da janela e do aquecimento.
+
+    **2.312 -> 2.313 com a identidade do livro numa função só (S-827, 2026-11-08)**: o nome
+    `livros` na importação de `ui`; a decisão em si mora em `ui/livros.py`.
+
+    **2.311 -> 2.312 com o processo de trabalho encerrado no fechamento (S-906, 2026-11-08)**:
+    uma linha no `closeEvent`, `processo_de_trabalho().encerrar(matar=True)`; sem ela, uma página
+    que pendura o MuPDF deixa o processo vivo e sem janela.
+
+    **2.293 -> 2.311 com o estado gravado antes da queda (S-800, 2026-11-08)**: o relógio de
+    disparo único (seis linhas), o prazo dele (três), `_gravar_em_breve` (seis), as duas chamadas
+    (abrir livro e virar página) e a parada no começo de `_gravar_estado`, que é o que faz o
+    fechamento concluir o pendente. Não há decisão a baixar para `ui/`: é ligar sinal a relógio.
 
     **2.287 -> 2.293 com o campo «Lance» de volta ao Resultado (S-71, 2026-11-05)**: o Tk tinha
     o campo e o porte do Qt não o trouxe. Seis linhas: a janela entrega ao painel os dois
@@ -1177,7 +1262,7 @@ class DependenciasDoBundleTests(unittest.TestCase):
         raiz = PROJETO / "src" / "chess_diagram_ocr"
         culpados = [
             caminho.relative_to(PROJETO).as_posix()
-            for caminho in raiz.rglob("*.py")
+            for caminho in varredura.fontes(raiz, recursivo=True, piso=300)
             if "import pandas" in caminho.read_text(encoding="utf-8")
         ]
         self.assertEqual(culpados, [])

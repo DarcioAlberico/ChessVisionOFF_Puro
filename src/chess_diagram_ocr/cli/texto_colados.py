@@ -44,10 +44,11 @@ from typing import Any
 import numpy as np
 
 from ..atomic_io import atomic_write_text
-from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
+from ..config import PROJECT_ROOT
 from ..logging_setup import configure_logging
 from ..text import colados
-from . import add_verbose, cli_errors
+from ..text.colados import arbitro_de_confianca
+from . import EntradaInvalida, add_amostra_do_acervo, add_pesos_de_caractere_argument, add_verbose, cli_errors
 from .texto_duas_linhas import DPI, RAIO_PT, faixas_da_camada, recorte_da_faixa
 from .texto_grade import camada_de_ocr
 from .texto_placar import cer
@@ -57,20 +58,6 @@ logger = logging.getLogger(__name__)
 SAIDA_PADRAO = PROJECT_ROOT / "docs" / "metrics" / "texto_colados.json"
 
 MODOS_MEDIDOS = (colados.NUNCA, colados.AUTO, colados.SEMPRE)
-
-
-def _arbitro_de_caixas(cinza: np.ndarray, classificador: Any) -> Any:
-    """Caixas -> confiança média delas. O mesmo árbitro que a S-198 usa, e de propósito."""
-
-    def julgar(caixas: Any) -> float:
-        recortes = [c.recortar(cinza) for c in caixas]
-        recortes = [r for r in recortes if r.size]
-        if not recortes:
-            return 0.0
-        lidos = classificador.classificar(recortes)
-        return float(sum(c for _, c in lidos) / len(lidos)) if lidos else 0.0
-
-    return julgar
 
 
 def ler_faixa(cinza: np.ndarray, classificador: Any, *, modo: str) -> tuple[str, int]:
@@ -93,7 +80,7 @@ def ler_faixa(cinza: np.ndarray, classificador: Any, *, modo: str) -> tuple[str,
 
     antes = len(caixas)
     caixas = colados.separar(
-        binaria, caixas, escala=escala, arbitro=_arbitro_de_caixas(cinza, classificador), modo=modo
+        binaria, caixas, escala=escala, arbitro=arbitro_de_confianca(cinza, classificador), modo=modo
     )
     partidas = len(caixas) - antes
 
@@ -201,7 +188,7 @@ def medir(
         logger.info("%s: %d faixa(s).", caminho.name, deste_livro if not marca else 0)
 
     if not total:
-        raise ValueError("nenhuma faixa medida: os PDFs deste acervo têm camada editorada?")
+        raise EntradaInvalida("nenhuma faixa medida: os PDFs deste acervo têm camada editorada?")
 
     medias = {modo: soma[modo] / total for modo in MODOS_MEDIDOS}
     return {
@@ -235,12 +222,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Mede o separador de glifo colado nos tres modos, antes de liga-lo (S-186).",
     )
-    parser.add_argument("--pdf-dir", type=Path, default=DEFAULT_PDF_DIR, help="Pasta do acervo de livros.")
-    parser.add_argument("--saida", type=Path, default=SAIDA_PADRAO, help="Onde gravar o relatório desta medição.")
-    parser.add_argument("--por-livro", type=int, default=3, help="Paginas medidas por livro.")
-    parser.add_argument("--por-pagina", type=int, default=6, help="Faixas medidas por pagina.")
-    parser.add_argument("--limite", "--limit", type=int, help="So os N primeiros livros.")
-    parser.add_argument("--modelo", type=Path, help="Pesos. Padrao: ao lado do char_meta.json.")
+    add_amostra_do_acervo(parser, saida=SAIDA_PADRAO, por_livro=3, por_pagina=6, o_que="Faixas")
+    add_pesos_de_caractere_argument(parser)
     parser.add_argument(
         "--limiares",
         type=float,

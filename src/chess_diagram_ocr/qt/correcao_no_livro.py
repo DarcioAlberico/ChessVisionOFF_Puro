@@ -92,7 +92,7 @@ class JanelaDeCorrecaoNoLivro(QDialog):
         self.resumo.setText("A troca mudou: veja a prévia de novo.")
 
     def _caderno_ainda_e_o_da_aba(self) -> bool:
-        if self._painel.caderno_aberto is self._caderno:
+        if self._painel.caderno.aberto is self._caderno:
             return True
         self._vista = None
         self.lista.clear()
@@ -123,7 +123,7 @@ class JanelaDeCorrecaoNoLivro(QDialog):
         """Aplica o que está marcado. **Sem prévia na tela não há o que aplicar**, e o botão nem acende."""
         if self._vista is None or not self.btn_aplicar.isEnabled() or not self._caderno_ainda_e_o_da_aba():
             return None
-        if not self._painel._guardar_a_folha():  # noqa: SLF001 - o que foi digitado depois da prévia tem de estar no disco: ver o cabeçalho
+        if not self._painel.caderno.guardar_a_folha():  # o que foi digitado depois da prévia tem de estar no disco: ver o cabeçalho
             self.resumo.setText("A folha da tela não gravou, e nada foi trocado: ela perderia o que você digitou.")
             return None
         feito = modelo.aplicar(self._caderno, self._vista, fora=self._fora())

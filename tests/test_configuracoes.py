@@ -12,16 +12,50 @@ import dataclasses
 import json
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
 from chess_diagram_ocr import settings as preferencias
+from chess_diagram_ocr.arquivo_do_dono import Lida
 from chess_diagram_ocr.ui import configuracoes
-from chess_diagram_ocr.ui.pedido_de_treino import pedido_de_treino
+from chess_diagram_ocr.ui.pedido_de_treino import TrainingRequest, pedido_de_treino
 
 if TEM_PYQT:
     from chess_diagram_ocr.qt.dialogo_de_configuracoes import DialogoDeConfiguracoes
+
+
+RAIZ_DO_PACOTE = Path(preferencias.__file__).resolve().parent
+
+
+def _secoes_lidas_pela_interface() -> set[str]:
+    """As seções de `Settings` que algum módulo de `qt/` ou `ui/` lê como atributo (S-882).
+
+    O diálogo de configurações fica de fora: ele lê e grava todas, e é justamente o que não
+    conta como uso. Um atributo sobre um nome importado como módulo também não conta.
+    """
+    import ast
+
+    secoes = {campo.name for campo in dataclasses.fields(preferencias.Settings)}
+    lidas: set[str] = set()
+    for pasta in ("qt", "ui"):
+        for arquivo in sorted((RAIZ_DO_PACOTE / pasta).glob("*.py")):
+            if arquivo.name == "dialogo_de_configuracoes.py":
+                continue
+            arvore = ast.parse(arquivo.read_bytes().decode("utf-8"))
+            modulos = {
+                (apelido.asname or apelido.name).split(".")[0]
+                for no in ast.walk(arvore) if isinstance(no, ast.Import)
+                for apelido in no.names
+            }
+            for no in ast.walk(arvore):
+                if not (isinstance(no, ast.Attribute) and no.attr in secoes):
+                    continue
+                if isinstance(no.value, ast.Name) and no.value.id in modulos:
+                    continue
+                lidas.add(no.attr)
+    return lidas
 
 
 class TabelaTests(unittest.TestCase):
@@ -44,9 +78,28 @@ class TabelaTests(unittest.TestCase):
         self.assertEqual(declarados - existentes, set(), "declaração sem campo no dataclass")
 
     def test_toda_secao_dos_campos_tem_aba(self) -> None:
-        abas = {secao for secao, _titulo in configuracoes.ABAS} | {"local_reader"}
+        abas = {secao for secao, _titulo in configuracoes.ABAS}
         for campo in configuracoes.CAMPOS:
             self.assertIn(campo.secao, abas, campo.chave)
+
+    def test_todo_campo_da_janela_tem_quem_o_leia(self) -> None:
+        """S-882: a janela oferecia «Segunda opinião remota», o endereço e o tempo limite, e
+        nenhum módulo da interface lia a seção `remote_fen` -- o recurso não existe, e o diálogo
+        o prometia. Todo campo da janela tem de ter a sua seção lida por `qt/` ou `ui/`.
+
+        A leitura é a do `Settings`: o atributo `.secao` sobre algo que não é um módulo importado
+        (`chess.engine.Mate` não é ler a seção `engine`). É por seção e não por campo -- quem lê
+        a seção a entrega inteira a quem usa (`build_local_provider(...local_reader)`).
+        """
+        lidas = _secoes_lidas_pela_interface()
+        sem_leitor = [campo.chave for campo in configuracoes.CAMPOS if campo.secao not in lidas]
+        self.assertEqual(sem_leitor, [], "campo na janela sem ninguém que o leia")
+
+    def test_a_guarda_dos_leitores_acha_o_que_existe(self) -> None:
+        """A guarda não é vácua: as seções de fato lidas aparecem, e a que ninguém lê, não."""
+        lidas = _secoes_lidas_pela_interface()
+        self.assertLessEqual({"training", "recognition", "ocr", "engine", "local_reader"}, lidas)
+        self.assertNotIn("remote_fen", lidas)
 
     def test_trocar_devolve_um_settings_novo_e_nao_toca_no_antigo(self) -> None:
         antigo = preferencias.Settings()
@@ -66,7 +119,7 @@ class TreinoTests(unittest.TestCase):
             preferencias.Settings(),
             {"training.epochs": 25, "training.ocr_iterations": 4000, "recognition.dpi": 300},
         )
-        preferencias.save_settings(caminho, gravado)
+        preferencias.save_settings(Lida(preferencias.ConfiguracaoDoArquivo(gravado), caminho))
         lido = preferencias.load_settings(caminho, env={})
         self.assertEqual(lido.training.epochs, 25)
         self.assertEqual(lido.training.ocr_iterations, 4000)
@@ -87,23 +140,28 @@ class TreinoTests(unittest.TestCase):
     def test_o_pedido_de_treino_le_o_arquivo(self) -> None:
         caminho = pasta_temporaria(self) / "settings.json"
         preferencias.save_settings(
-            caminho, configuracoes.trocar(preferencias.Settings(), {"training.epochs": 3, "training.lr": 0.01})
+            Lida(
+                preferencias.ConfiguracaoDoArquivo(
+                    configuracoes.trocar(preferencias.Settings(), {"training.epochs": 3, "training.lr": 0.01})
+                ),
+                caminho,
+            )
         )
         original = preferencias.DEFAULT_SETTINGS_PATH
         preferencias.DEFAULT_SETTINGS_PATH = caminho
         try:
             pedido = pedido_de_treino(Path("l.csv"), Path("s"), None, model_path=Path("m.pt"))
-            # C4: sem checkpoint legível o regime é o genérico, e o pedido o carrega.
-            self.assertEqual(pedido.augment, "aug0")
+            # C4/S-839: sem checkpoint no disco não há regime a continuar.
+            self.assertIsNone(pedido.augment)
         finally:
             preferencias.DEFAULT_SETTINGS_PATH = original
         self.assertEqual((pedido.epochs, pedido.lr, pedido.batch_size), (3, 0.01, 16))
 
     def test_dpi_e_max_boards_releem_quando_o_arquivo_muda(self) -> None:
         caminho = pasta_temporaria(self) / "settings.json"
-        preferencias.save_settings(caminho, configuracoes.trocar(preferencias.Settings(), {"recognition.dpi": 150}))
+        preferencias.save_settings(Lida(preferencias.ConfiguracaoDoArquivo(configuracoes.trocar(preferencias.Settings(), {"recognition.dpi": 150})), caminho))
         self.assertEqual(configuracoes.reconhecimento(caminho).dpi, 150)
-        preferencias.save_settings(caminho, configuracoes.trocar(preferencias.Settings(), {"recognition.dpi": 400}))
+        preferencias.save_settings(Lida(preferencias.ConfiguracaoDoArquivo(configuracoes.trocar(preferencias.Settings(), {"recognition.dpi": 400})), caminho))
         self.assertEqual(configuracoes.reconhecimento(caminho).dpi, 400)
 
 
@@ -154,6 +212,31 @@ class DialogoTests(unittest.TestCase):
         finally:
             descartar(dialogo)
 
+    def test_settings_que_nao_le_abre_com_salvar_desligado_e_nao_e_gravado(self) -> None:
+        """**A leitura travada (S-812)**, pela porta do menu: o diálogo diz por que não grava, e nem
+        um `accept` forçado (o Enter) escreve os padrões por cima do arquivo da pessoa."""
+        from chess_diagram_ocr.qt import dialogo_de_configuracoes
+
+        caminho = pasta_temporaria(self) / "settings.json"
+        original = b'{"remote_fen": {"endpoint": "https://meu/fen", "enabled": true},}'
+        caminho.write_bytes(original)
+        vistos: list[tuple[bool, str]] = []
+
+        def exec_(dialogo: DialogoDeConfiguracoes) -> int:
+            vistos.append((dialogo.btn_salvar.isEnabled(), dialogo.lbl_onde.text()))
+            dialogo.accept()
+            return 1
+
+        with (
+            mock.patch.object(preferencias, "DEFAULT_SETTINGS_PATH", caminho),
+            mock.patch.object(DialogoDeConfiguracoes, "exec", exec_),
+        ):
+            descartar(dialogo_de_configuracoes.abrir(None))
+        self.assertEqual(original, caminho.read_bytes())
+        [(salvar_ligado, frase)] = vistos
+        self.assertFalse(salvar_ligado)
+        self.assertIn("settings.json não pôde ser lido", frase)
+
     def test_cancelar_nao_grava(self) -> None:
         recebido: list[preferencias.Settings] = []
         dialogo = DialogoDeConfiguracoes(ao_salvar=recebido.append)
@@ -172,22 +255,35 @@ if __name__ == "__main__":
 class RegimeDeAumentoTests(unittest.TestCase):
     """C4 do ciclo 2: a janela retreina no regime que produziu o checkpoint de produção."""
 
+    def _pedido(self, pasta: Path, modelo: Path) -> TrainingRequest:
+        original = preferencias.DEFAULT_SETTINGS_PATH
+        preferencias.DEFAULT_SETTINGS_PATH = pasta / "settings.json"
+        try:
+            return pedido_de_treino(Path("l.csv"), Path("s"), None, model_path=modelo)
+        finally:
+            preferencias.DEFAULT_SETTINGS_PATH = original
+
     def test_o_pedido_le_o_regime_do_checkpoint(self) -> None:
         import tempfile
 
         import torch
 
-        from chess_diagram_ocr.augment import AugmentConfig, from_letters
+        from chess_diagram_ocr.augment import AugmentConfig
         from chess_diagram_ocr.checkpoint import save_checkpoint
 
         with tempfile.TemporaryDirectory() as tmp:
             modelo = Path(tmp) / "m.pt"
             save_checkpoint(modelo, {"w": torch.zeros(1)}, metadata={"augment_version": "augmhsp"})
-            original = preferencias.DEFAULT_SETTINGS_PATH
-            preferencias.DEFAULT_SETTINGS_PATH = Path(tmp) / "settings.json"
-            try:
-                pedido = pedido_de_treino(Path("l.csv"), Path("s"), None, model_path=modelo)
-            finally:
-                preferencias.DEFAULT_SETTINGS_PATH = original
-            self.assertEqual(pedido.augment, "augmhsp")
-            self.assertEqual(from_letters(pedido.augment), AugmentConfig(hflip=0.5, hatch=0.30, speckle=0.25, paper=0.30))
+            with self.assertLogs("chess_diagram_ocr.augment", "WARNING"):
+                pedido = self._pedido(Path(tmp), modelo)
+            self.assertEqual(pedido.augment, AugmentConfig(hflip=0.5, hatch=0.30, speckle=0.25, paper=0.30))
+
+    def test_o_pedido_recusa_checkpoint_truncado(self) -> None:
+        """S-839: era `aug0`, e o retreino rodava no genérico por cima de um modelo que não era."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            modelo = Path(tmp) / "m.pt"
+            modelo.write_bytes(b"PK truncado")
+            with self.assertRaises(ValueError):
+                self._pedido(Path(tmp), modelo)

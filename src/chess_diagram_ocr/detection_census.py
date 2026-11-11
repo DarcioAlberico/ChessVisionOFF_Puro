@@ -34,6 +34,7 @@ S-78 — que este módulo existe para poder medir.
 from __future__ import annotations
 
 import csv
+import io
 import json
 import logging
 from collections import Counter
@@ -47,7 +48,7 @@ import numpy as np
 from .alinhamento import LIMITE_DE_DESALINHAMENTO_PX, SEM_DAMERO, encaixe_do_damero
 from .atomic_io import atomic_write_text
 from .board_detection import RejectedQuad
-from .config import DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, ReadingOrder
+from .config import DEFAULT_DPI, DEFAULT_MAX_BOARDS, DEFAULT_READING_ORDER, ReadingOrder
 from .detection.hybrid import board_texture_score, detect_diagrams
 from .pdf_io import PdfSource, opened, render_pdf_page, sample_pages
 
@@ -327,7 +328,7 @@ class DetectionCensus:
     """
 
     books: list[BookCensus] = field(default_factory=list)
-    dpi: int = 220
+    dpi: int = DEFAULT_DPI
     max_boards: int = DEFAULT_MAX_BOARDS
     reading_order: str = DEFAULT_READING_ORDER
     pages_per_book: int | None = DEFAULT_PAGES_PER_BOOK
@@ -381,7 +382,7 @@ def census_page(
     page_index: int,
     pdf_name: str,
     *,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     max_boards: int = DEFAULT_MAX_BOARDS,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     rejections: list[RejectionRow] | None = None,
@@ -453,7 +454,7 @@ def census_book(
     pdf_path: Path,
     *,
     pages: int | None = DEFAULT_PAGES_PER_BOOK,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     max_boards: int = DEFAULT_MAX_BOARDS,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     suspect_below_pt: float = SUSPECT_BELOW_PT,
@@ -508,7 +509,7 @@ def census_collection(
     pdf_dir: Path,
     *,
     pages: int | None = DEFAULT_PAGES_PER_BOOK,
-    dpi: int = 220,
+    dpi: int = DEFAULT_DPI,
     max_boards: int = DEFAULT_MAX_BOARDS,
     reading_order: ReadingOrder = DEFAULT_READING_ORDER,
     suspect_below_pt: float = SUSPECT_BELOW_PT,
@@ -551,12 +552,12 @@ def census_collection(
 
 def write_census_csv(path: Path, census: DetectionCensus) -> None:
     """Uma linha por candidato. É este arquivo que a corrida seguinte compara."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(CSV_FIELDS))
-        writer.writeheader()
-        for row in census.rows:
-            writer.writerow({campo: getattr(row, campo) for campo in CSV_FIELDS})
+    corpo = io.StringIO()
+    writer = csv.DictWriter(corpo, fieldnames=list(CSV_FIELDS))
+    writer.writeheader()
+    for row in census.rows:
+        writer.writerow({campo: getattr(row, campo) for campo in CSV_FIELDS})
+    atomic_write_text(path, corpo.getvalue())
 
 
 def write_rejections_csv(path: Path, rejections: list[RejectionRow]) -> None:
@@ -567,12 +568,12 @@ def write_rejections_csv(path: Path, rejections: list[RejectionRow]) -> None:
     por um filtro. Além disso o diff da S-82 casa por canto de bbox, e uma linha de recusa não
     é um candidato que a corrida seguinte deva procurar como se fosse entrega.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(REJECTION_CSV_FIELDS))
-        writer.writeheader()
-        for row in rejections:
-            writer.writerow({campo: getattr(row, campo) for campo in REJECTION_CSV_FIELDS})
+    corpo = io.StringIO()
+    writer = csv.DictWriter(corpo, fieldnames=list(REJECTION_CSV_FIELDS))
+    writer.writeheader()
+    for row in rejections:
+        writer.writerow({campo: getattr(row, campo) for campo in REJECTION_CSV_FIELDS})
+    atomic_write_text(path, corpo.getvalue())
 
 
 def rejections_by_reason(rejections: list[RejectionRow]) -> Counter[str]:

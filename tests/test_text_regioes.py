@@ -359,11 +359,11 @@ class PaginaDeSolucoesDoYusupovTests(unittest.TestCase):
     def test_a_pagina_1917_sai_em_duas_colunas_entre_o_titulo_e_o_folio(self) -> None:
         import fitz
 
-        from chess_diagram_ocr.cli.texto_ordem import _linhas_da_camada
+        from chess_diagram_ocr.cli.texto_ordem import linhas_da_camada
         from chess_diagram_ocr.text.leitor import calha_de_linhas
 
         with fitz.open(LIVRO) as doc:
-            linhas = _linhas_da_camada(doc[1916])
+            linhas = linhas_da_camada(doc[1916])
         caixas = [Caixa(int(b[0]), int(b[1]), int(b[2]), int(b[3])) for _, b in linhas]
         regioes = detectar_regioes(caixas, calha_minima=calha_de_linhas(caixas))
         self.assertEqual([1, 2, 1], [len(r.colunas) for r in regioes], f"veio {regioes}")
@@ -372,13 +372,13 @@ class PaginaDeSolucoesDoYusupovTests(unittest.TestCase):
         """S-583: a imagem do quadro é achada na camada e as soluções em cima dele acham a calha."""
         import fitz
 
-        from chess_diagram_ocr.cli.texto_ordem import _linhas_da_camada
+        from chess_diagram_ocr.cli.texto_ordem import linhas_da_camada
         from chess_diagram_ocr.text.leitor import calha_de_linhas
         from chess_diagram_ocr.text.quadros import quadros_da_camada
 
         with fitz.open(LIVRO) as doc:
             page = doc[1020]
-            linhas = _linhas_da_camada(page)
+            linhas = linhas_da_camada(page)
             quadros = [(int(y0), int(y1)) for y0, y1 in quadros_da_camada(page)]
         # Dois quadros: a imagem decorativa do cabeçalho (com o título e o número do capítulo
         # dentro) e o «Scoring», em 452-557 pt. O do cabeçalho é transversal de qualquer jeito.

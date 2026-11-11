@@ -35,6 +35,7 @@ from typing import Any
 
 import numpy as np
 
+from ..arquivo_do_dono import ler_texto
 from ..atomic_io import atomic_write_text
 from ..config import DATA_DIR
 from . import tesseract
@@ -50,7 +51,9 @@ TETO_MB = 200
 FRACAO_DEPOIS_DO_DESPEJO = 0.9
 """Despeja até aqui, e não até o teto: sem a folga, toda gravação depois de cheio varreria a pasta."""
 
-VERSAO_DA_ENTRADA = 1
+VERSAO_DA_ENTRADA = 2
+"""A 2 guarda o recorte que o Tesseract não leu como `null` (S-853). A 1 o guardava como linha vazia, e a fusão
+derrubava a prosa do glifo por uma leitura que nunca aconteceu: entrada da 1 é falta, e a folha é lida de novo."""
 
 
 @dataclass(frozen=True)
@@ -130,8 +133,14 @@ def chave_de(
     )
 
 
-def _linha_de(dados: Any) -> tesseract.LinhaDoTesseract:
+def _linha_de(dados: Any) -> tesseract.LinhaDoTesseract | None:
+    if dados is None:
+        return None
     return tesseract.LinhaDoTesseract(str(dados["texto"]), tuple(float(c) for c in dados["confiancas"]))
+
+
+def _entrada_de(linha: tesseract.LinhaDoTesseract | None) -> dict[str, Any] | None:
+    return None if linha is None else {"texto": linha.texto, "confiancas": list(linha.confiancas)}
 
 
 class CacheDeLeitura:
@@ -158,11 +167,11 @@ class CacheDeLeitura:
             saida.append((dados.st_mtime_ns, dados.st_size, caminho))
         return saida
 
-    def ler(self, chave: ChaveDaLeitura) -> list[tesseract.LinhaDoTesseract] | None:
+    def ler(self, chave: ChaveDaLeitura) -> list[tesseract.LinhaDoTesseract | None] | None:
         """As linhas guardadas, ou `None`. **Entrada ilegível é falta, e sai da pasta**: o cache nunca derruba a leitura."""
         caminho = self._caminho(chave)
         try:
-            dados = json.loads(caminho.read_text(encoding="utf-8"))
+            dados = json.loads(ler_texto(caminho, do_usuario=False))
             if dados["versao"] != VERSAO_DA_ENTRADA or dados["chave"] != asdict(chave):
                 raise ValueError("entrada de outra chave")
             linhas = [_linha_de(item) for item in dados["linhas"]]
@@ -178,12 +187,12 @@ class CacheDeLeitura:
             logger.debug("Sem marcar o uso de %s: %s", caminho.name, erro)
         return linhas
 
-    def gravar(self, chave: ChaveDaLeitura, linhas: Sequence[tesseract.LinhaDoTesseract]) -> str:
+    def gravar(self, chave: ChaveDaLeitura, linhas: Sequence[tesseract.LinhaDoTesseract | None]) -> str:
         """Guarda o lote, e devolve a frase do aviso se não deu. **Nunca levanta**: a leitura já está feita."""
         entrada = {
             "versao": VERSAO_DA_ENTRADA,
             "chave": asdict(chave),
-            "linhas": [{"texto": linha.texto, "confiancas": list(linha.confiancas)} for linha in linhas],
+            "linhas": [_entrada_de(linha) for linha in linhas],
         }
         corpo = json.dumps(entrada, ensure_ascii=False)
         try:

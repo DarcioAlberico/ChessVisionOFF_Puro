@@ -251,6 +251,17 @@ class CapituloDoTextoTests(unittest.TestCase):
         capitulo = ET.fromstring(sem_titulo[f"{epub.PASTA}/folha_001.xhtml"])
         self.assertIn("livro.pdf — folha 58", capitulo.find(f".//{XHTML}h1").text or "")  # type: ignore[union-attr]
 
+    def test_sem_metadados_o_titulo_do_livro_e_o_da_folha(self) -> None:
+        """O mesmo título que o DOCX dá (S-864): `livro.pdf — folha 58`, ou o do programa sem página."""
+        for documento, esperado in (
+            (_documento(), "livro.pdf — folha 58"),
+            (rico.de_texto("Só o que alguém escreveu."), "Texto do ChessVisionOFF"),
+        ):
+            with self.subTest(esperado=esperado):
+                _, membros = self._exportar(documento)
+                titulo = ET.fromstring(membros[f"{epub.PASTA}/{epub.OPF}"]).find(f".//{DC}title")
+                self.assertEqual(esperado, titulo.text)  # type: ignore[union-attr]
+
     def test_o_diagrama_lido_vira_svg_e_o_sem_nada_vira_a_marca(self) -> None:
         """**A marca nunca desaparece** (S-250): é o `alt` da imagem, e é o parágrafo quando não há
         imagem. E o relatório distingue os dois, porque "não havia" e "havia e saiu só a marca" são
@@ -456,6 +467,55 @@ class VerificadorNosDoisSentidosTests(unittest.TestCase):
 
     def test_o_que_o_ocf_define_nao_conta_como_orfao(self) -> None:
         self.assertEqual(epub.verificar(_livro_do_estudo()), [])
+
+
+PGN_COM_CONTROLE = (
+    '[Event "Tata\x02 Steel"]\n[Date "2021.01.16"]\n[White "Carlsen, M."]\n[Black "Nepomniachtchi, I."]\n\n'
+    "1. e4 {um\x01 comen\x0btario} e5 2. Nf3 *\n"
+)
+"""S-877: o U+0002 de glifo sem mapa no cabeçalho, e U+0001 e U+000B no comentário."""
+
+
+class CaractereDeControleTests(unittest.TestCase):
+    """S-877: o XML 1.0 proíbe os controles abaixo de U+0020 fora tab, LF e CR, e o PGN e a camada os trazem."""
+
+    def _bem_formados(self, dados: bytes) -> dict[str, bytes]:
+        membros = _membros(dados)
+        for nome, conteudo in membros.items():
+            if nome.endswith((".xhtml", ".opf", ".xml", ".svg")):
+                with self.subTest(membro=nome):
+                    ET.fromstring(conteudo)  # o expat é estrito: caractere proibido é ParseError
+        return membros
+
+    def test_epub_com_controle_passa_no_verificar(self) -> None:
+        pasta = pasta_temporaria(self)
+        relatorio = epub.exportar_estudo_epub(Estudo.de_pgn(PGN_COM_CONTROLE), pasta / "controle.epub")
+        dados = relatorio.caminho.read_bytes()
+        self.assertEqual(epub.verificar(dados), [])
+        membros = self._bem_formados(dados)
+        nav = ET.fromstring(membros[f"{epub.PASTA}/{epub.NAV}"])
+        self.assertIn("Tata Steel", "".join(nav.itertext()))
+        # O U+0001 sai; o U+000B o python-chess já lê como espaço.
+        self.assertIn("um comen tario", "".join(_capitulos(dados)[0].itertext()))
+
+    def test_epub_do_texto_com_glifo_sem_mapa_passa_no_verificar(self) -> None:
+        """A camada de texto do PDF traz U+0002 e U+0003 onde a fonte não tem mapa."""
+        pasta = pasta_temporaria(self)
+        doc = rico.de_pagina(_pagina(_texto("Uma \x03frase\x02 lida.")))
+        relatorio = epub.exportar_texto_epub(doc, pasta / "texto.epub")
+        dados = relatorio.caminho.read_bytes()
+        self.assertEqual(epub.verificar(dados), [])
+        self._bem_formados(dados)
+        self.assertIn("Uma frase lida.", "".join(_capitulos(dados)[0].itertext()))
+
+    def test_o_pacote_com_defeito_nao_e_gravado(self) -> None:
+        """O exportador roda `verificar` antes de dar a exportação por concluída."""
+        pasta = pasta_temporaria(self)
+        livro = epub.Livro(metadados=epub.Metadados(titulo="x").resolvidos())
+        livro.capitulos.append(epub.Capitulo(id="c1", titulo="c1", corpo="<p>aberto"))
+        with self.assertRaisesRegex(ValueError, "XML mal formado"):
+            epub.escrever(pasta / "defeito.epub", epub.empacotar(livro))
+        self.assertFalse((pasta / "defeito.epub").exists())
 
 
 if __name__ == "__main__":

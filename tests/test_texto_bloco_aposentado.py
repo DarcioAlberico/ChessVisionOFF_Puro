@@ -131,19 +131,22 @@ class FiacaoTests(unittest.TestCase):
     def test_o_estado_antigo_chega_a_aba_e_o_que_ela_grava_nao_tem_a_chave(self) -> None:
         antigo = state.state_from_dict({"version": 7, "texto_motor": "glifo", CHAVE_DO_ESTADO: True})
         self.painel.aplicar_estado(antigo)
-        self.assertEqual(self.painel.motor, "glifo")
+        self.assertEqual(self.painel.leitura.motor, "glifo")
         self.painel.anotar_estado(antigo)
         self.assertNotIn(CHAVE_DO_ESTADO, antigo.to_dict())
 
     def test_a_aba_nao_tem_a_caixa(self) -> None:
-        self.assertFalse(hasattr(self.painel, "caixa_de_bloco"))
-        self.assertFalse(hasattr(self.painel, CHAVE_DO_INDICE))
+        for parte in (self.painel, self.painel.leitura):  # a leitura é a parte que tinha a caixa, depois da S-865
+            self.assertFalse(hasattr(parte, "caixa_de_bloco"))
+            self.assertFalse(hasattr(parte, CHAVE_DO_INDICE))
 
     def test_o_que_a_aba_manda_o_leitor_aceita(self) -> None:
         """`autospec` confere a assinatura de verdade: um argumento que o leitor não tem levanta aqui."""
+        from chess_diagram_ocr.qt import texto_leitura
+
         lida = PaginaLida(documento="livro.pdf", pagina=0)
         with mock.patch("chess_diagram_ocr.text.leitor.ler_pagina", autospec=True, return_value=lida) as ler:
-            self.qt_texto._ler(Path("livro.pdf"), 0, dpi=72, motor="glifo", imagem_rgb=None)
+            texto_leitura.ler_a_folha(Path("livro.pdf"), 0, dpi=72, motor="glifo", imagem_rgb=None)
         ler.assert_called_once()
         self.assertEqual(ler.call_args.kwargs["motor"], "glifo")
 

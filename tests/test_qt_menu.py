@@ -200,9 +200,25 @@ class EscolhaEInterruptorTests(unittest.TestCase):
         classica = next(a for a in grupo.actions() if a.data() == pele.CLASSICA)
         self.assertNotEqual(classica.text(), classica.data())
 
+    def _marcas(self) -> dict[str, list[tuple[object, bool]]]:
+        """Cada submenu de escolha, item a item: o valor e se está marcado."""
+        return {nome: [(a.data(), a.isChecked()) for a in grupo.actions()] for nome, grupo in self.montada.grupos.items()}
+
     def test_escolher_valor_desconhecido_e_silencioso(self) -> None:
+        """Silencioso, e não inerte (S-872): o valor que o registro perdeu deixa o submenu **sem
+        marca** -- marcar a pele antiga diria que ela está em vigor --, e a ação que não existe não
+        mexe em submenu nenhum, item a item."""
+        self.montada.escolher("aparencia", pele.FOCO)
+        self.assertEqual(self.montada.escolhido("aparencia"), pele.FOCO)
+
         self.montada.escolher("aparencia", "pele-que-nao-existe")
+        self.assertEqual(self.montada.escolhido("aparencia"), "")
+        self.assertFalse(any(marcado for _valor, marcado in self._marcas()["aparencia"]))
+
+        self.montada.escolher("aparencia", pele.CLASSICA)
+        antes = self._marcas()
         self.montada.escolher("acao-que-nao-existe", pele.FOCO)
+        self.assertEqual(self._marcas(), antes)
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

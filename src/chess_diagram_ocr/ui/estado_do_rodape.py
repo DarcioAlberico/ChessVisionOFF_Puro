@@ -29,6 +29,35 @@ from typing import Any
 from . import tokens
 from .busy import BusyOperation
 
+__all__ = [
+    "AVISO",
+    "DESLIGADO",
+    "DETERMINADO",
+    "Dispositivos",
+    "ERRO",
+    "Estado",
+    "FOLGA_ENTRE_ZONAS",
+    "INDETERMINADO",
+    "INFORMACAO",
+    "INTERVALO_DE_ACOMPANHAMENTO_MS",
+    "LARGURA_DA_BARRA",
+    "LARGURA_MINIMA_DA_MENSAGEM",
+    "Mensagens",
+    "Ocupacao",
+    "PAPEL_DE_TEXTO",
+    "PARADO",
+    "SEM_PESOS",
+    "compor",
+    "contagem_das_caixas",
+    "descricao_do_documento",
+    "descricao_dos_diagramas",
+    "descricao_dos_dispositivos",
+    "expira_em_ms",
+    "ocupacao",
+    "papel_do_documento",
+    "severidade_de",
+]
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,8 +79,6 @@ AVISO = "AVISO"
 
 ERRO = "ERRO"
 """Falhou. É a única severidade que **não expira** — ver `EXPIRACAO_MS`."""
-
-SEVERIDADES: tuple[str, ...] = (INFORMACAO, AVISO, ERRO)
 
 PAPEL_DE_TEXTO: dict[str, str] = {
     INFORMACAO: tokens.TEXTO_PADRAO,
@@ -124,7 +151,7 @@ def expira_em_ms(severidade: str) -> int | None:
     uma severidade escrita errada que caísse no padrão viraria um erro que expira em silêncio.
     """
     if severidade not in EXPIRACAO_MS:
-        raise KeyError(f"severidade desconhecida: {severidade!r}. As válidas estão em SEVERIDADES.")
+        raise KeyError(f"severidade desconhecida: {severidade!r}. As válidas são as chaves de EXPIRACAO_MS.")
     return EXPIRACAO_MS[severidade]
 
 

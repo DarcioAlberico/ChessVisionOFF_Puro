@@ -35,7 +35,6 @@ from chess_diagram_ocr.provenance import (
     match_samples,
     samples_without_provenance,
 )
-from chess_diagram_ocr.splits import groups_by_book
 
 LEGAL = "8/8/8/8/8/8/4K3/4k3 w - - 0 1"
 
@@ -404,29 +403,6 @@ class BuildIndexTests(unittest.TestCase):
         base = ProvenanceIndex(dpi=150)
         with self.assertRaises(ValueError):
             build_index(self.pdf_dir, dpi=220, base=base)
-
-
-class GroupsByBookTests(unittest.TestCase):
-    """O que a procedência destrava: o split agrupado por livro (S-07)."""
-
-    def test_agrupa_por_livro(self) -> None:
-        grupos = groups_by_book({"a.png": "X.pdf", "b.png": "X.pdf", "c.png": "Y.pdf", "d.png": "Y.pdf"})
-        self.assertEqual(grupos, [["a.png", "b.png"], ["c.png", "d.png"]])
-
-    def test_amostra_sem_procedencia_fica_de_fora(self) -> None:
-        """Sem `source_pdf` ela continua com split individual, que é o comportamento de hoje."""
-        self.assertEqual(groups_by_book({"a.png": "", "b.png": "X.pdf", "c.png": "X.pdf"}), [["b.png", "c.png"]])
-
-    def test_livro_com_uma_amostra_so_nao_vira_grupo(self) -> None:
-        self.assertEqual(groups_by_book({"a.png": "X.pdf"}), [])
-
-    def test_o_grupo_faz_o_livro_inteiro_cair_no_mesmo_split(self) -> None:
-        from chess_diagram_ocr.splits import compute_splits
-
-        procedencia = {f"{i}.png": "X.pdf" for i in range(40)}
-        splits = compute_splits(procedencia.keys(), groups=groups_by_book(procedencia))
-
-        self.assertEqual(len(set(splits.values())), 1)
 
 
 if __name__ == "__main__":

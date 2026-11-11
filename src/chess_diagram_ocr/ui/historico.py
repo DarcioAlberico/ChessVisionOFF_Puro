@@ -2,7 +2,7 @@
 
 **A função que faltava.** Quando este módulo foi escrito, `grep -rn 'undo' src/` devolvia zero
 linhas de implementação -- os únicos acertos eram comentários, entre eles o de `ui/board_edit.py`,
-que descreve `apply_edits` como *"útil para desfazer em bloco"*. A Imagem 2 põe Desfazer, Refazer e
+que descrevia `apply_edits` como *"útil para desfazer em bloco"* (ela saiu na S-895, sem chamador). A Imagem 2 põe Desfazer, Refazer e
 Limpar no grupo Edição, e nenhum dos três existia.
 
 **E o registro do que custa não tê-los já existe neste projeto: a S-76**, em que um clique
@@ -27,8 +27,9 @@ desenha nada, e é o que permite afirmar as sete origens de mudança sem abrir j
 `str`, e o painel de Resultado guardava só o `placement`: trocar o lado a jogar não entrava, e
 `Ctrl+Z` depois de um clique no rádio errado devolvia a peça de trás em vez do lado de trás
 (análise §6.5). A pilha passou a guardar **qualquer valor comparável por `==`** -- o painel de
-Resultado põe `(placement, side)`, a sala de estudo continua pondo o PGN como texto -- e a
-regra de "posição que não mudou não entra" continua sendo a igualdade.
+Resultado põe um `editor_model.DiagramState` (posição, lado e procedência, S-888), a sala de
+estudo continua pondo o PGN como texto -- e a regra de "posição que não mudou não entra"
+continua sendo a igualdade.
 """
 
 from __future__ import annotations

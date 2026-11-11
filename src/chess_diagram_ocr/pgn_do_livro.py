@@ -46,6 +46,7 @@ from .estudo import Caminho, caminho_de, no_em
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "FluxoTolerante",
     "IndiceDoLivro",
     "NoDoLivro",
     "fluxo_tolerante",
@@ -56,21 +57,36 @@ __all__ = [
 ]
 
 
-class _FluxoTolerante:
+class FluxoTolerante:
     """`readline` sobre o arquivo, com as linhas em branco depois do cabeçalho reduzidas a uma.
 
-    Ver o docstring do módulo. É só `readline` porque é tudo o que `chess.pgn.read_game` chama.
+    Ver o docstring do módulo. É só `readline` porque é tudo o que `chess.pgn.read_game` chama; é
+    `arquivo` que se passa a ele.
+
+    `posicao` é quanto do fluxo original já foi entregue, contando as linhas em branco juntadas:
+    entre o antes e o depois de um `read_game`, é o trecho do original de onde aquela partida
+    saiu. É como a sala guarda, igual, a partida que não leu (S-814).
     """
 
     def __init__(self, fluxo: TextIO) -> None:
         self._fluxo = fluxo
         self._guardadas: list[str] = []
         self._depois_de_cabecalho = False
+        self.posicao = 0
+
+    @property
+    def arquivo(self) -> TextIO:
+        return cast(TextIO, self)
 
     def _proxima(self) -> str:
         return self._guardadas.pop() if self._guardadas else self._fluxo.readline()
 
     def readline(self) -> str:
+        linha = self._ler_linha()
+        self.posicao += len(linha)
+        return linha
+
+    def _ler_linha(self) -> str:
         linha = self._proxima()
         if self._depois_de_cabecalho and linha and not linha.strip():
             brancas = [linha]
@@ -83,6 +99,7 @@ class _FluxoTolerante:
             if len(brancas) > 1 and seguinte and not seguinte.lstrip().startswith("["):
                 logger.debug("Linha em branco a mais entre o cabeçalho e os lances: juntada.")
                 self._depois_de_cabecalho = False
+                self.posicao += sum(len(branca) for branca in brancas[1:])
                 return linha
             # antes de outro cabeçalho as linhas em branco separam duas partidas: devolvidas como vieram
             self._guardadas.extend(reversed(brancas[1:]))
@@ -94,7 +111,7 @@ class _FluxoTolerante:
 
 def fluxo_tolerante(texto: str | TextIO) -> TextIO:
     """O PGN (texto ou arquivo aberto) pronto para `chess.pgn.read_game`, sem a partida partida."""
-    return cast(TextIO, _FluxoTolerante(io.StringIO(texto) if isinstance(texto, str) else texto))
+    return FluxoTolerante(io.StringIO(texto) if isinstance(texto, str) else texto).arquivo
 
 
 def ler_partidas(caminho: Path | str) -> list[chess.pgn.Game]:
@@ -121,8 +138,13 @@ def rotulo_do_lance(no: chess.pgn.ChildNode) -> str:
     return f"{numero}.{san}" if antes.turn == chess.WHITE else f"{numero}...{san}"
 
 
-_LANCE = re.compile(r"\d+\.(?:\.\.)?(?:O-O-O|O-O|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?)")
-"""O número e o lance, sem xeque, mate nem avaliação -- é a parte que o rótulo do nó tem igual."""
+_LANCE = re.compile(r"\d+\.(?:\.\.)?(?:O-O-O|O-O|[a-h](?:x[a-h])?[18]=?[QRBN]|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8])")
+"""O número e o lance, sem xeque, mate nem avaliação -- é a parte que o rótulo do nó tem igual.
+
+A promoção é a primeira alternativa, e só de peão à última fileira: ali a letra é a peça nova, com
+`=` ou sem (`23.e8Q`, S-879). Depois de outro lance a letra é avaliação -- `12.Re8N` é novidade."""
+
+_PROMOCAO_SEM_IGUAL = re.compile(r"([18])([QRBN])$")
 
 
 def lance_da_legenda(legenda: str) -> str | None:
@@ -130,10 +152,11 @@ def lance_da_legenda(legenda: str) -> str | None:
 
     O roque vem com zero em muitos livros (`0-0`) e com letra no PGN (`O-O`). O que segue o lance
     -- `+`, `!?`, `±` e o `²` que a fonte de figurinos põe no lugar de `⩲` -- é avaliação do autor.
+    A promoção sai como o PGN a escreve, com o `=` (`23.e8=Q` de «23.e8Q»).
     """
     texto = legenda.strip().replace("0-0-0", "O-O-O").replace("0-0", "O-O")
     achado = _LANCE.match(texto)
-    return achado.group(0) if achado else None
+    return _PROMOCAO_SEM_IGUAL.sub(r"\1=\2", achado.group(0)) if achado else None
 
 
 def sem_desambiguacao(lance: str) -> str:
