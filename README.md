@@ -293,10 +293,17 @@ cvoff-census --csv nova.csv --baseline docs/metrics/deteccao_base.csv --fail-on-
 cvoff-experiment --epochs 3
 cvoff-experiment --only referencia gap --epochs 8
 
-# Exportacao ONNX (S-30): backend alternativo para CPU. Confere paridade numerica
-# com o torch em tolerancia de 1e-4 sobre o split de teste antes de dar por bom.
+# Exportacao ONNX (S-30): backend alternativo para CPU, e o par que outro programa usa.
+# Grava <nome>.onnx + <nome>.json (classes, preparo da casa, ordem de leitura,
+# temperatura e SHA-256 do .onnx). Confere paridade numerica com o torch em tolerancia
+# de 1e-4 sobre o split de teste, e que o leitor avulso monta a entrada de cada
+# tabuleiro byte a byte igual ao programa, antes de dar por bom.
 # Requer o extra: uv sync --extra onnx
 cvoff-export-onnx --model models/piece_classifier.pt
+
+# Ler tabuleiros ja recortados com o par, sem torch. O arquivo e um so (numpy, opencv e
+# onnxruntime) e se copia para outro projeto.
+python src/chess_diagram_ocr/leitor_de_diagrama_onnx.py models/piece_classifier.onnx tabuleiro.png
 
 # O mesmo para o classificador de caracteres: grava <nome>.onnx + <nome>.json (mapa de
 # classes, temperatura, preparo da entrada e SHA-256 do .onnx) e confere a paridade com
@@ -1046,6 +1053,16 @@ probabilidades que o torch em tolerancia de 1e-4 sobre todo o split de teste, e 
 nenhuma discordancia de argmax -- um backend mais rapido que divergisse na terceira casa
 produziria outras FENs.
 
+**Para usar o modelo em outro editor**, o mesmo comando grava `models/piece_classifier.json`
+ao lado do `.onnx`: o contrato que diz o que o `.onnx` sozinho nao diz -- os nomes das 13
+classes, o preparo da casa, a ordem de leitura e a temperatura --, preso ao `.onnx` pelo
+SHA-256. O leitor de referencia e `src/chess_diagram_ocr/leitor_de_diagrama_onnx.py`, um
+arquivo so que usa numpy, opencv e onnxruntime e nao importa nada deste pacote: copie-o junto
+com o par. Para outra linguagem, a lista `preparo.passos` do `.json` descreve o preparo passo a
+passo. Ficam de fora a deteccao do tabuleiro na pagina e o reparo por regras
+(`decode_constrained`): o leitor recebe o tabuleiro ja recortado e entrega a classe mais
+provavel de cada casa.
+
 Numeros medidos de memoria e tempo estao em [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
 
 ## Fluxo recomendado
@@ -1175,6 +1192,7 @@ src/chess_diagram_ocr/
   inference.py          carga do modelo, predicao de FEN e TTA
   labels.py             a porta unica do labels.csv: LabelStore (S-51)
   lance_seguinte.py     o primeiro lance impresso sob o diagrama jogado sobre a leitura, e a troca unica que o faz fechar (C11)
+  leitor_de_diagrama_onnx.py  o .onnx de pecas lido sem torch e sem este pacote, pelo contrato .json; o arquivo que outro editor copia (S-30)
   livro_com_pgn.py      cada diagrama do PDF digital casado com o no do PGN do livro, e o estado dele (S-587)
   logging_setup.py      configuracao de logging
   marcas_de_casa.py     as marcas impressas no diagrama (bolinha, estrela, seta...) e o arquivo delas, fora da FEN

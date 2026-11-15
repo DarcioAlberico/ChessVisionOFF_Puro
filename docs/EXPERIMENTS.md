@@ -393,6 +393,27 @@ Onde isso importa: no modo interativo. Reconhecer uma página de 9 diagramas com
 são 18 inferências de tabuleiro — 0,9 s em torch contra 0,3 s em ONNX. Não muda a exportação
 de um livro, onde o render da página domina.
 
+### O contrato e o leitor avulso, no modelo em produção (2026-11-14)
+
+`cvoff-export-onnx` sobre o `models/piece_classifier.pt` de 2026-11-04 (o modelo com marcas,
+`cnn-gray-64-linear`, `val_board_exact_acc` 0,9691), com o `.onnx` e o `piece_classifier.json`
+gravados fora do repositório e conferidos em **todo** o split de teste:
+
+| | medido | exigido |
+|---|---|---|
+| tabuleiros / casas | 2.275 / 145.600 | — |
+| diferença máxima de probabilidade | 3,10e-06 | 1e-4 |
+| diferença média | 1,36e-10 | — |
+| discordâncias de argmax | **0** | 0 |
+| lote do leitor avulso idêntico ao do programa, byte a byte | **2.275 de 2.275** | todos |
+
+A última linha é a que o contrato acrescenta: a paridade de cima prova o grafo, e esta prova a
+cópia do preparo que o `leitor_de_diagrama_onnx.py` carrega para não depender do torch. Copiado
+para uma pasta fora do projeto e rodado com `python -I`, o arquivo leu três tabuleiros do teste
+iguais ao rótulo. Numa amostra anterior de 300 tabuleiros do teste, o argmax por casa sem o
+`decode_constrained` acertou a FEN inteira em 295, e o leitor levou 33 ms por tabuleiro contra
+132 ms do caminho torch, com preparo incluído, na mesma CPU.
+
 ---
 
 ## O que a Fase 5 não conseguiu medir

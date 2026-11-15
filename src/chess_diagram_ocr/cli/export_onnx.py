@@ -8,13 +8,15 @@ import logging
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 
 from ..atomic_io import atomic_write_text, read_image
 from ..dataset import BoardFenDataset
 from ..inference import describe_device, load_model
+from ..leitor_de_diagrama_onnx import caminho_do_contrato, ler_contrato, preparar_tabuleiro
 from ..logging_setup import configure_logging, default_log_file
-from ..model import DEFAULT_ARCH, preprocess_cell_to_tensor, with_coordinate_channels
+from ..model import DEFAULT_ARCH, ArchConfig, preprocess_cell_to_tensor, with_coordinate_channels
 from ..onnx_export import compare_backends, export_onnx, load_onnx_model
 from ..splits import load_splits
 from . import (
@@ -53,28 +55,41 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _cell_batches(dataset: BoardFenDataset, limit: int) -> list[torch.Tensor]:
-    """Um lote de 64 casas por tabuleiro -- o mesmo formato que a inferência usa."""
+def _boards(dataset: BoardFenDataset, limit: int) -> list[np.ndarray]:
+    """Os tabuleiros do split em RGB, no tamanho em que estão no disco."""
     import cv2
 
-    from ..board_detection import split_board_into_cells
-    from ..config import BOARD_SIZE
-
-    batches: list[torch.Tensor] = []
+    boards: list[np.ndarray] = []
     entries = dataset.entries[:limit] if limit else dataset.entries
     for entry in entries:
         image = read_image(dataset.samples_dir / entry.filename)
-        if image is None:
-            continue
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        if image.shape[:2] != (BOARD_SIZE, BOARD_SIZE):
-            image = cv2.resize(image, (BOARD_SIZE, BOARD_SIZE))
-        cells = [
-            with_coordinate_channels(preprocess_cell_to_tensor(cell, dataset.arch), square_index, dataset.arch)
-            for square_index, cell in enumerate(split_board_into_cells(image))
-        ]
-        batches.append(torch.stack(cells))
-    return batches
+        if image is not None:
+            boards.append(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+    return boards
+
+
+def _cell_batch(board_rgb: np.ndarray, arch: ArchConfig) -> torch.Tensor:
+    """Um lote de 64 casas -- o mesmo formato que a inferência usa."""
+    from ..board_detection import split_board_into_cells
+
+    cells = [
+        with_coordinate_channels(preprocess_cell_to_tensor(cell, arch), square_index, arch)
+        for square_index, cell in enumerate(split_board_into_cells(board_rgb))
+    ]
+    return torch.stack(cells)
+
+
+def _same_preparation(boards: list[np.ndarray], batches: list[torch.Tensor], onnx_path: Path) -> int:
+    """Em quantos tabuleiros o leitor avulso monta, byte a byte, o lote que o programa monta.
+
+    O `leitor_de_diagrama_onnx.py` copia o preparo para não depender do torch. A paridade de
+    cima prova o grafo; esta prova a cópia, nos tabuleiros reais -- é ela que diz se outro
+    programa, seguindo o contrato, entrega ao modelo o mesmo que o ChessVisionOFF entrega.
+    """
+    contrato = ler_contrato(onnx_path)
+    return sum(
+        int(np.array_equal(preparar_tabuleiro(board, contrato), batch.numpy())) for board, batch in zip(boards, batches, strict=True)
+    )
 
 
 @cli_errors
@@ -96,7 +111,8 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # noqa: BLE001 -- o erro do exportador e o que interessa ao usuario
         print(f"Falha ao exportar: {type(exc).__name__}: {exc}")
         return EXIT_FAILURE
-    print(f"ONNX gravado em {output}")
+    print(f"ONNX gravado em {output}, com o contrato em {caminho_do_contrato(output)}")
+    print("Outro programa le o par sem torch por src/chess_diagram_ocr/leitor_de_diagrama_onnx.py.")
 
     if args.verify_split == "none":
         print("Conferencia de paridade pulada (--verify-split none).")
@@ -122,29 +138,35 @@ def main(argv: list[str] | None = None) -> int:
         print("onnxruntime nao esta instalado: `uv sync --extra onnx`. O .onnx foi gravado mesmo assim.")
         return EXIT_FAILURE
 
-    batches = _cell_batches(dataset, args.verify_boards)
+    boards = _boards(dataset, args.verify_boards)
+    batches = [_cell_batch(board, arch) for board in boards]
     print(f"Conferindo {len(batches)} tabuleiros do split '{args.verify_split}' em {describe_device(device)}...")
 
     started = time.perf_counter()
     report = compare_backends(torch_model, onnx_model, batches, tolerance=args.tolerance)
     elapsed = time.perf_counter() - started
+    same = _same_preparation(boards, batches, output)
+    passes = report.passes and same == len(batches)
 
     print()
     print(f"  Amostras (casas) ............. {report.samples}")
     print(f"  Diferenca maxima ............. {report.max_abs_diff:.3e}  (tolerancia {report.tolerance:.0e})")
     print(f"  Diferenca media .............. {report.mean_abs_diff:.3e}")
     print(f"  Argmax discordante ........... {report.argmax_disagreements}")
-    print(f"  Veredito ..................... {'PASSA' if report.passes else 'FALHA'}")
+    print(f"  Preparo do leitor avulso ..... identico em {same} de {len(batches)} tabuleiros")
+    print(f"  Veredito ..................... {'PASSA' if passes else 'FALHA'}")
     print(f"  (comparacao levou {elapsed:.1f}s rodando os dois backends)")
     print()
 
     if args.json:
-        atomic_write_text(args.json, json.dumps(report.as_dict(), indent=2, ensure_ascii=False))
+        relatorio = report.as_dict()
+        relatorio.update(preparo_avulso_identico=same, preparo_avulso_conferido=len(batches), passes=passes)
+        atomic_write_text(args.json, json.dumps(relatorio, indent=2, ensure_ascii=False))
         print(f"Relatorio em {args.json}")
 
     # Paridade reprovada é falha do que este comando produziu, e não da entrada de quem o
     # chamou: quem consome o código num script precisa dos dois separados (S-379).
-    return EXIT_OK if report.passes else EXIT_FAILURE
+    return EXIT_OK if passes else EXIT_FAILURE
 
 
 if __name__ == "__main__":

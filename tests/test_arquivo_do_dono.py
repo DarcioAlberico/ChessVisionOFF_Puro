@@ -289,6 +289,10 @@ LEITURAS_ESTRITAS = {
     ("marcas_de_casa.py", "_ler"): "o dataset de marcas: o arquivo que não lê levanta ValueError alto, de propósito",
     ("text/modelo.py", "ler_metadado"): "metadado que o treino gravou: byte errado é modelo ilegível, e recusa",
     ("text/onnx_glifos.py", "ler_metadado_onnx"): "metadado que o treino gravou: byte errado é modelo ilegível, e recusa",
+    ("leitor_de_diagrama_onnx.py", "ler_contrato"): (
+        "contrato que a exportação gravou, lido por um arquivo que não pode importar o pacote: byte errado recusa"
+    ),
+    ("onnx_export.py", "_recusar_json_alheio"): "o .json que a exportação ia sobrescrever: o que não se lê como contrato não é pisado",
 }
 """Leituras num `try` que ficam fora de `ler_texto`, e por quê: nenhuma é arquivo que a pessoa edite ou escolha."""
 
