@@ -374,6 +374,72 @@ def erro_de_thread_e_do_teste_que_a_criou(request: pytest.FixtureRequest) -> Ite
         pytest.fail(f"{request.node.name} deixou exceção em thread: {'; '.join(estouros)}")
 
 
+def _janelas_do_python_visiveis() -> dict[int, str]:
+    """As janelas de topo **visíveis** que são **do Python**, pelo endereço do C++; vazio sem Qt.
+
+    **Pelo `sys.modules`, e não por import**, como `_tarefas_rodando`: o teste de parser não paga o
+    PyQt6 para a guarda descobrir que não havia janela.
+
+    **Só as do Python.** Uma janela que levou `deleteLater` passou a ser do C++ (o PyQt6 transfere a
+    posse ali), e ela morre quando a linha de eventos esvaziar o `DeferredDelete` -- no topo do laço,
+    que é o lugar seguro. A do Python morre onde a última referência cair, e é dessa que se fala aqui.
+    """
+    if "PyQt6.QtWidgets" not in sys.modules:
+        return {}
+    from PyQt6 import sip
+    from PyQt6.QtWidgets import QApplication
+
+    if not isinstance(QApplication.instance(), QApplication):
+        return {}
+    return {
+        sip.unwrapinstance(janela): type(janela).__name__
+        for janela in QApplication.topLevelWidgets()
+        if janela.isVisible() and sip.ispyowned(janela)
+    }
+
+
+def _destruir_janelas(enderecos: set[int]) -> None:
+    """Destrói agora, entre dois testes, as janelas desses endereços: o que o teste devia ter feito."""
+    from PyQt6 import sip
+    from PyQt6.QtWidgets import QApplication
+    from qt_app import descartar
+
+    for janela in QApplication.topLevelWidgets():
+        if sip.unwrapinstance(janela) in enderecos:
+            descartar(janela)
+
+
+@pytest.fixture(autouse=True)
+def sem_janela_do_python_visivel(request: pytest.FixtureRequest) -> Iterator[None]:
+    """A janela que o teste mostrou e não destruiu reprova **o teste que a deixou**.
+
+    **O defeito que isto pega derrubava o processo inteiro, e no vizinho.** `TreinoTests` em
+    `tests/test_qt_dialogos.py` deixava o `DialogoDeTreino` mostrado: ele nasce sem pai, então é do
+    Python, e quem o segurava era o `__dict__` do controlador -- preso num ciclo pela classe local de
+    um teste, ou pelo `controle` do anotador de foco (`qt/foco_a_vista._RazaoDoFoco`) até o próximo
+    `FocusIn`. Uma janela assim morre **onde a última referência cair**. No CI ela caía no coletor
+    de ciclos, durante o `processEvents` da linha 106 de `tests/test_qt_dica.py`: o `setStyle` de
+    `AtrasoTests` suja todo widget vivo, a repintura chama o `styleHint` em Python do estilo da dica,
+    uma alocação ali dispara a coleta, e o Qt segue pintando a janela que acabou de ser apagada --
+    `Windows fatal exception: access violation`, em metade das corridas, sem nada a ver com o PR.
+
+    A janela achada é destruída aqui mesmo, entre os testes, para o vizinho não cair por ela; a
+    reprovação é o que faz alguém consertar a limpeza.
+    """
+    antes = _janelas_do_python_visiveis()
+    yield
+    novas = {endereco: nome for endereco, nome in _janelas_do_python_visiveis().items() if endereco not in antes}
+    if not novas:
+        return
+    _destruir_janelas(set(novas))
+    pytest.fail(
+        f"{request.node.name} deixou janela visível do Python viva: {', '.join(sorted(novas.values()))}. "
+        "Uma janela sem pai morre onde a última referência cair -- no coletor de ciclos, que pode "
+        "rodar no meio da pintura de outro teste e derrubar o processo. Destrua-a na limpeza do "
+        "próprio teste: `self.addCleanup(descartar, janela)`."
+    )
+
+
 # ------------------------------------------------- a caixa modal que trava a suíte (S-414, S-872)
 
 

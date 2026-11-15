@@ -465,7 +465,25 @@ class TreinoTests(unittest.TestCase):
             **kwargs,  # type: ignore[arg-type]
         )
         self.addCleanup(descartar, montado)
+        # Roda antes do de cima (as limpezas saem na ordem inversa), com o controlador ainda vivo.
+        self.addCleanup(self._descartar_o_modal, montado)
         return montado
+
+    @staticmethod
+    def _descartar_o_modal(controlador: qt_dialogos.ControladorDeTreino) -> None:
+        """Destrói o `DialogoDeTreino` que `mostrar()` abriu. **O `descartar` do controlador não o leva.**
+
+        O modal nasce de `controlador.parentWidget()`, que aqui é `None`: ele é janela de topo, é do
+        Python, e quem o segura é o `__dict__` do controlador -- não o C++ dele. Em
+        `test_o_texto_atravessa_a_fronteira_de_thread` a classe local `Treino` fecha sobre o
+        controlador, e classe só sai pelo coletor de ciclos: o modal **visível** ficava vivo até a
+        próxima coleta, e a coleta o destruía onde caísse. Caiu no `processEvents` da linha 106 de
+        `tests/test_qt_dica.py`, no meio da pintura do próprio modal -- o `setStyle` de `AtrasoTests`
+        suja todo widget vivo, e o `styleHint` do estilo da dica é Python rodando durante a pintura.
+        Foi o `access violation` das corridas 43022629106, 43022629439, 43031000150 e 43692002880.
+        """
+        if controlador.dialogo is not None:
+            descartar(controlador.dialogo)
 
     def test_fechar_o_modal_esconde_em_vez_de_destruir(self) -> None:
         """O treino continua rodando, e destruir a janela deixaria a thread escrevendo em

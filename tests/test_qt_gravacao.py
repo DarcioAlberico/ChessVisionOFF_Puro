@@ -33,7 +33,7 @@ from unittest import mock
 
 import numpy as np
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
 from chess_diagram_ocr.service import RecognizedDiagram
 from chess_diagram_ocr.ui import board_edit
@@ -231,7 +231,10 @@ class VinculoTests(unittest.TestCase):
             caminho_do_cache=pasta / "posicoes.sqlite",
             caminho_do_estado=pasta / "janela.json",
         )
-        self.addCleanup(self.janela.deleteLater)
+        # `descartar`, e não `deleteLater`: a janela liga a guarda de atalhos **na aplicação**
+        # (`qt_atalhos.ligar`), e com `deleteLater` a guarda dela seguia filtrando todo evento do
+        # processo até alguém esvaziar o `DeferredDelete` -- o que `processEvents` não faz.
+        self.addCleanup(descartar, self.janela)
 
     def test_a_pagina_lida_vincula_por_pagina(self) -> None:
         """`Ctrl+S` numa página de PDF grava **amostra nova**; o vínculo é quem diz isso."""
