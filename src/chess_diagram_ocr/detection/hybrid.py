@@ -32,7 +32,7 @@ vetoriais (ver o docstring do pacote).
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
@@ -692,6 +692,46 @@ class _PaginaHibrida:
     caixas_embutidas: list[tuple[int, int, int, int] | None]
     lado_esperado: float | None
     tolerancia_de_tamanho: float | None
+    fontes_do_gabarito: list[DiagramCandidate] = field(default_factory=list)
+    """Os embutidos cujo lado cai na janela do gabarito: as declarações que o prior defende.
+
+    É contra **estas** que `_melhor_que_o_gabarito` compara, e não contra todos os embutidos: um
+    embutido de outro tamanho não fez o gabarito, e não tem nada a dizer sobre ele."""
+
+
+SIZE_PRIOR_BOARD_MARGIN = 0.10
+"""Quanto o achado de contorno precisa ser tabuleiro **melhor** que a imagem que fez o gabarito de
+tamanho para o prior não o recusar.
+
+**O relato.** A p. 148 do `Para ensinar e aprender xadrez` tem dois diagramas **vetoriais** de 136
+pt e uma única imagem embutida: a caricatura do Petrosian, de 80 pt, desenhada na frente de um
+tabuleiro. A caricatura passa nas guardas do embutido -- contraste de casa 0,18, e o piso
+(`RecallOptions.embedded_floor`) é o zero da foto; o tabuleiro de dentro preenche 85% dela, e a
+faixa da S-176 é abaixo de 50% --, vira sozinha o gabarito da página (244 px), e os dois diagramas
+(415 e 407 px) morriam em `prior-de-tamanho`. A tela mostrava uma caixa, sobre o retrato.
+
+**Por que a guarda é aqui, e não na entrada do embutido.** Subir o piso de contraste do embutido
+apagaria diagrama de verdade: o docstring de `BAND_BOARD_FILL` registra 10 diagramas impecáveis do
+`Schiller` com contraste **zero**, por legenda no recorte. A caricatura continua sendo uma
+declaração do PDF que passa em tudo (S-12). O que estava errado era ela poder, sozinha, vetar dois
+tabuleiros muito melhores que ela.
+
+**A comparação, e por que a S-80 não a alcança.** A S-80 reprovou a nota de textura relativa
+porque ela mede também densidade de peças, e decidir *o que é diagrama* por ela perdia o `Polgar`.
+Aqui a nota não cria nem apaga candidato: ela só decide se uma heurística que infere "figura" **do
+tamanho** pode recusar um achado que já passou por todas as guardas de `detect_boards`. E o
+alcance é medido: no acervo inteiro (24.077 páginas de 57 livros, sem as cópias `_hq`) o prior de
+tamanho recusa achado em **uma** página -- esta. Os dois achados dela vencem a caricatura por
+0,245 e 0,277, medidos do mesmo lado (`texture_scores_side_by_side`).
+
+**O número.** Com um caso só no acervo, qualquer margem em (0; 0,245) se comporta igual nele. 0,10
+é a de `MERGED_TILES_MARGIN`, pela mesma razão: ruído de reamostragem, e o **empate** é o que ela
+decide. Dois tabuleiros limpos de tamanhos diferentes dão a mesma nota (1,0 contra 1,0 no caso
+`faixa` da caracterização), e ali a declaração do PDF segue valendo -- o prior recusa como antes.
+
+**O que continua aberto.** A caricatura segue entrando como diagrama, e não só aqui: as quatro do
+livro (p. 125, 129, 148 e 151) são candidatos falsos. É defeito de outra guarda, a de entrada do
+embutido, e esta margem não o alcança de propósito."""
 
 
 def _pagina_hibrida(
@@ -710,14 +750,17 @@ def _pagina_hibrida(
     """
     caixas: list[tuple[int, int, int, int] | None] = [_pixel_bbox(c.bbox_pdf, scale) for c in embedded]
     lado: float | None = None
+    fontes: list[DiagramCandidate] = []
     if embedded and size_prior_tolerance is not None:
-        sides = [
-            float(max(box[2], box[3]))
+        declarados = [
+            (float(max(box[2], box[3])), candidate)
             for box, candidate in zip(caixas, embedded, strict=True)
             if box is not None and not candidate.merged_tiles
         ]
-        lado = _typical_side(sides, size_prior_tolerance)
-    return _PaginaHibrida(list(embedded), embedded, caixas, lado, size_prior_tolerance)
+        lado = _typical_side([lado_declarado for lado_declarado, _ in declarados], size_prior_tolerance)
+        if lado is not None:
+            fontes = [c for lado_c, c in declarados if abs(lado_c - lado) <= lado * size_prior_tolerance]
+    return _PaginaHibrida(list(embedded), embedded, caixas, lado, size_prior_tolerance, fontes)
 
 
 def _filtro_de_sobreposicao(
@@ -749,12 +792,18 @@ def _filtro_de_sobreposicao(
 
 
 def _filtro_de_tamanho(pagina: _PaginaHibrida, caixa: tuple[int, int, int, int], board_rgb: np.ndarray) -> str | None:
-    """`prior-de-tamanho` quando o lado do achado foge do gabarito da página (S-12, S-79)."""
+    """`prior-de-tamanho` quando o lado do achado foge do gabarito da página (S-12, S-79).
+
+    Menos quando o achado é tabuleiro claramente melhor que as imagens que fizeram o gabarito: aí
+    quem está em dúvida é o gabarito, e não o achado. Ver `SIZE_PRIOR_BOARD_MARGIN`.
+    """
     esperado, tolerancia = pagina.lado_esperado, pagina.tolerancia_de_tamanho
     if esperado is None or tolerancia is None:
         return None
     side = max(caixa[2], caixa[3])
     if abs(side - esperado) <= esperado * tolerancia:
+        return None
+    if _melhor_que_o_gabarito(pagina, board_rgb, side):
         return None
     # `info` e nao `debug` (S-79): esta linha apaga um diagrama em potencial, e a
     # unica evidencia de que ela agiu. Quando o gabarito estava envenenado, o
@@ -767,6 +816,32 @@ def _filtro_de_tamanho(pagina: _PaginaHibrida, caixa: tuple[int, int, int, int],
         tolerancia * 100,
     )
     return "prior-de-tamanho"
+
+
+def _melhor_que_o_gabarito(
+    pagina: _PaginaHibrida, board_rgb: np.ndarray, side: int, *, margin: float = SIZE_PRIOR_BOARD_MARGIN
+) -> bool:
+    """O achado é tabuleiro melhor que **cada** imagem que fez o gabarito? Ver `SIZE_PRIOR_BOARD_MARGIN`.
+
+    Cada uma, e não a mediana nem a melhor delas: basta uma declaração do tamanho do gabarito que
+    seja tabuleiro tão bom quanto o achado para o prior seguir decidindo como antes. A nota é
+    tomada do mesmo lado (S-130), porque o recorte embutido e o de contorno chegam em resoluções
+    diferentes.
+    """
+    if not pagina.fontes_do_gabarito:
+        return False
+    notas = [texture_scores_side_by_side(fonte.board_rgb, board_rgb) for fonte in pagina.fontes_do_gabarito]
+    if any(nota_achado <= nota_fonte + margin for nota_fonte, nota_achado in notas):
+        return False
+    logger.info(
+        "Contorno de %d px mantido apesar do gabarito de %.0f px: textura %.4f contra %.4f da "
+        "melhor imagem que fez o gabarito.",
+        side,
+        pagina.lado_esperado or 0.0,
+        min(nota_achado for _, nota_achado in notas),
+        max(nota_fonte for nota_fonte, _ in notas),
+    )
+    return True
 
 
 _FILTROS_DE_CONTORNO = (_filtro_de_sobreposicao, _filtro_de_tamanho)

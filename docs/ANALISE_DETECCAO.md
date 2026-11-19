@@ -311,6 +311,71 @@ buraco, e nenhuma dessas some com um piso.
 um achado de contorno do tamanho do diagrama tem de continuar dentro da janela numa página que
 também tem glifo.
 
+#### 2026-11-15 · O gabarito feito por uma imagem que não é diagrama
+
+**O relato.** A p. 148 do `Para ensinar e aprender xadrez (Adriano Caldeira)` tem dois diagramas
+**vetoriais** (Diagramas 329 e 330, 136 pt) e uma única imagem embutida: a caricatura do Petrosian,
+de 80 pt, desenhada na frente de um tabuleiro. A tela mostrava uma caixa, sobre o retrato, e
+nenhuma sobre os diagramas.
+
+| achado | fonte | lado | contraste de casa | textura (do mesmo lado) | destino |
+|---|---|---|---|---|---|
+| caricatura | embutida | 244 px | 0,18 | 0,51 | aceita: vira o gabarito |
+| Diagrama 329 | contorno | 415 px | 0,59 | 0,76 | `prior-de-tamanho` |
+| Diagrama 330 | contorno | 407 px | 0,64 | 0,79 | `prior-de-tamanho` |
+
+A caricatura passa nas guardas do embutido: o piso de contraste é o zero da foto, e o fundo
+quadriculado dá 0,18; o tabuleiro que o contorno acha dentro dela preenche 85% do lado, e a faixa
+da S-176 é abaixo de 50%. Sozinha, ela é o gabarito da página, e os dois diagramas ficam 70% fora
+da janela de ±30%. Lidos fora do filtro, os dois saem com a FEN certa e confiança 1,000.
+
+**A guarda não vai na entrada do embutido.** Subir o piso de contraste da imagem embutida apaga
+diagrama de verdade -- os 10 do `Schiller` com contraste zero da S-176. A caricatura continua
+sendo uma declaração que passa em tudo (S-12); o defeito era ela poder, **sozinha**, vetar dois
+tabuleiros muito melhores que ela.
+
+**A regra.** `_filtro_de_tamanho` não recusa um achado de contorno que seja tabuleiro melhor que
+**cada** imagem embutida que fez o gabarito por mais de `SIZE_PRIOR_BOARD_MARGIN` (0,10), com a
+nota de textura tomada do mesmo lado (S-130). Basta uma declaração do tamanho do gabarito tão boa
+quanto o achado para o prior decidir como antes.
+
+**E a S-80?** Ela reprovou a nota relativa porque a textura mede também densidade de peças. Aqui a
+nota não cria nem apaga candidato: só decide se uma heurística de **tamanho** pode vetar um achado
+que já passou por todas as guardas de `detect_boards`. O alcance foi medido antes de escrever a
+regra.
+
+**Medido no acervo inteiro**, e não na amostra do censo, porque o prior só age onde há imagem
+embutida: 24.077 páginas de 57 livros (sem as três cópias `_hq`), `detect_diagrams` completo em
+toda página com embutido que sobrevive ao piso, registrando cada recusa por `prior-de-tamanho`
+com os recortes dos dois lados.
+
+| | páginas |
+|---|---|
+| sem imagem | 3.791 |
+| com imagem, sem embutido que sobreviva | 11.450 |
+| com embutido, sem recusa por tamanho | 8.835 |
+| **com recusa por tamanho** | **1** -- a p. 148 do relato |
+
+O prior de tamanho, hoje, só recusa achado naquela página. Os dois achados dela vencem a
+caricatura por 0,245 e 0,277 de textura; com um caso só, qualquer margem em (0; 0,245) se comporta
+igual no acervo, e 0,10 é a de `MERGED_TILES_MARGIN` -- ela existe para o **empate**: dois
+tabuleiros limpos de tamanhos diferentes dão 1,0 contra 1,0, e o prior recusa como antes (caso
+`faixa` de `test_deteccao_caracterizacao`, intacto).
+
+**Depois**, rodando o detector novo nas páginas do censo com recusa: uma página muda, 1 → 3
+candidatos, os dois diagramas entram e nada sai. O conjunto de campo não tem página com recusa
+por tamanho, e o relatório de produção sai idêntico chave a chave (2.078 chaves; só tempo e
+impressão da medição mudam).
+
+**O que continua aberto.** A caricatura segue entrando como diagrama. As quatro do livro (p. 125,
+129, 148 e 151) são candidatos falsos, todas sobre fundo quadriculado, com contraste de 0,02 a
+0,32 -- dentro da faixa dos diagramas legítimos que o piso do embutido não pode recusar. É defeito
+da guarda de entrada, e fica sem instrumento.
+
+**Testes.** `tests/test_detection.py::GabaritoContraTabuleiroMelhorTests`: a página do relato
+reconstruída (caricatura sintética com as notas medidas, dois diagramas vetoriais), e o empate --
+diagrama limpo de 100 pt contra declaração limpa de 200 pt -- que segue recusado.
+
 ---
 
 ### S-80 · A nota de textura relativa à página ❌ **não implementada — a medição reprovou**
@@ -1568,3 +1633,19 @@ reajustadas de ruído.
 **A coluna `page` do censo é 1-based** (`page_index + 1` em `detection_census.py`), e o índice de
 folha do A/B é 0-based. A folha 65 do CSV é a de índice 64 — conferir isso é o que separa "o
 defeito sumiu" de "olhei a página errada".
+
+### Os números do gabarito feito por caricatura (2026-11-15)
+
+| número | como |
+|---|---|
+| a tabela da p. 148 | `detect_diagrams(doc[147], render_pdf_page(pdf, 147, dpi=220), rejected=[...])`; contraste por `board_checker_contrast`, textura por `texture_scores_side_by_side` contra o recorte da caricatura |
+| a FEN e a confiança dos dois diagramas | `detect_diagrams(..., size_prior_tolerance=None)` e `predict_with_orientation` com `models/piece_classifier.pt` |
+| o censo de 24.077 páginas | todo `PDF/*.pdf` menos as três cópias `_hq`, em 8 processos; página sem `get_images()` ou sem embutido acima do piso (`_acima_do_piso(candidates_from_embedded_images(page), DEFAULT_RECALL)`) é contada e pulada; nas outras, `detect_diagrams` completo com `_FILTROS_DE_CONTORNO` trocado em memória por um espião que grava cada `prior-de-tamanho` com o recorte do achado e os das imagens do gabarito. ~86 min |
+| o depois | o detector novo, só nas páginas com recusa, comparando `bbox_pdf` e `source` dos aceitos |
+| o conjunto de campo | `python -m chess_diagram_ocr.cli.field` com o `src` do `HEAD` (`git archive`) e com o da árvore, e os dois JSON achatados chave a chave contra `field_20260822_s99.json` |
+| as quatro caricaturas do livro | `detect_diagrams` nas p. 125, 129, 148 e 151, recortes `source == "embedded"` conferidos a olho |
+
+**O espião, e não um `RejectedQuad`.** A recusa grava caixa, score e contraste, mas não o recorte,
+e a pergunta era *quem é melhor tabuleiro, o achado ou o gabarito* -- que precisa dos dois
+recortes na mão. Trocar a tupla de filtros só observa: o espião chama o filtro de verdade e
+devolve o motivo dele.

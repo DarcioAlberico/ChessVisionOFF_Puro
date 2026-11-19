@@ -1515,3 +1515,83 @@ class CoberturaDaMaiorImagemTests(unittest.TestCase):
                 self.assertEqual(largest_image_coverage(doc[0]), 0.0)
         finally:
             doc.close()
+
+
+def caricature_like(side: int = 320) -> np.ndarray:
+    """Um retrato desenhado **na frente** de um tabuleiro: o quadriculado só aparece em volta.
+
+    É a forma das quatro caricaturas de campeão do `Para ensinar e aprender xadrez` (p. 125,
+    129, 148 e 151): o fundo é um tabuleiro de verdade, então a imagem passa no piso de contraste
+    do embutido e na guarda de faixa, mas o rosto cobre o meio. Calibrada para dar as notas da
+    p. 148 -- contraste de casa ~0,20 e textura ~0,52, contra 0,18 e 0,51 medidos lá.
+    """
+    cell = side // 8
+    imagem = np.full((side, side, 3), 245, dtype=np.uint8)
+    for row in range(8):
+        for column in range(8):
+            if (row + column) % 2:
+                imagem[row * cell : (row + 1) * cell, column * cell : (column + 1) * cell] = 120
+    centro = (side // 2, side // 2 + side // 6)
+    eixos = (int(side * 0.42), int(side * 0.6))
+    cv2.ellipse(imagem, centro, eixos, 0, 0, 360, (215, 215, 215), -1)
+    cv2.ellipse(imagem, centro, eixos, 0, 0, 360, (40, 40, 40), 4)
+    cv2.ellipse(imagem, (side // 2, side // 3), (side // 4, side // 7), 0, 0, 360, (35, 35, 35), -1)
+    return imagem
+
+
+def draw_vector_board(page: fitz.Page, x: float, y: float, side: float) -> None:
+    """Um diagrama desenhado com vetores, como os do `Para ensinar e aprender xadrez`."""
+    cell = side / 8
+    for row in range(8):
+        for column in range(8):
+            if (row + column) % 2:
+                rect = fitz.Rect(x + column * cell, y + row * cell, x + (column + 1) * cell, y + (row + 1) * cell)
+                page.draw_rect(rect, color=None, fill=(0.18, 0.18, 0.18))
+    page.draw_rect(fitz.Rect(x, y, x + side, y + side), color=(0, 0, 0), width=1)
+
+
+class GabaritoContraTabuleiroMelhorTests(unittest.TestCase):
+    """O gabarito de tamanho não recusa um tabuleiro melhor que a imagem que o definiu.
+
+    A p. 148 do `Para ensinar e aprender xadrez` tem dois diagramas vetoriais de 136 pt e uma
+    única imagem embutida: a caricatura do Petrosian, de 80 pt, desenhada sobre um tabuleiro. A
+    caricatura passa nas guardas do embutido (contraste 0,18 > 0; o tabuleiro de dentro preenche
+    85% dela), vira o gabarito de tamanho da página, e os dois diagramas morriam em
+    `prior-de-tamanho` -- 415 e 407 px contra 244. A página mostrava uma caixa, sobre o retrato.
+    """
+
+    def test_a_caricatura_nao_apaga_os_diagramas_da_pagina(self) -> None:
+        doc = pdf_with_images([(caricature_like(), fitz.Rect(340, 600, 420, 680))])
+        try:
+            page = doc[0]
+            draw_vector_board(page, 60, 300, 136)
+            draw_vector_board(page, 330, 80, 136)
+            recusas: list[RejectedQuad] = []
+
+            achados = detect_diagrams(page, render(page), rejected=recusas)
+
+            contornos = [c for c in achados if c.source == "contour"]
+            self.assertEqual(len(contornos), 2, "os dois diagramas vetoriais tinham de sair")
+            self.assertNotIn("prior-de-tamanho", [r.reason for r in recusas])
+        finally:
+            doc.close()
+
+    def test_tabuleiro_tao_bom_quanto_o_declarado_continua_recusado(self) -> None:
+        """Empate não derruba a declaração do PDF (S-12): a isenção pede margem.
+
+        É o caso `faixa` de `test_deteccao_caracterizacao` pela outra porta -- um diagrama
+        limpo de 100 pt só nos vetores, numa página que declara um limpo de 200 pt. Os dois
+        recortes têm a mesma nota, e o prior segue decidindo como antes.
+        """
+        doc = pdf_with_images([(board_image(320, frame=True), fitz.Rect(72, 72, 272, 272))])
+        try:
+            page = doc[0]
+            draw_vector_board(page, 300, 450, 100)
+            recusas: list[RejectedQuad] = []
+
+            achados = detect_diagrams(page, render(page), rejected=recusas)
+
+            self.assertEqual([c.source for c in achados], ["embedded"])
+            self.assertIn("prior-de-tamanho", [r.reason for r in recusas])
+        finally:
+            doc.close()
