@@ -416,8 +416,9 @@ def sem_janela_do_python_visivel(request: pytest.FixtureRequest) -> Iterator[Non
     **O defeito que isto pega derrubava o processo inteiro, e no vizinho.** `TreinoTests` em
     `tests/test_qt_dialogos.py` deixava o `DialogoDeTreino` mostrado: ele nasce sem pai, então é do
     Python, e quem o segurava era o `__dict__` do controlador -- preso num ciclo pela classe local de
-    um teste, ou pelo `controle` do anotador de foco (`qt/foco_a_vista._RazaoDoFoco`) até o próximo
-    `FocusIn`. Uma janela assim morre **onde a última referência cair**. No CI ela caía no coletor
+    um teste, e até o PR #66 também pelo anotador de foco (`qt/foco_a_vista._RazaoDoFoco`), que
+    guardava referência forte ao último controle focado. Uma janela assim morre **onde a última
+    referência cair**. No CI ela caía no coletor
     de ciclos, durante o `processEvents` da linha 106 de `tests/test_qt_dica.py`: o `setStyle` de
     `AtrasoTests` suja todo widget vivo, a repintura chama o `styleHint` em Python do estilo da dica,
     uma alocação ali dispara a coleta, e o Qt segue pintando a janela que acabou de ser apagada --
