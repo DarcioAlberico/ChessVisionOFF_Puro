@@ -74,6 +74,10 @@ class CliTests(unittest.TestCase):
 
             ouro.gravar(replace(m, primeira_leitura_do_teste=None), self.manifesto)
         self.dados = self.pasta / "d.jsonl"
+        dev = ouro.carregar(self.manifesto).do_split(ouro.DEV)
+        # O tamanho do dev vem do manifesto, e não de um número escrito aqui: ele cresce quando a reserva cede livro ao
+        # dev (`ouro.acrescentar_ao_dev`, 2026-11-20), e um 27 congelado reprovava sem defeito nenhum.
+        self.folhas_do_dev, self.livros_do_dev = len(dev), len({f.identidade for f in dev})
 
     def _rodar(self, *argumentos: str, leitor=None) -> tuple[int, str]:
         leitor = leitor or LeitorFalso()
@@ -188,8 +192,8 @@ class CliTests(unittest.TestCase):
         self.assertNotIn(str(self.pasta).replace("\\", "/"), cru.replace("\\\\", "/"))
         relatorio = json.loads(cru)
         bloco = relatorio["conjuntos"]["ouro_dev"]
-        self.assertEqual(27, bloco["folhas"])
-        self.assertEqual(5, bloco["livros"])
+        self.assertEqual(self.folhas_do_dev, bloco["folhas"])
+        self.assertEqual(self.livros_do_dev, bloco["livros"])
         self.assertEqual(regua_prosa.VERSAO_CLASSIFICADOR, relatorio["regua"]["classificador"])
         self.assertIn("segundos_por_folha", bloco)
         self.assertIn("CER prosa", tela)
@@ -197,7 +201,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual({"tip", "cru"}, set(bloco["motores"]["glifo"]))
         self.assertGreater(bloco["motores"]["glifo"]["tip"]["cer_prosa"], 0)
         self.assertEqual(0, bloco["motores"]["camada_prosa"]["tip"]["cer_prosa"])
-        self.assertEqual(27, sum(len(g["folhas"]) for g in bloco["codigo_das_folhas"]))
+        self.assertEqual(self.folhas_do_dev, sum(len(g["folhas"]) for g in bloco["codigo_das_folhas"]))
         self.assertIn("letra trocada", bloco["taxonomia"]["glifo"]["familias"])
 
     def test_duas_corridas_iguais_fora_o_tempo(self) -> None:
@@ -228,7 +232,7 @@ class CliTests(unittest.TestCase):
         self._rodar("--compilar", str(saida), "--bloco", f"x={self.dados}?oraculo_max=0.10&estrato=prosa")
         bloco = json.loads(saida.read_text(encoding="utf-8"))["conjuntos"]["x"]
         self.assertEqual({"oraculo_max": 0.1, "estrato": "prosa"}, bloco["filtro"])
-        self.assertLess(bloco["folhas"], 27)
+        self.assertLess(bloco["folhas"], self.folhas_do_dev)
 
     def test_importar_acrescenta_motor_com_a_mesma_referencia(self) -> None:
         self._medir_dev("--folhas-maximas", "2")
