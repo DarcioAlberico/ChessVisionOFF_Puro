@@ -806,6 +806,14 @@ TTA leve: predizer com deslocamentos de ±2 px e escalas 0,98/1,02, somar as pro
 
 **Critério de aceite.** Barra de status/log informa `cuda:0` ou `cpu` explicitamente. Se ONNX for adotado, saída idêntica ao torch em tolerância de 1e-4 sobre o conjunto de teste.
 
+### O contrato para outro programa (2026-11-14)
+
+**Problema.** O `.onnx` servia ao próprio programa: arquitetura e temperatura vinham do `.pt` irmão, e o preparo da casa, a ordem de leitura e os nomes das classes só existiam neste código. Um editor de outro projeto recebia 8,8 MB de pesos sem saber o que pôr na entrada nem o que significa a saída. E o `.pt` irmão é reescrito a cada treino (S-57): um `.onnx` antigo passava a ler a temperatura do modelo novo.
+
+**Solução.** `export_onnx` grava `<nome>.json` ao lado do `.onnx` (contrato, schema 1): classes, entrada e saída, o preparo da imagem em campos e em `passos` legíveis, temperatura, arquitetura, a origem do treino (`describe_checkpoint`, com o nome do `.pt` e não o caminho) e o SHA-256 do `.onnx`. `leitor_de_diagrama_onnx.py` lê o par usando só numpy, OpenCV e onnxruntime — é o arquivo que outro programa copia, e o formato do contrato mora nele (`Contrato.como_dicionario`/`de_dicionario`). `load_onnx_model` prefere o contrato ao `.pt` irmão e recusa contrato cujas classes não sejam as do programa. O contrato não sobrescreve `.json` que não seja outro contrato. A detecção do tabuleiro e o `decode_constrained` continuam fora: o leitor recebe o tabuleiro recortado e entrega a classe mais provável de cada casa.
+
+**Critério de aceite.** O lote que o leitor avulso monta é idêntico, byte a byte, ao do pacote em toda arquitetura da grade (teste) e em todos os tabuleiros do split de teste (`cvoff-export-onnx`, que reprova se um divergir, mesmo com o grafo em paridade). `.onnx` de outra exportação é recusado pelo SHA-256. O leitor não importa torch nem `chess_diagram_ocr` (teste por `ast`), e copiado para outra pasta roda sozinho.
+
 ---
 
 # Fase 6 — Consolidação

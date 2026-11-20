@@ -14,10 +14,17 @@ numa máquina com GPU, instalar `torch` com CUDA continua sendo o ganho maior (v
 O critério de aceite da S-30 é rigoroso de propósito -- saída idêntica ao torch em
 tolerância de 1e-4 sobre o conjunto de teste. Um backend que fosse 3× mais rápido e
 divergisse na terceira casa produziria outras FENs, e "mais rápido" não vale isso.
+
+**O `.onnx` sai com o contrato ao lado.** Sozinho ele não diz os nomes das classes, o preparo
+da casa, a ordem de leitura nem a temperatura -- tudo isso morava no `.pt` irmão e neste
+código, e outro programa não tinha de onde tirar. O `<nome>.json` que `export_onnx` grava
+junto diz, amarrado ao `.onnx` pelo SHA-256, e `leitor_de_diagrama_onnx.py` é quem o lê: um
+arquivo só, sem torch e sem este pacote, que um editor de outro projeto copia.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,24 +33,52 @@ from typing import Any
 import numpy as np
 import torch
 
-from .atomic_io import atomic_write_path
-from .checkpoint import load_checkpoint
-from .config import PIECE_CLASSES
+from .atomic_io import atomic_write_path, atomic_write_text
+from .checkpoint import Checkpoint, describe_checkpoint, load_checkpoint
+from .config import APPLY_CALIBRATED_TEMPERATURE, BOARD_SIZE, PIECE_CLASSES
+from .leitor_de_diagrama_onnx import (
+    Contrato,
+    ContratoInvalido,
+    caminho_do_contrato,
+    ler_contrato,
+    sha256_do_arquivo,
+)
 from .model import DEFAULT_ARCH, SQUARES_PER_BOARD, ArchConfig, build_model
 
 logger = logging.getLogger(__name__)
 
 ONNX_OPSET = 17
+INPUT_NAME = "cells"
+OUTPUT_NAME = "logits"
+
+
+def _recusar_json_alheio(output_path: Path) -> None:
+    """O contrato não sobrescreve um `.json` que não seja outro contrato.
+
+    `--output models/char_meta.onnx` gravaria o contrato por cima do metadado do classificador
+    de caracteres, e o texto deixaria de abrir sem que nada aqui acusasse. Conferido **antes** de
+    exportar, para não deixar um `.onnx` sem par.
+    """
+    contrato = caminho_do_contrato(output_path)
+    if not contrato.exists():
+        return
+    try:
+        Contrato.de_dicionario(json.loads(contrato.read_text(encoding="utf-8")), contrato.name)
+    except (OSError, ValueError) as exc:
+        raise FileExistsError(
+            f"{contrato} já existe e não é um contrato de exportação ONNX; escolha outro --output."
+        ) from exc
 
 
 def export_onnx(model_path: Path, output_path: Path, *, arch: ArchConfig | None = None) -> Path:
-    """Grava o checkpoint como ONNX com eixo de lote dinâmico.
+    """Grava o checkpoint como ONNX com eixo de lote dinâmico, e o contrato `.json` ao lado.
 
     O lote é dinâmico porque o pipeline chama o modelo com 64 casas (um tabuleiro), 448
     (um tabuleiro com TTA) e 512 (oito tabuleiros na avaliação). Um eixo fixo obrigaria a
     preencher ou reexportar.
     """
     model_path, output_path = Path(model_path), Path(output_path)
+    _recusar_json_alheio(output_path)
     checkpoint = load_checkpoint(model_path, map_location="cpu")
     if arch is None:
         arch = ArchConfig.from_version(checkpoint.arch_version) if checkpoint.arch_version else DEFAULT_ARCH
@@ -63,9 +98,9 @@ def export_onnx(model_path: Path, output_path: Path, *, arch: ArchConfig | None 
             model,
             (example,),
             str(temporario),
-            input_names=["cells"],
-            output_names=["logits"],
-            dynamic_axes={"cells": {0: "batch"}, "logits": {0: "batch"}},
+            input_names=[INPUT_NAME],
+            output_names=[OUTPUT_NAME],
+            dynamic_axes={INPUT_NAME: {0: "batch"}, OUTPUT_NAME: {0: "batch"}},
             opset_version=ONNX_OPSET,
             # Exportador TorchScript, nao o dynamo. O dynamo e o padrao no torch 2.10 e exige
             # `onnxscript`, uma dependencia a mais para um extra que existe justamente para
@@ -79,16 +114,47 @@ def export_onnx(model_path: Path, output_path: Path, *, arch: ArchConfig | None 
             dynamo=False,
         ),
     )
+    contrato = contrato_da_exportacao(checkpoint, arch, output_path)
+    atomic_write_text(
+        caminho_do_contrato(output_path), json.dumps(contrato.como_dicionario(), indent=2, ensure_ascii=False) + "\n"
+    )
     logger.info(
-        "ONNX gravado em %s (arquitetura %s, opset %d, %.1f MB). Temperatura %.4f NÃO vai "
-        "no grafo: ela é aplicada sobre os logits por quem chama.",
+        "ONNX gravado em %s com o contrato em %s (arquitetura %s, opset %d, %.1f MB). Temperatura "
+        "%.4f NÃO vai no grafo: ela vai no contrato e é aplicada sobre os logits por quem chama.",
         output_path,
+        caminho_do_contrato(output_path).name,
         arch.version,
         ONNX_OPSET,
         output_path.stat().st_size / 1e6,
         checkpoint.temperature,
     )
     return output_path
+
+
+def contrato_da_exportacao(checkpoint: Checkpoint, arch: ArchConfig, onnx_path: Path) -> Contrato:
+    """O que outro programa precisa para usar o `.onnx` sem ler este código.
+
+    A origem leva o nome do `.pt`, não o caminho: o contrato viaja para outra máquina, e um
+    caminho absoluto só publicaria a pasta de quem exportou.
+    """
+    origem = describe_checkpoint(checkpoint.path).as_dict()
+    origem["path"] = Path(checkpoint.path).name
+    return Contrato(
+        onnx_sha256=sha256_do_arquivo(onnx_path),
+        arquitetura=arch.version,
+        classes=tuple(PIECE_CLASSES),
+        canais=arch.channels,
+        lado_da_casa=arch.image_size,
+        coordenadas=arch.coords,
+        lote_multiplo_de=SQUARES_PER_BOARD if arch.head == "board" else 1,
+        temperatura=float(checkpoint.temperature),
+        lado_do_tabuleiro=BOARD_SIZE,
+        nome_da_entrada=INPUT_NAME,
+        nome_da_saida=OUTPUT_NAME,
+        opset=ONNX_OPSET,
+        temperatura_aplicada_pelo_programa=APPLY_CALIBRATED_TEMPERATURE,
+        origem=origem,
+    )
 
 
 class OnnxPieceClassifier:
@@ -126,8 +192,24 @@ class OnnxPieceClassifier:
 
 
 def load_onnx_model(onnx_path: Path, checkpoint_path: Path | None = None) -> tuple[OnnxPieceClassifier, str]:
-    """Carrega o ONNX, tomando arquitetura e temperatura do checkpoint `.pt` irmão."""
+    """Carrega o ONNX, com arquitetura e temperatura do contrato `.json`, ou do `.pt` irmão sem ele.
+
+    **O contrato vence o `.pt`.** O `.pt` de mesmo nome é reescrito a cada treino (S-57), e um
+    `.onnx` exportado antes passaria a ler a temperatura do modelo novo. O contrato está preso a
+    este `.onnx` pelo SHA-256 e recusa outro arquivo. O caminho pelo `.pt` fica para o `.onnx`
+    exportado antes de o contrato existir.
+    """
     onnx_path = Path(onnx_path)
+    if caminho_do_contrato(onnx_path).exists():
+        contrato = ler_contrato(onnx_path)
+        if list(contrato.classes) != list(PIECE_CLASSES):
+            raise ContratoInvalido(
+                f"{caminho_do_contrato(onnx_path).name} declara as classes {list(contrato.classes)}, e o "
+                f"programa decodifica pelas {list(PIECE_CLASSES)}: cada índice viraria outra peça."
+            )
+        arch = ArchConfig.from_version(contrato.arquitetura)
+        return OnnxPieceClassifier(onnx_path, arch, temperature=contrato.temperatura), "cpu"
+
     arch, temperature = DEFAULT_ARCH, 1.0
 
     sibling = checkpoint_path or onnx_path.with_suffix(".pt")
@@ -137,8 +219,9 @@ def load_onnx_model(onnx_path: Path, checkpoint_path: Path | None = None) -> tup
         temperature = checkpoint.temperature
     else:
         logger.warning(
-            "Sem checkpoint .pt ao lado de %s: assumindo arquitetura %s e temperatura 1,0. "
-            "Se o ONNX for de outra arquitetura, a inferência sai errada em silêncio.",
+            "Sem contrato .json nem checkpoint .pt ao lado de %s: assumindo arquitetura %s e "
+            "temperatura 1,0. Se o ONNX for de outra arquitetura, a inferência sai errada em "
+            "silêncio; exporte de novo com `cvoff-export-onnx` para ter o contrato.",
             onnx_path.name,
             arch.version,
         )

@@ -83,17 +83,22 @@ class ExportTests(unittest.TestCase):
                     saida = onnx_model(torch.zeros(size, 1, 64, 64))
                     self.assertEqual(tuple(saida.shape), (size, len(PIECE_CLASSES)))
 
-    def test_architecture_and_temperature_come_from_the_sibling_checkpoint(self) -> None:
+    def test_architecture_and_temperature_come_from_the_contract_or_the_sibling_checkpoint(self) -> None:
+        """O contrato `.json` primeiro; sem ele -- `.onnx` exportado antes do contrato --, o `.pt`."""
         arch = ArchConfig(channels="rgb", image_size=32)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _checkpoint(root / "m.pt", arch, temperature=1.7)
             export_onnx(root / "m.pt", root / "m.onnx")
+            self.assertTrue((root / "m.json").exists(), "o contrato sai ao lado do .onnx")
 
-            onnx_model, device = load_onnx_model(root / "m.onnx", root / "m.pt")
-            self.assertEqual(onnx_model.arch, arch)
-            self.assertAlmostEqual(onnx_model.temperature, 1.7)
-            self.assertEqual(device, "cpu")
+            for origem in ("contrato", "pt irmão"):
+                with self.subTest(origem=origem):
+                    onnx_model, device = load_onnx_model(root / "m.onnx", root / "m.pt")
+                    self.assertEqual(onnx_model.arch, arch)
+                    self.assertAlmostEqual(onnx_model.temperature, 1.7)
+                    self.assertEqual(device, "cpu")
+                    (root / "m.json").unlink(missing_ok=True)
 
     def test_every_architecture_of_the_grid_exports(self) -> None:
         for arch in (
