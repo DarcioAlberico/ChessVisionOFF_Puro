@@ -1347,7 +1347,8 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Achado:* `PASTA_DO_LEXICO` usa `PROJECT_ROOT`, que num bundle é a pasta do `.exe`, e o `assets/` vai para dentro do
     pacote (`BUNDLE_ROOT`). Lido o código, os três arquivos antigos **não são achados no bundle**, em silêncio, e o
     `dicionario` lá não corrige nada. Não se rodou um bundle para confirmar, e não se mexeu: consertar muda o texto do
-    bundle. As listas novas usam `BUNDLE_ROOT`. Fica para a S-724.
+    bundle. As listas novas usam `BUNDLE_ROOT`. Fica para a S-724. *(Feito em 2026-11-06, `cb70f485`:
+    `PASTA_DO_LEXICO` usa `BUNDLE_ROOT`. O resto da S-724, o Tesseract no instalador, segue com a D1.)*
 - **S-729** · O árbitro de notação pela legalidade. ✅ entregue em 2026-11-06
   - *Contexto:* as regras 1 e 2 da S-721 são heurísticas de forma (`27.` contra `21.` → "fica o do
     glifo"). A notação tem um modelo de língua exato — a legalidade do lance a partir da posição — e

@@ -294,7 +294,9 @@ $ uv run pytest -q         4.870 passaram, 2 pulados, 3.652 subtests    169 s
 
 - **O `.python-version` fica em 3.10.** A faixa aceita até 3.13 e a CI prova as duas pontas, mas
   promover o 3.13 a padrão do bundle depende de abrir a janela numa máquina de verdade -- o Tk
-  do interpretador que o `uv` entrega para 3.13 já veio incompleto uma vez.
+  do interpretador que o `uv` entrega para 3.13 já veio incompleto uma vez. *(estado em
+  2026-11-20: promovido. O `.python-version` diz 3.13 desde a S-830, D5 da solidez, e o Tk saiu do
+  produto no corte, S-506.)*
 - **A matriz da CI ainda não rodou.** Ela é YAML válido e a estrutura foi conferida, mas quem a
   prova é o GitHub. A perna do 3.13 é a primeira coisa a olhar no próximo push.
   *Rodou: `gh run view 42141235858`, na `main` em 2026-11-06 (merge do PR #58), com `check (3.10)`,

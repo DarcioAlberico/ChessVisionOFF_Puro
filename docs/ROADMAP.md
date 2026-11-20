@@ -64,6 +64,8 @@ Efeito colateral útil do gate de plataforma (`sys_platform == 'win32'` em `pyth
 
 - **0.7 (acentuação)** — o `logging` está feito e os `except Exception: pass` silenciosos foram eliminados, mas as strings de UI seguem sem acento ("posicao", "Configuracao"). A centralização em `ui/strings.py` depende da decomposição do Tkinter (S-31, Fase 6); acentuar antes disso criaria conflito com aquela refatoração.
 - **`requires-python`** — mantido em `==3.10.*`. Relaxar para `>=3.10,<3.14` permitiria matriz de CI, mas exigiria re-resolver o lock; deixado para quando houver motivo.
+  ✅ *Resolvida: hoje é `>=3.13,<3.14` no `pyproject.toml`, pela S-830 e a D5 da solidez
+  (`ROADMAP_SOLIDEZ.md`).*
 
 ---
 
@@ -286,6 +288,12 @@ E os sinais são outros: como as imagens de casa são idênticas nas duas interp
 `min_confidence` é rigorosamente igual e não diz nada. Só o prior estrutural pode decidir —
 que é justamente o sinal mais fraco. Não medi quantos diagramas assim existem nos 27 PDFs;
 antes de implementar, vale contar.
+
+✅ *Resolvida em 2026-09-21 (passo C10 do ciclo 2 do OCR_UI, `20774104`), pelo sinal que este texto
+não tinha: as coordenadas impressas na borda. Quando a página as traz, `pdf_text.board_coordinates_for`
+as lê, e a `CoordinateRule` de `orientation.py` gira o mapeamento sem girar a imagem
+(`black_point_of_view`), com teste em `tests/test_orientation.py`. Onde a camada de texto não tem as
+coordenadas, nada mudou: o prior estrutural continua sendo o único sinal.*
 
 ### Decisão pendente: qual modelo o app usa
 

@@ -1832,7 +1832,8 @@ por `LabelStore` é byte a byte igual ao de hoje para a mesma entrada.
 > ambíguas, mas o histograma é **1.038 a 0 bits e um platô de ~125 por bit** até 12 bits. Platô é
 > impostor: casamento verdadeiro com ruído cairia com a distância. O limiar de 6 herdado da S-52 não
 > serve, e a recomendação é `--apply --max-distance 0`, com a conferência de uma amostra. Gravar no
-> `labels.csv` continua decisão do dono, e não foi feito.
+> `labels.csv` continua decisão do dono, e não foi feito. **Desde 2026-11-20 o 0 é o padrão**
+> (`DEFAULT_MAX_DISTANCE`): o `--apply` sem argumento já não grava o platô.
 
 **Problema.** Medido no `data/labels.csv` de 3.241 linhas:
 

@@ -74,8 +74,17 @@ DEFAULT_INDEX_PATH = DATA_DIR / "provenance_index.jsonl"
 # escolha livre: o índice precisa ver o diagrama como o detector o viu quando a amostra foi
 # salva, e mudar o DPI muda o recorte.
 
-DEFAULT_MAX_DISTANCE = 6
+DEFAULT_MAX_DISTANCE = 0
 """Distância de Hamming máxima, em 256 bits, para aceitar um casamento.
+
+**Zero desde a medição do acervo inteiro (2026-11-06), e era 6.** Contra 43.389 entradas de índice
+as 3.356 órfãs deram **1.038 a 0 bits** e, dali em diante, um platô de ~125 por bit até 12 bits
+(`docs/metrics/provenance_match_20261106.json`). Platô é a assinatura de impostor: o casamento
+verdadeiro com ruído cairia com a distância, e não ficaria plano. Os 6 bits somavam **795** amostras
+do platô às 1.038, e um `--apply` com o padrão gravaria essas 795 procedências erradas no
+`labels.csv` -- com cara de dado. Quem indexar o acervo com outro detector ou outro DPI, e por isso
+espera recorte deslocado, sobe o limiar com `--max-distance` olhando o histograma do `--match`; o
+padrão é o que o acervo de hoje mostrou. O resto deste texto é a história de como os 6 nasceram.
 
 A auditoria usa 3 para "é a mesma imagem", que é o critério certo para achar duplicata: ali
 um falso positivo apaga um rótulo. Aqui um falso positivo escreve uma procedência errada, que

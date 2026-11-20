@@ -78,7 +78,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     parser.add_argument("--match", action="store_true", help="Casa as amostras órfãs contra o índice.")
     parser.add_argument(
-        "--max-distance", type=int, default=DEFAULT_MAX_DISTANCE, help="Distância de Hamming máxima para o casamento valer."
+        "--max-distance",
+        type=int,
+        default=DEFAULT_MAX_DISTANCE,
+        help=(
+            f"Distância de Hamming máxima para o casamento valer (padrão: {DEFAULT_MAX_DISTANCE}, a mesma imagem; "
+            "suba olhando o histograma do --match, se o acervo foi indexado com outro detector ou DPI)."
+        ),
     )
     parser.add_argument(
         "--apply",
