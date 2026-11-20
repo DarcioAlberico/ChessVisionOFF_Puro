@@ -46,6 +46,8 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from .boxes import Caixa
+
 ALTA = "'"
 """O que o modelo tem para marca alta. Ver "O teto deste conserto" no cabeçalho."""
 
@@ -169,11 +171,76 @@ def corrigir(
     return saida
 
 
+ASPAS_PELA_GEOMETRIA = True
+"""A reversão da S-734."""
+
+ASPAS = '"'
+"""O que o modelo tem para a aspa dupla. As curvas não são classe, como as simples."""
+
+LIDOS_NO_ALTO = "'(),`"
+"""O que o modelo responde para cada risco de uma aspa dupla, e para a simples que ele lê como `(`."""
+
+FOLGA_DAS_ASPAS = 1.0
+"""O vão entre os dois riscos, em larguras do risco. Medido: 2 a 4 px, com o risco de 6 a 7 px.
+
+Em todos os 13 + 4 casos do ouro-dev as duas caixas chegam separadas, e por isso não há teste de proporção:
+nenhuma aspa dupla foi vista num contorno só. O vão de aspa até a letra seguinte, ou de `'` até `(` no
+fim e começo de duas citações, é bem maior que este quando há espaço entre elas (12 a 15 px)."""
+
+
+def aspas(
+    lidos: Sequence[tuple[str, float]],
+    caixas: Sequence[Caixa],
+) -> tuple[list[Caixa], list[tuple[str, float]]]:
+    """Dois riscos no alto da linha são uma aspa dupla; um parêntese pequeno no alto é apóstrofo (S-734).
+
+    `"tail` saía `'(tail`, e `rook"` saía `rook''`: o modelo responde caixa a caixa, e `"` tem 89 amostras
+    contra 5.676 de `(`. **`(` nunca sobra no alto**: o de verdade tem a altura da linha, e o risco, 0,30 a
+    0,41 dela. Funde as caixas, como `ligadura.corrigir`, e por isso também roda depois do que indexa `probs`.
+    """
+    if not ASPAS_PELA_GEOMETRIA or not lidos or len(lidos) != len(caixas):
+        return (list(caixas), list(lidos))
+
+    topo, base = referencia_da_linha(caixas)
+
+    def no_alto(k: int) -> bool:
+        c = caixas[k]
+        return lidos[k][0] in LIDOS_NO_ALTO and e_marca_alta(float(c.y1), topo, base, altura=float(c.altura))
+
+    novas: list[Caixa] = []
+    saida: list[tuple[str, float]] = []
+    k = 0
+    while k < len(lidos):
+        char, conf = lidos[k]
+        caixa = caixas[k]
+        if no_alto(k):
+            if k + 1 < len(lidos) and no_alto(k + 1):
+                outra = caixas[k + 1]
+                if outra.x1 - caixa.x2 <= FOLGA_DAS_ASPAS * max(caixa.largura, outra.largura):
+                    novas.append(
+                        Caixa(caixa.x1, min(caixa.y1, outra.y1), outra.x2, max(caixa.y2, outra.y2))
+                    )
+                    saida.append((ASPAS, min(conf, lidos[k + 1][1])))
+                    k += 2
+                    continue
+            novas.append(caixa)
+            saida.append((ALTA, conf))
+            k += 1
+            continue
+        novas.append(caixa)
+        saida.append((char, conf))
+        k += 1
+    return (novas, saida)
+
+
 __all__ = [
     "ALTA",
     "ALTURA_MAXIMA",
+    "ASPAS",
+    "ASPAS_PELA_GEOMETRIA",
     "BAIXAS",
     "CORTE_NA_LINHA",
+    "aspas",
     "corrigir",
     "e_marca_alta",
     "posicao_na_linha",

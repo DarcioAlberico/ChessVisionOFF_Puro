@@ -1,7 +1,7 @@
 """O rascunho automático da aba de texto, e a recuperação depois do fechamento (S-255).
 
 **Uma sessão de correção custa caro e não é reproduzível.** A leitura da folha custa ~1 s com o
-glifo e ~40 s com o modo bloco (`docs/metrics/texto_pagina.json`); a correção à mão custa a tarde de
+glifo (`docs/metrics/texto_pagina.json`); a correção à mão custa a tarde de
 alguém, e **é a única coisa desta aba que não sai de graça de uma releitura** -- é o que a docstring
 de `salvar` já dizia antes de existir arquivo nenhum.
 

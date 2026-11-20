@@ -220,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
         "codigo": {"commit": git_commit(), "arvore_suja": git_worktree_dirty()},
         "protocolo": f"{args.folhas} folhas espacadas de cada um dos {len(pdfs)} PDFs; livros sem estilo declarado nas folhas lidas ficam fora",
         "referencia": REFERENCIA,
+        "motores": list(MOTORES_MEDIDOS),
         "livros_medidos": len(por_livro),
         "total": total_por_motor(por_livro, MOTORES_MEDIDOS),
         "livros_com_perda": livros_com_perda(por_livro),

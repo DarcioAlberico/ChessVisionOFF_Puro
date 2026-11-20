@@ -1,0 +1,303 @@
+{
+  "pergunta": "S-122: ligar o OCR por livro onde a camada de texto falta paga o custo?",
+  "como": "cvoff-sides (survey_book), 12 páginas por livro, nos 58 PDFs de PDF/; sem camada = menos de 50% das páginas amostradas com texto",
+  "motor": "rapidocr",
+  "modelo": "8786968-1793824735036821200",
+  "codigo": "8229afbc6ed4f42cf00c2bbb3ddbdf0fa859f8e6",
+  "livros_no_acervo": 58,
+  "livros_sem_camada": 17,
+  "diagramas_nos_sem_camada": 276,
+  "resolvidos_sem_ocr": 2,
+  "resolvidos_pelo_ocr": 78,
+  "dos_quais_pretas": 19,
+  "livros_sem_ganho": 6,
+  "segundos_sem_ocr": 187,
+  "segundos_com_ocr": 898,
+  "ressalva_de_tempo": "máquina dividida com outras medições: o tempo é indicativo, e não veredito",
+  "conferencia_contra_o_conjunto_de_campo": {
+    "como": "diagramas com lado anotado nos livros sem camada",
+    "contagem": {
+      "com|default|certo": 7,
+      "com|default|errado": 6,
+      "com|resolvido|certo": 2,
+      "sem|default|certo": 8,
+      "sem|default|errado": 6,
+      "sem|resolvido|certo": 1
+    }
+  },
+  "veredito": "não ligar automaticamente: 64 dos 78 resolvidos vêm de 4 dos 17 livros, 6 não ganham nada, e nenhum dos 6 lados errados do conjunto de campo é consertado.",
+  "livros": [
+    {
+      "pdf": "1000 Chess Problems - Yakov Vladimirov 2015 .pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 32,
+      "sem_ocr": {
+        "default": 32
+      },
+      "com_ocr": {
+        "default": 32
+      },
+      "resolvidos_pelo_ocr": 0,
+      "dos_quais_pretas": 0,
+      "segundos_sem_ocr": 13.88,
+      "segundos_com_ocr": 66.24
+    },
+    {
+      "pdf": "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce.pdf",
+      "fracao_de_paginas_com_texto": 0.083,
+      "diagramas": 11,
+      "sem_ocr": {
+        "default": 11
+      },
+      "com_ocr": {
+        "default": 11
+      },
+      "resolvidos_pelo_ocr": 0,
+      "dos_quais_pretas": 0,
+      "segundos_sem_ocr": 7.8,
+      "segundos_com_ocr": 35.93
+    },
+    {
+      "pdf": "Bachmann - Schachjahrbuch für 1899. I. Theil (1899).pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 4,
+      "sem_ocr": {
+        "default": 4
+      },
+      "com_ocr": {
+        "default": 4
+      },
+      "resolvidos_pelo_ocr": 0,
+      "dos_quais_pretas": 0,
+      "segundos_sem_ocr": 8.83,
+      "segundos_com_ocr": 29.88
+    },
+    {
+      "pdf": "Estrin - Bauernopfer in der Eroeffnung (1980).pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 19,
+      "sem_ocr": {
+        "default": 18,
+        "legality": 1
+      },
+      "com_ocr": {
+        "caption-after": 1,
+        "default": 12,
+        "legality": 1,
+        "move-number": 5
+      },
+      "resolvidos_pelo_ocr": 6,
+      "dos_quais_pretas": 1,
+      "segundos_sem_ocr": 12.25,
+      "segundos_com_ocr": 63.92
+    },
+    {
+      "pdf": "GALLAGHER - Winning With the King's Gambit.pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 13,
+      "sem_ocr": {
+        "default": 13
+      },
+      "com_ocr": {
+        "default": 10,
+        "move-number": 3
+      },
+      "resolvidos_pelo_ocr": 3,
+      "dos_quais_pretas": 1,
+      "segundos_sem_ocr": 8.8,
+      "segundos_com_ocr": 48.78
+    },
+    {
+      "pdf": "Karpov A - Chess Combinations -World Champions-2 (2011).pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 36,
+      "sem_ocr": {
+        "default": 36
+      },
+      "com_ocr": {
+        "default": 36
+      },
+      "resolvidos_pelo_ocr": 0,
+      "dos_quais_pretas": 0,
+      "segundos_sem_ocr": 13.5,
+      "segundos_com_ocr": 66.51
+    },
+    {
+      "pdf": "Levenfis - Cartea sahistului inceparator (1962).pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 11,
+      "sem_ocr": {
+        "default": 11
+      },
+      "com_ocr": {
+        "default": 8,
+        "move-number": 3
+      },
+      "resolvidos_pelo_ocr": 3,
+      "dos_quais_pretas": 0,
+      "segundos_sem_ocr": 5.34,
+      "segundos_com_ocr": 46.48
+    },
+    {
+      "pdf": "Mauricio Flores Rios - Chess Structures - A Grandmaster Guide[Quality Chess, 2015].pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 21,
+      "sem_ocr": {
+        "default": 21
+      },
+      "com_ocr": {
+        "default": 18,
+        "move-number": 3
+      },
+      "resolvidos_pelo_ocr": 3,
+      "dos_quais_pretas": 2,
+      "segundos_sem_ocr": 28.54,
+      "segundos_com_ocr": 95.33
+    },
+    {
+      "pdf": "Pachman L. Modern Chess Strateg.pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 9,
+      "sem_ocr": {
+        "default": 9
+      },
+      "com_ocr": {
+        "default": 8,
+        "ocr-page-scope": 1
+      },
+      "resolvidos_pelo_ocr": 1,
+      "dos_quais_pretas": 1,
+      "segundos_sem_ocr": 5.63,
+      "segundos_com_ocr": 42.93
+    },
+    {
+      "pdf": "Polugajewski_Sizilianisch_Najdorf_system_bis_Polugajewski_variante.pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 10,
+      "sem_ocr": {
+        "default": 10
+      },
+      "com_ocr": {
+        "default": 8,
+        "move-number": 2
+      },
+      "resolvidos_pelo_ocr": 2,
+      "dos_quais_pretas": 0,
+      "segundos_sem_ocr": 13.86,
+      "segundos_com_ocr": 47.24
+    },
+    {
+      "pdf": "Reinfeld_1001_Sacrificios_y_Combinaciones_Brillantes_1977.pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 42,
+      "sem_ocr": {
+        "default": 42
+      },
+      "com_ocr": {
+        "ocr": 7,
+        "ocr-page-scope": 35
+      },
+      "resolvidos_pelo_ocr": 42,
+      "dos_quais_pretas": 12,
+      "segundos_sem_ocr": 10.23,
+      "segundos_com_ocr": 49.42
+    },
+    {
+      "pdf": "Simple Chess - Stean, M_.pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 6,
+      "sem_ocr": {
+        "default": 5,
+        "legality": 1
+      },
+      "com_ocr": {
+        "default": 5,
+        "legality": 1
+      },
+      "resolvidos_pelo_ocr": 0,
+      "dos_quais_pretas": 0,
+      "segundos_sem_ocr": 8.62,
+      "segundos_com_ocr": 44.62
+    },
+    {
+      "pdf": "Stefaniu - Problematica Deschideriliol in sah (1992).pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 9,
+      "sem_ocr": {
+        "default": 9
+      },
+      "com_ocr": {
+        "default": 3,
+        "move-number": 6
+      },
+      "resolvidos_pelo_ocr": 6,
+      "dos_quais_pretas": 1,
+      "segundos_sem_ocr": 4.44,
+      "segundos_com_ocr": 40.18
+    },
+    {
+      "pdf": "Vishy_Anand_Great_Chess_Combinations.pdf",
+      "fracao_de_paginas_com_texto": 0.417,
+      "diagramas": 7,
+      "sem_ocr": {
+        "default": 7
+      },
+      "com_ocr": {
+        "default": 7
+      },
+      "resolvidos_pelo_ocr": 0,
+      "dos_quais_pretas": 0,
+      "segundos_sem_ocr": 3.55,
+      "segundos_com_ocr": 16.54
+    },
+    {
+      "pdf": "Пилавов Г. Изолированная пешка.pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 14,
+      "sem_ocr": {
+        "default": 14
+      },
+      "com_ocr": {
+        "default": 13,
+        "move-number": 1
+      },
+      "resolvidos_pelo_ocr": 1,
+      "dos_quais_pretas": 0,
+      "segundos_sem_ocr": 14.62,
+      "segundos_com_ocr": 82.98
+    },
+    {
+      "pdf": "📚Aagaard J. Excelling at chess calculation.pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 23,
+      "sem_ocr": {
+        "default": 23
+      },
+      "com_ocr": {
+        "default": 13,
+        "move-number": 2,
+        "ocr": 8
+      },
+      "resolvidos_pelo_ocr": 10,
+      "dos_quais_pretas": 1,
+      "segundos_sem_ocr": 18.05,
+      "segundos_com_ocr": 74.13
+    },
+    {
+      "pdf": "📚Silman J. The Complete Book of Chess Strategy.pdf",
+      "fracao_de_paginas_com_texto": 0.0,
+      "diagramas": 9,
+      "sem_ocr": {
+        "default": 9
+      },
+      "com_ocr": {
+        "default": 8,
+        "ocr-page-scope": 1
+      },
+      "resolvidos_pelo_ocr": 1,
+      "dos_quais_pretas": 0,
+      "segundos_sem_ocr": 8.85,
+      "segundos_com_ocr": 47.14
+    }
+  ]
+}

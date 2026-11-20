@@ -57,7 +57,7 @@ class BarraDeMenus:
     **O índice é o que substitui o `BooleanVar`/`StringVar` do Tk.** Lá a marca de um interruptor
     mora numa variável do Tcl que o painel também segura, e o menu se atualiza sozinho quando ela
     muda. O Qt não tem esse laço: a marca é estado da `QAction`. Guardá-las por ação é o que
-    permite ao painel dizer `barra.marcar("modo_bloco", ligado=True)` sem procurar o item na
+    permite ao painel dizer `barra.marcar("quebrar_linha", ligado=True)` sem procurar o item na
     árvore de menus -- que é o que faria cada painel conhecer a estrutura da barra.
     """
 

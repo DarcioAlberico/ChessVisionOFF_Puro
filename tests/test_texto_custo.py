@@ -288,6 +288,12 @@ class BaselineTests(unittest.TestCase):
         relogio.total = segundos
         return Perfil.de_cronometro(relogio, paginas=1)
 
+    def test_o_acervo_e_o_de_hoje_e_nao_a_extrapolacao_da_s61(self) -> None:
+        """26.730 folhas em 58 PDF, em 2026-11-06. Com 12.000, as horas saíam em menos da metade (S-725)."""
+        from chess_diagram_ocr.text import custo
+
+        self.assertEqual(custo.PAGINAS_DO_ACERVO, 26_730)
+
     def test_o_baseline_falha_quando_o_custo_piora(self) -> None:
         pioras = comparar(self.arquivado(1.0), self.perfil(2.0, classificacao=0.5, coluna=0.2))
         self.assertTrue(pioras, "o dobro do custo por página passou sem acusar")

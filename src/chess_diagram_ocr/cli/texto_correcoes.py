@@ -13,6 +13,9 @@ decidir que o caso vale ser aplicado em lote.
 cria amostra e não toca no modelo. Quem transforma correção em rótulo é a S-212, que tem a fila e o
 critério -- e um caminho de rótulo sem revisão é o defeito de que a base já tem cicatriz (S-180).
 
+**`--quarentena` é a única saída para o treino, e não é rótulo** (S-762): só o par palavra a palavra que a pessoa tocou, com a versão do
+modelo que errou, na pasta da S-214, de onde só uma pessoa o promove. O livro do teste não vai. Ver `text/dado_corrigido.py`.
+
 **A correção não está gravada no arquivo: ela é derivada.** O `.cvtxt` guarda os dois lados -- a
 `PaginaLida` que o motor leu e as corridas que estão na tela --, e a diferença entre eles é a
 correção. Ver `text/correcao.py`.
@@ -29,7 +32,7 @@ from typing import Any
 from ..atomic_io import atomic_write_text
 from ..logging_setup import configure_logging
 from ..text import arquivo, correcao
-from . import add_json_argument, add_verbose, cli_errors
+from . import add_dpi_argument, add_json_argument, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +80,39 @@ def levantar(caminhos: list[Path]) -> tuple[list[correcao.Correcao], list[dict[s
     return todas, por_arquivo
 
 
+def para_quarentena(caminhos: list[Path], destino: Path, *, dpi: int) -> dict[str, Any]:
+    """Leva à quarentena o que a mão tocou nos arquivos. O PDF é o que a folha diz, e sem ele o arquivo não vai."""
+    from ..pdf_io import render_pdf_page
+    from ..text import dado_corrigido
+
+    total = dado_corrigido.EnvioAQuarentena()
+    por_arquivo: list[dict[str, Any]] = []
+    recortes = []
+    for caminho in caminhos:
+        try:
+            doc = arquivo.carregar(caminho)
+        except (arquivo.ArquivoInvalido, OSError):
+            continue
+        if doc.origem is None or not dado_corrigido.pares_tocados(doc):
+            continue
+        pdf = Path(doc.origem.documento)
+        if not pdf.is_file():
+            por_arquivo.append({"arquivo": str(caminho), "recusado": f"o PDF não está em {pdf}"})
+            continue
+        imagem = render_pdf_page(pdf, doc.origem.pagina, dpi=dpi) if not dado_corrigido.livro_recusado(pdf) else None
+        destes, envio = dado_corrigido.preparar(doc, pdf, imagem, dpi=dpi)  # type: ignore[arg-type]
+        recortes.extend(destes)
+        total.juntar(envio)
+        por_arquivo.append({"arquivo": str(caminho), **envio.para_json()})
+    relatorio = dado_corrigido.enviar(recortes, destino) if recortes else None
+    return {
+        **total.para_json(),
+        "gravados": relatorio.gravados if relatorio else 0,
+        "destino": str(destino),
+        "arquivos": por_arquivo,
+    }
+
+
 def linhas_do_resumo(dados: dict[str, Any], *, teto: int | None = TETO_DE_TROCAS) -> list[str]:
     """O relatório em texto. Puro, para o teste afirmar o que a tela mostra."""
     linhas = [f"{dados['total']} correcao(oes) em {dados['blocos']} bloco(s)"]
@@ -95,6 +131,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("alvos", nargs="+", type=Path, help="Arquivos .cvtxt ou pastas.")
     add_json_argument(parser, help="Grava o relatório completo em JSON.")
     parser.add_argument("--todas", action="store_true", help="Imprime todas as trocas, sem teto.")
+    parser.add_argument(
+        "--quarentena",
+        type=Path,
+        help="Leva o par que a mao tocou a esta pasta de quarentena (S-214), com a versao do modelo. Nao grava na base.",
+    )
+    add_dpi_argument(parser, help="DPI do recorte da folha, com --quarentena.")
     add_verbose(parser)
     return parser
 
@@ -119,6 +161,17 @@ def main(argv: list[str] | None = None) -> int:
     for entrada in por_arquivo:
         if "erro" in entrada:
             print(f"  nao abriu: {entrada['arquivo']} -- {entrada['erro']}")
+
+    if args.quarentena:
+        enviado = para_quarentena(caminhos, args.quarentena, dpi=args.dpi)
+        dados["quarentena"] = enviado
+        print(
+            f"Quarentena: {enviado['pares']} par(es), {enviado['gravados']} recorte(s) em {enviado['destino']}, "
+            f"{enviado['sem_recorte']} par(es) sem recorte."
+        )
+        for entrada in enviado["arquivos"]:
+            if entrada.get("recusado"):
+                print(f"  fora: {entrada['arquivo']} -- {entrada['recusado']}")
 
     if args.json:
         atomic_write_text(args.json, json.dumps(dados, ensure_ascii=False, indent=2) + "\n")

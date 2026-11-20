@@ -29,7 +29,7 @@ Fases 66 a 68), escrita em 2026-09-01 sobre o `corte-do-tk` (653f88b) integrado 
 > | S-585 a S-598 | [ROADMAP_PDF_COM_PGN.md](ROADMAP_PDF_COM_PGN.md) |
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
-> | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
+> | S-700 a S-772 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 > | S-800 a S-910 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
 
 Este documento não propõe recurso novo. Ele é o que sobrou de seis itens e um teste de acervo
@@ -115,6 +115,14 @@ O que uma revisão de fora não pode ver é o que a bancada de fora não tem: os
   `config.py`, sem como mudar sem editar código. Merece plano próprio com medição, e não um item
   no fim de uma revisão -- a triagem (PR #30) já tirou a aba da tupla para a guarda parar de
   mentir, que é a metade que cabia agora.
+  *Conferido em 2026-11-06: faltam a orientação e o caminho do modelo, e **não entram por este
+  caminho**. `ui/configuracoes.CAMPOS` só nomeia campo de `settings.Settings`, e
+  `RecognitionSettings` tem só `dpi` e `max_boards`: a orientação é `config.DEFAULT_ORIENTATION_MODE`
+  e o modelo é `config.DEFAULT_MODEL_PATH`, lidos direto por `qt/janela.py`. Acrescentar os
+  campos muda `settings.py`, que está em `field_eval.measured_modules()` (S-218): invalida os quatro
+  relatórios de campo por duas preferências sem pedido medido. Fica para quando houver remedição
+  marcada, e a janela está no teto de linhas. O conjunto de peças já tem caminho próprio
+  (`qt/janela._aplicar_conjunto`, estado da janela).*
 - **A gravação por gesto** (divergência 2): decisão de desenho, com as três armadilhas de ordem
   para guardar antes de mudar.
 - **As folhas de contato e os recortes do acervo dele.** Não vieram; o teste no acervo foi
@@ -122,6 +130,11 @@ O que uma revisão de fora não pode ver é o que a bancada de fora não tem: os
   calibração está na S-526.
 - **O risco do rodapé.** `qt/rodape.py:86` desenha o traço de cima com um `QFrame.HLine`, a mesma
   forma que o separador da fila tinha. Não foi medido; fica nomeado para quem for lá.
+  ✅ *Medido e resolvido em 2026-11-06.* O `HLine` não obedecia à folha: sobre o cromo claro,
+  `#c9ced5` (1,4:1) no `Fusion` e 2 px de `#dcdfe2` (1,2:1) no `windows11`; sobre o escuro,
+  `#383d43` (1,5:1) e 2 px de `#2c2f33` (1,2:1). Virou o `QWidget#separador-da-fila` de 1 px, com `#8a8a8a`
+  e `#696b6d` (a moldura da S-522, 3:1) nos dois estilos. Guarda:
+  `tests/test_qt_rodape.py::RiscoDeCimaTests`, no `grab()`.
 
 ---
 

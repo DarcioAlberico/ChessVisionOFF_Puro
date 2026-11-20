@@ -316,8 +316,30 @@ class TamanhoDaJanelaTests(unittest.TestCase):
     decomposição antes de lê-la seria colidir com ela.
     """
 
-    LIMITE = 2299
+    LIMITE = 1856
     """Linhas de `qt/janela.py`. Ver o docstring da classe antes de mudar.
+
+    **1.850 e 2.299 -> 1.856 na integração com a Solidez (2026-11-11)**: as três fatias da S-31 deste ramo tiraram da
+    janela a sessão, a montagem e a tabela de comandos; a `main` mexeu nos mesmos métodos (S-800, S-826, S-867,
+    S-906). O que ela mudou neles foi para `qt/sessao_da_janela.py`, e na classe ficaram o relógio da gravação
+    adiada e o prazo dele, que são fiação da janela.
+
+    **1.937 -> 1.850 com a tabela de comandos fora da janela (S-31, fatia 3, 2026-11-06)**:
+    `_comandos` virou `montagem_da_janela.tabela_de_comandos`, e a classe segue respondendo por
+    `_comandos`, delegando. Extração pura, com a janela idêntica em offscreen antes e depois.
+    **O alvo de 600 continua aberto**, e o que sobrou está contado na S-136
+    (`docs/SPEC_FASE14.md`).
+
+    **2.086 -> 1.937 com a montagem dos painéis fora da janela (S-31, fatia 2, 2026-11-06)**:
+    `_montar_paineis` foi para `qt/montagem_da_janela.py`, extração pura e com a janela idêntica
+    em offscreen antes e depois. A classe ganhou 21 linhas: os atributos que a função preenche,
+    declarados porque o mypy só deduz de `self.x = ...` dentro dela.
+
+    **2.293 -> 2.086 com a sessão fora da janela (S-31, fatia 1, 2026-11-06)**: `_aplicar_estado`,
+    `_restaurar_arranjo`, `_anotar_arranjo`, `_gravar_estado`, `closeEvent` e
+    `_confirmar_fechamento` foram para `qt/sessao_da_janela.py`, e as quatro larguras, que a sessão
+    também lê, para `ui/geometria.py` (a janela as reexporta). Extração pura, com a janela idêntica
+    em offscreen antes e depois. Na classe ficaram os três delegados que o Qt e os testes chamam.
 
     **2.304 -> 2.299 com a resposta da leitura decidida em `ui/` (S-867, 2026-11-09)**: a guarda de
     tela, o que selecionar, o duplo clique pendente e a frase do cancelamento viraram

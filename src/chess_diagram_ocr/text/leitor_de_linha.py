@@ -6,6 +6,8 @@ par. **Ausência de motor não levanta no caminho da janela**: a aba abre e lê 
 
 O RapidOCR não está aqui: o `onnxruntime` fica fora do bundle e o modelo do wheel não lê acento. Ele
 continua só na régua.
+
+**O cache é do leitor, e nasce desligado** (S-725): `text/cache_texto.py` diz por quê.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from typing import Protocol
 
 import numpy as np
 
-from . import tesseract
+from . import cache_texto, tesseract
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,8 @@ class Leitura:
 
     linhas: tuple[tesseract.LinhaDoTesseract | None, ...]
     falha: str = ""
+    aviso: str = ""
+    """Leu, e algo em volta não deu: o cache que não gravou (S-725). A leitura vale."""
 
 
 class LeitorDeLinha(Protocol):
@@ -41,21 +45,42 @@ class LeitorDeLinha(Protocol):
 class LeitorTesseract:
     """O `LeitorDeLinha` de produção. Nunca levanta: toda falha vira `Leitura.falha`."""
 
-    def __init__(self, motor: tesseract.Motor | None = None) -> None:
+    def __init__(
+        self, motor: tesseract.Motor | None = None, *, cache: cache_texto.CacheDeLeitura | None = None, modelo: str = ""
+    ) -> None:
         self._motor = motor
+        self._cache = cache
+        self._modelo = modelo
 
     def _achado(self) -> tesseract.Motor:
         return tesseract.achar_motor() if self._motor is None else self._motor
 
-    def ler_linhas(self, recortes: Sequence[np.ndarray], *, lingua: str, dpi: int) -> Leitura:
+    def ler_linhas(self, recortes: Sequence[np.ndarray], *, lingua: str, dpi: int, sem_dicionario: bool = False) -> Leitura:
         motor = self._achado()
         if not motor.disponivel:
             return Leitura((None,) * len(recortes), motor.motivo)
+        chave = None
+        # **Sem `tessdata` conhecido, sem cache.** Binário achado por `PATH` ou `TESSERACT_CMD` sem a pasta ao lado lê com o que
+        # `TESSDATA_PREFIX` disser, e a chave não tem como saber: trocá-lo responderia a leitura dos pesos antigos, calada.
+        if self._cache is not None and motor.tessdata is not None:
+            chave = cache_texto.chave_de(
+                recortes,
+                motor=motor,
+                lingua=lingua,
+                dpi=dpi,
+                opcoes=("load_system_dawg=0",) if sem_dicionario else (),
+                modelo=self._modelo,
+            )
+            guardadas = self._cache.ler(chave)
+            if guardadas is not None and len(guardadas) == len(recortes):
+                return Leitura(tuple(guardadas))
         try:
-            return Leitura(tuple(tesseract.ler_linhas(recortes, lingua=lingua, dpi=dpi, motor=motor)))
+            linhas = tesseract.ler_linhas(recortes, lingua=lingua, dpi=dpi, motor=motor, sem_dicionario=sem_dicionario)
         except tesseract.FalhaDoTesseract as exc:
             logger.warning("Leitura por linha falhou: %s", exc)
             return Leitura((None,) * len(recortes), str(exc))
+        aviso = self._cache.gravar(chave, linhas) if self._cache is not None and chave is not None else ""
+        return Leitura(tuple(linhas), aviso=aviso)
 
     def ler_folha(self, cinza: np.ndarray, *, lingua: str, dpi: int) -> tuple[list[tesseract.Palavra], str]:
         motor = self._achado()
@@ -68,8 +93,9 @@ class LeitorTesseract:
             return ([], str(exc))
 
 
-def leitor_padrao() -> LeitorDeLinha:
-    return LeitorTesseract()
+def leitor_padrao(*, cache: cache_texto.CacheDeLeitura | None = None) -> LeitorDeLinha:
+    """Sem cache, se ninguém pedir: é o que a régua e os CLIs recebem. Quem pede é a janela."""
+    return LeitorTesseract(cache=cache)
 
 
 __all__ = ["LeitorDeLinha", "LeitorTesseract", "Leitura", "leitor_padrao"]

@@ -38,6 +38,9 @@ import numpy as np
 from .boxes import Caixa
 from .linhas import bandas
 
+MOLDURA_CRUZA_O_MEIO = True
+"""A reversão da S-714: desligada, a moldura numa coluna só também corta a folha."""
+
 LARGURA_DE_QUADRO = 0.4
 """Fração da largura do texto a partir da qual uma caixa (ou imagem) é larga como um quadro.
 
@@ -78,13 +81,20 @@ def molduras_nas_caixas(
     """
     if not caixas or escala <= 0:
         return []
-    largura_do_texto = max(c.x2 for c in caixas) - min(c.x1 for c in caixas)
+    esquerda = min(c.x1 for c in caixas)
+    direita = max(c.x2 for c in caixas)
+    largura_do_texto = direita - esquerda
     if largura_do_texto <= 0:
         return []
+    meio = (esquerda + direita) / 2
     candidatas = [
         c
         for c in caixas
-        if c.largura >= LARGURA_DE_QUADRO * largura_do_texto and c.altura >= ALTURA_DE_QUADRO * escala
+        if c.largura >= LARGURA_DE_QUADRO * largura_do_texto
+        and c.altura >= ALTURA_DE_QUADRO * escala
+        # **Quadro que não cruza o meio não cruza a calha** (S-714): a caixa do nome da partida, numa coluna só, é 0,42 da
+        # folha. Em scan o limiar a fecha, ela virava quadro de largura inteira, e abaixo dela as duas colunas viravam uma.
+        and (not MOLDURA_CRUZA_O_MEIO or c.x1 < meio < c.x2)
     ]
     if not candidatas:
         return []
@@ -162,6 +172,7 @@ __all__ = [
     "AREA_MAXIMA",
     "FRACAO_CRUZANDO",
     "LARGURA_DE_QUADRO",
+    "MOLDURA_CRUZA_O_MEIO",
     "LINHAS_DENTRO",
     "TINTA_DE_MOLDURA",
     "molduras_nas_caixas",

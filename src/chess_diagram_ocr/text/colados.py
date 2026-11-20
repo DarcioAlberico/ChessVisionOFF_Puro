@@ -64,6 +64,26 @@ GANHO_MINIMO = 0.05
 temperatura do modelo mudar, este limiar precisa ser remedido."""
 
 
+POR_LEXICO = True
+"""A reversão do léxico como árbitro do corte (S-732)."""
+
+LARGURA_DO_SUSPEITO = 0.85
+"""Largura da caixa, em alturas-de-x, para ela valer o custo de ser recortada de novo. `tu` colado tem
+1,57; `is`, `rr` e `tr` colados passam de 1,0; um `e` ou `a` não chegam a 0,85."""
+
+PROPORCAO_DO_SUSPEITO = 0.6
+"""Largura sobre altura. Tira as letras altas e estreitas, que não têm dois glifos."""
+
+MAX_SUSPEITOS = 4
+"""Por palavra. O teto é de custo: cada um é uma chamada do classificador."""
+
+MIN_LETRAS_DO_EXAME = 4
+"""`bom`, `few` e `far` não estão no léxico por terem 3 letras, e isso não é sinal de erro nenhum."""
+
+NOME_MINIMO_DO_CORTE = 7
+"""Abaixo disto, a resposta tem de existir no léxico **sem nomes**: `bem` e `Pap` viravam `belt`, `Beni` e `eap`."""
+
+
 Eixo = Literal["x", "y"]
 """`x` procura a coluna de menos tinta (dois caracteres lado a lado, este módulo); `y`, a linha (duas linhas
 empilhadas, `duas_linhas`)."""
@@ -189,6 +209,99 @@ def separar(
     return saida
 
 
+def _apertada(binaria: np.ndarray, caixa: Caixa) -> Caixa:
+    """A caixa do pedaço, com a altura da tinta dele: o `u` do `tu` não tem a altura do `t`."""
+    recorte = caixa.recortar(binaria)
+    linhas = np.nonzero((recorte > 0).any(axis=1))[0] if recorte.size else np.zeros(0, dtype=int)
+    if linhas.size == 0:
+        return caixa
+    return Caixa(caixa.x1, caixa.y1 + int(linhas[0]), caixa.x2, caixa.y1 + int(linhas[-1]) + 1)
+
+
+def por_lexico(
+    lidos: Sequence[tuple[str, float]],
+    caixas: Sequence[Caixa],
+    binaria: np.ndarray,
+    lexico: frozenset[str],
+    sem_nomes: frozenset[str],
+    ler_pedacos: Callable[[Sequence[Caixa]], list[list[tuple[str, float]]]],
+    *,
+    xh: float,
+) -> list[tuple[str, float]]:
+    """O dicionário, e não a confiança, arbitra o corte da palavra que não existe (S-732).
+
+    `GANHO_MINIMO` compara médias de confiança, que saturam perto de 1: `tu` colado é recusado por 0,007.
+    Com o léxico no lugar dela, em 13 folhas do Dvoretsky: 7 resgates certos de 8. O oitavo é `]!]ZWang`, e
+    é por isso que aqui **os pedaços têm de ser letras**. Medido nas 27 folhas dos 5 livros aprovados, é a
+    família que restava na `letra trocada` de *Minhas 60* (Calibri): `rr`->`f7`, `is`->`fx`, `tr`->`P`,
+    `us`->`Th`, e `tu`, `ti`, `rn`->`m`.
+
+    Só examina palavra que não existe e não tem peso de notação, então o custo é por palavra errada, e
+    `ler_pedacos` lê os dois pedaços de uma caixa de cada vez, devolvendo os dois melhores de cada um. O
+    resultado fica numa caixa só, com dois caracteres, como uma ligadura: não muda quantas caixas há.
+
+    **Ambiguidade não corrige**: duas leituras diferentes que existem, e a caixa fica. E o `w` e o `v` não
+    entram: a memória do projeto registra `pawns`->`paM(ns`, e `few` e `movem` iam pelo mesmo caminho. A
+    maiúscula só vale na primeira posição da palavra: `moNIem` e `feNN` não são palavra de ninguém.
+    """
+    from .caixa_alta import AMBIGUAS, caixa_pela_altura
+    from .dicionario import palavras
+    from .notacao import peso_de_notacao
+    from .palavras_curtas import conhecida_ou_curta
+
+    saida = list(lidos)
+    if not POR_LEXICO or not lexico or not lidos or xh <= 0 or len(lidos) != len(caixas):
+        return saida
+
+    for inicio, fim in palavras(caixas, lidos):
+        chars = [c for c, _ in lidos[inicio:fim]]
+        palavra = "".join(chars)
+        nucleo = palavra.strip(".,;:!?()[]'\"")
+        if len(nucleo) < MIN_LETRAS_DO_EXAME or conhecida_ou_curta(palavra, lexico) or peso_de_notacao(palavra) > 0:
+            continue
+        if not any(c.isalpha() for c in nucleo):
+            continue
+        suspeitos = [
+            k
+            for k in range(inicio, fim)
+            if caixas[k].largura / xh >= LARGURA_DO_SUSPEITO
+            and caixas[k].largura / max(1, caixas[k].altura) >= PROPORCAO_DO_SUSPEITO
+            and chars[k - inicio] not in "wWvV"
+        ][:MAX_SUSPEITOS]
+        # O dígito só é perdoado na caixa que vai ser relida: `cof7ect` tem a classe `f7`, de lance, numa caixa
+        # larga que são dois glifos (`rr`). Fora dela, o dígito é tinta do livro, e a palavra não é palavra.
+        fora = [c for k, c in enumerate(chars, start=inicio) if k not in suspeitos]
+        if any(ch.isdigit() or ord(ch) >= 0x2190 for c in fora for ch in c):
+            continue
+        achadas: dict[str, tuple[int, str]] = {}
+        for k in suspeitos:
+            corte = vale(binaria, caixas[k])
+            if corte is None:
+                continue
+            esquerda = _apertada(binaria, Caixa(caixas[k].x1, caixas[k].y1, corte, caixas[k].y2))
+            direita = _apertada(binaria, Caixa(corte, caixas[k].y1, caixas[k].x2, caixas[k].y2))
+            melhores = ler_pedacos([esquerda, direita])
+            if len(melhores) != 2:
+                continue
+            for ca, _ in melhores[0]:
+                for cb, _ in melhores[1]:
+                    if not (len(ca) == 1 and len(cb) == 1 and ca.isalpha() and cb.isalpha()):
+                        continue
+                    a = ca.lower() if ca.lower() in AMBIGUAS and not caixa_pela_altura(esquerda.altura, xh) else ca
+                    b = cb.lower() if cb.lower() in AMBIGUAS and not caixa_pela_altura(direita.altura, xh) else cb
+                    if b.isupper() or (a.isupper() and k != inicio):
+                        continue
+                    nova = "".join([*chars[: k - inicio], a + b, *chars[k - inicio + 1 :]])
+                    limpa = nova.strip(".,;:!?()[]'\"")
+                    longa = len(limpa) >= NOME_MINIMO_DO_CORTE and conhecida_ou_curta(nova, lexico)
+                    if longa or conhecida_ou_curta(nova, sem_nomes):
+                        achadas.setdefault(nova.casefold(), (k, a + b))
+        if len(achadas) == 1:
+            k, par = next(iter(achadas.values()))
+            saida[k] = (par, lidos[k][1])
+    return saida
+
+
 __all__ = [
     "AUTO",
     "GANHO_MINIMO",
@@ -199,9 +312,11 @@ __all__ = [
     "MODOS",
     "NUNCA",
     "PADRAO",
+    "POR_LEXICO",
     "SEMPRE",
     "arbitro_de_confianca",
     "partir",
+    "por_lexico",
     "separar",
     "vale",
     "vale_no_eixo",

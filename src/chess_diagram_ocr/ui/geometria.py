@@ -25,12 +25,61 @@ from dataclasses import dataclass
 __all__ = [
     "FRACAO_PADRAO_DO_DIVISOR",
     "Geometria",
+    "LARGURA_MINIMA_DAS_ABAS",
+    "LARGURA_MINIMA_DO_VISOR",
+    "LARGURA_PREFERIDA_DAS_ABAS",
+    "LARGURA_PREFERIDA_DO_VISOR",
     "divisor_da_primeira_abertura",
     "fracao_de_divisor",
     "fracao_do_documento",
     "geometria_de_texto",
     "piso_da_janela",
 ]
+
+LARGURA_MINIMA_DAS_ABAS = 500
+"""O piso do lado esquerdo, e ele é o que as abas **de fato** pedem (S-552, segunda rodada).
+
+**Eram 720, somados das partes em `galeria_declarada.LARGURA_MINIMA_DA_GALERIA`** -- 420 px de
+recorte mais 260 de lateral mais a folga --, e essa soma era o piso da janela inteira desde a
+S-154. Com a S-552 a Galeria passou a morar dentro de um `QScrollArea`: os 680 px continuam sendo
+o tamanho **preferido** dela, e deixaram de ser o exigido. Medido com as fontes de verdade, a aba
+mais exigente hoje é a do Dataset, com **522 px**; 500 é o valor que o crítico provou em
+`probe_1024.py`, trocando as duas constantes em memória antes de a janela ser montada.
+
+**Do outro lado, no F9-C2, o `720` cravado tinha virado a própria fórmula** --
+`LARGURA_MINIMA_DA_GALERIA`, com o recorte elástico de piso 240 --, porque uma constante que só
+coincidia com a soma dela já tinha divergido uma vez sem ninguém ver. Na junção com a S-552 fica o
+número medido: a Galeria rola, e a soma das partes dela deixou de ser o piso do lado esquerdo.
+
+**Por que isto é um item e não um ajuste de gosto:** 720 + 520 + 5 de alça = **1245**, e era o
+piso de largura da janela. Pedida a 1024×768 -- a tela de um notebook de 1366×768 com a janela
+numa metade, ou a de um projetor --, ela abria em 1245×768 e transbordava a tela. O ChessBase e o
+Lichess funcionam a 1024."""
+
+LARGURA_MINIMA_DO_VISOR = 440
+"""O piso do visualizador, e ele também é o que o painel pede (S-552, segunda rodada).
+
+Eram 520, escritos como "abaixo disso a página não cabe nem no ajuste à largura". Medido, o painel
+responde **198 px** de mínimo desde que a S-528 trocou as três fileiras de cromo por uma fila de
+32 px. Os 440 não são o mínimo dele: são a largura em que uma página A5 a 100% ainda se lê sem
+rolagem horizontal, e é por isso que este número continua acima do que o painel exige."""
+
+LARGURA_PREFERIDA_DAS_ABAS = 720
+"""O que o lado das abas **pede** quando há espaço, em pixel (S-552, segunda rodada).
+
+São os 720 que eram o piso até esta rodada, demovidos de exigência a preferência. **A distinção é
+o item inteiro:** piso é onde a janela para de encolher, e por isso ele tinha de cair para a janela
+caber em 1024; preferida é o que o lado pede quando há espaço. Sem separar os dois, baixar o piso
+levava junto o arranjo de fábrica: a 1400×950 a aba ia de 720 para 585 px e o tabuleiro da sala de
+488 para 392. **E os 720 são o que a Galeria ocupa mais o cromo** -- 702 + 6 de moldura da aba + 12
+de barra --, invariante que `GaleriaNaLarguraPreferidaTests` cobra desde a quarta rodada."""
+
+LARGURA_PREFERIDA_DO_VISOR = 520
+"""O mesmo para o lado do livro: os 520 que eram o piso do visor.
+
+**E é o preferido do visor que desfaz o empate numa janela de 1024**, onde os dois preferidos não
+cabem juntos: quem cede é a aba, porque a página do livro é o que não se lê espremido -- ver
+`geometria.divisor_da_primeira_abertura`."""
 
 CHROME_HORIZONTAL = 60
 """Bordas, `padding` dos painéis e a alça do divisor -- o que não é conteúdo, na horizontal."""

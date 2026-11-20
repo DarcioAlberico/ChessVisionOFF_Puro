@@ -46,7 +46,6 @@ from PyQt6.QtCore import QSize, Qt, QTime, QTimer, pyqtSignal
 from PyQt6.QtGui import QResizeEvent
 from PyQt6.QtWidgets import (
     QDialog,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -273,8 +272,13 @@ class RodapeDaJanela(QWidget):
         vertical.setContentsMargins(0, 0, 0, 0)
         vertical.setSpacing(0)
 
-        risco = QFrame(self)
-        risco.setFrameShape(QFrame.Shape.HLine)
+        # **Um `QWidget` de 1 px pintado pela folha, e não um `QFrame.HLine`**, pela razão de
+        # `qt/fila._separador`. Medido no `HLine` sobre o cromo claro: `#c9ced5` (1,4:1) no `Fusion`
+        # e 2 px de `#dcdfe2` (1,2:1) no `windows11`: a cor vinha da paleta, a folha não chegava.
+        risco = QWidget(self)
+        risco.setObjectName(tema.ID_DO_SEPARADOR)
+        risco.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        risco.setFixedHeight(1)
         vertical.addWidget(risco)
 
         linha = QHBoxLayout()

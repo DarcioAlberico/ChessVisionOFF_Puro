@@ -1,6 +1,14 @@
 {
-  "mb": 684,
-  "arquivos": 4275,
-  "data": "2026-08-18",
-  "commit": "9a683d1"
+  "mb": 677,
+  "arquivos": 4264,
+  "extras": [
+    "demo",
+    "dev",
+    "ocr",
+    "onnx",
+    "packaging",
+    "second-opinion"
+  ],
+  "data": "2026-11-06",
+  "commit": "3f780eb5"
 }

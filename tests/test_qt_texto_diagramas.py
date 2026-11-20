@@ -105,7 +105,7 @@ class LeituraEntregaAFolhaTests(_Aba):
         self.assertIn("1 diagrama(s)", self.recados[-1])
 
     def test_o_rodape_diz_quanto_a_leitura_custou(self) -> None:
-        """A pessoa escolhe o motor e o modo bloco pelo preço, e o preço tem de ser dito (item 16)."""
+        """A pessoa escolhe o motor pelo preço, e o preço tem de ser dito (item 16)."""
         self.painel.leitura._leitura_terminou((_pagina(), None, None, 3.94))
         self.assertEqual(self.recados[-1], f"Folha lida em 3,9 s: {len(self.painel.documento.corridas)} trecho(s), 1 diagrama(s).")
         self.painel.leitura._leitura_terminou((_pagina(), None))  # o formato antigo, sem tempo, continua a valer
@@ -142,7 +142,7 @@ class LeituraEntregaAFolhaTests(_Aba):
         self.painel.leitura._leitura_terminou((PaginaLida(documento="livro.pdf", pagina=3), None, None, 2.04))
         self.assertEqual(
             self.recados[-1],
-            "A folha 4 não tem texto lido (motor auto, 2,0 s): tente outro motor ou o modo bloco.",
+            "A folha 4 não tem texto lido (motor auto, 2,0 s): tente outro motor.",
         )
         self.assertEqual(self.painel.texto(), "")
         self.assertTrue(self.painel.vazio.isVisible(), "o estado vazio continua na tela")
@@ -951,10 +951,10 @@ class TetoDoCampoDeFolhaTests(_Aba):
         self.assertEqual(self.painel.leitura.campo_de_folha.maximum(), texto_leitura.TETO_DE_FOLHAS)
 
 
-class MotorEModoBlocoTests(_Aba):
-    """`definir_motor`/`definir_modo_bloco`: o que a janela repõe da sessão anterior (item 17)."""
+class MotorGravadoTests(_Aba):
+    """`definir_motor`: o que a janela repõe da sessão anterior (item 17)."""
 
-    def test_repor_o_motor_e_o_modo_bloco_sem_frase_no_rodape(self) -> None:
+    def test_repor_o_motor_sem_frase_no_rodape(self) -> None:
         from chess_diagram_ocr.ui.texto_declarado import MOTORES
 
         self.painel.leitura.definir_motor(MOTORES[-1])
@@ -962,23 +962,17 @@ class MotorEModoBlocoTests(_Aba):
         self.assertEqual(self.painel.leitura.escolha_de_motor.currentData(), MOTORES[-1])
         self.painel.leitura.definir_motor("motor-que-nao-existe")
         self.assertEqual(self.painel.leitura.motor, MOTORES[-1], "um nome desconhecido é ignorado")
-        self.painel.leitura.definir_modo_bloco(True)
-        self.assertTrue(self.painel.leitura.modo_bloco)
-        self.assertTrue(self.painel.leitura.caixa_de_bloco.isChecked())
         self.assertEqual(self.recados, [], "repor não é clicar: nada no rodapé")
-        self.painel.leitura.caixa_de_bloco.setChecked(False)
-        self.assertFalse(self.painel.leitura.modo_bloco)
-        self.assertIn("Modo linha", self.recados[-1])
 
-    def test_o_estado_grava_e_le_o_motor_e_o_modo_bloco(self) -> None:
+    def test_o_estado_grava_e_le_o_motor(self) -> None:
         from chess_diagram_ocr.ui.state import AppState, load_state, save_state
 
         estado = AppState()
-        estado.texto_motor, estado.texto_bloco = "glifo", True
+        estado.texto_motor = "glifo"
         caminho = self.pasta / "janela.json"
         save_state(caminho, estado)
         lido = load_state(caminho)
-        self.assertEqual((lido.texto_motor, lido.texto_bloco), ("glifo", True))
+        self.assertEqual(lido.texto_motor, "glifo")
 
 
 class FalhaComRastroTests(_Aba):

@@ -163,7 +163,7 @@ class EscolhaEInterruptorTests(unittest.TestCase):
         self.montada = qt_menu.montar(self.janela, comandos_de_mentira(self.chamadas))
 
     def test_o_interruptor_e_marcavel(self) -> None:
-        for acao in ("marcar_diagramas", "roda_vira_pagina", "modo_bloco", "quebrar_linha"):
+        for acao in ("marcar_diagramas", "roda_vira_pagina", "quebrar_linha"):
             with self.subTest(acao=acao):
                 self.assertTrue(self.montada.acoes[acao].isCheckable())
 
@@ -174,8 +174,8 @@ class EscolhaEInterruptorTests(unittest.TestCase):
         rodaria o comando que produziu aquele estado -- um laço que no Tk não existe porque lá a
         variável e o comando são coisas separadas.
         """
-        self.montada.marcar("modo_bloco", ligado=True)
-        self.assertTrue(self.montada.acoes["modo_bloco"].isChecked())
+        self.montada.marcar("quebrar_linha", ligado=True)
+        self.assertTrue(self.montada.acoes["quebrar_linha"].isChecked())
         self.assertEqual(self.chamadas, [], "refletir estado disparou o comando")
 
     def test_marcar_o_que_nao_e_interruptor_e_silencioso(self) -> None:

@@ -1,0 +1,251 @@
+{
+ "data": "2026-11-08",
+ "o_que": "S-711: o texto despedaçado na folha com moldura, e o corte de RUIDO_POR_TOKEN subido de 1,3 para 3,0",
+ "script": "docs/metrics/texto_despedacado_2026-11-08/despedacado.py",
+ "populacao": {
+  "folhas": 26730,
+  "erros": 0,
+  "com_moldura": 2467,
+  "com_40_ou_mais_caracteres": 2435
+ },
+ "por_livro": {
+  "📚Chess Evolution 2014 №097-149": {
+   "folhas": 1463,
+   "ruido_ate_1_3": 0,
+   "despedacado_1_3_a_3_0": 0,
+   "de_3_0_a_4_0": 4,
+   "mediana": 4.59
+  },
+  "📚Chess Evolution 2013 №045-096": {
+   "folhas": 725,
+   "ruido_ate_1_3": 0,
+   "despedacado_1_3_a_3_0": 0,
+   "de_3_0_a_4_0": 8,
+   "mediana": 4.57
+  },
+  "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936)": {
+   "folhas": 121,
+   "ruido_ate_1_3": 2,
+   "despedacado_1_3_a_3_0": 10,
+   "de_3_0_a_4_0": 76,
+   "mediana": 3.46
+  },
+  "Mieses - Blind Schaken (1938)": {
+   "folhas": 66,
+   "ruido_ate_1_3": 2,
+   "despedacado_1_3_a_3_0": 57,
+   "de_3_0_a_4_0": 4,
+   "mediana": 1.97
+  },
+  "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945)": {
+   "folhas": 28,
+   "ruido_ate_1_3": 1,
+   "despedacado_1_3_a_3_0": 26,
+   "de_3_0_a_4_0": 1,
+   "mediana": 1.71
+  },
+  "Bachmann - Schachjahrbuch für 1899. I. Theil (1899)": {
+   "folhas": 10,
+   "ruido_ate_1_3": 10,
+   "despedacado_1_3_a_3_0": 0,
+   "de_3_0_a_4_0": 0,
+   "mediana": 1.06
+  },
+  "📚Yusupov Artur. Build Up Your Chess (all volumes)": {
+   "folhas": 10,
+   "ruido_ate_1_3": 0,
+   "despedacado_1_3_a_3_0": 1,
+   "de_3_0_a_4_0": 8,
+   "mediana": 3.34
+  },
+  "Levenfis - Cartea sahistului inceparator (1962)": {
+   "folhas": 4,
+   "ruido_ate_1_3": 4,
+   "despedacado_1_3_a_3_0": 0,
+   "de_3_0_a_4_0": 0,
+   "mediana": 1.15
+  },
+  "Stefaniu - Problematica Deschideriliol in sah (1992)": {
+   "folhas": 2,
+   "ruido_ate_1_3": 2,
+   "despedacado_1_3_a_3_0": 0,
+   "de_3_0_a_4_0": 0,
+   "mediana": 1.11
+  },
+  "Pachman_Ludek_Complete_Chess_Strategy_2_Principles_of_Pawn_Play": {
+   "folhas": 1,
+   "ruido_ate_1_3": 0,
+   "despedacado_1_3_a_3_0": 0,
+   "de_3_0_a_4_0": 1,
+   "mediana": 3.83
+  },
+  "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia": {
+   "folhas": 1,
+   "ruido_ate_1_3": 1,
+   "despedacado_1_3_a_3_0": 0,
+   "de_3_0_a_4_0": 0,
+   "mediana": 1.25
+  },
+  "Pachman L. Modern Chess Strateg": {
+   "folhas": 1,
+   "ruido_ate_1_3": 0,
+   "despedacado_1_3_a_3_0": 1,
+   "de_3_0_a_4_0": 0,
+   "mediana": 1.62
+  },
+  "Melhores Finais de Capablanca - Irving Chernev pt-br - Copia_hq": {
+   "folhas": 1,
+   "ruido_ate_1_3": 1,
+   "despedacado_1_3_a_3_0": 0,
+   "de_3_0_a_4_0": 0,
+   "mediana": 1.25
+  },
+  "La_casa_del_Ajedrez_El_metodo_Yusupov_4_Yusupov_Artur_Fundamentos": {
+   "folhas": 1,
+   "ruido_ate_1_3": 0,
+   "despedacado_1_3_a_3_0": 1,
+   "de_3_0_a_4_0": 0,
+   "mediana": 1.7
+  },
+  "1937 Kemeri": {
+   "folhas": 1,
+   "ruido_ate_1_3": 1,
+   "despedacado_1_3_a_3_0": 0,
+   "de_3_0_a_4_0": 0,
+   "mediana": 1.25
+  }
+ },
+ "faixas_contra_a_camada": [
+  {
+   "faixa": [
+    1.3,
+    2.0
+   ],
+   "folhas_com_camada": 53,
+   "glifo": {
+    "precisao": 0.0,
+    "revocacao": 0.0
+   },
+   "reserva": {
+    "precisao": 0.83,
+    "revocacao": 0.85
+   },
+   "reserva_revoca_mais": 52
+  },
+  {
+   "faixa": [
+    2.0,
+    2.5
+   ],
+   "folhas_com_camada": 20,
+   "glifo": {
+    "precisao": 0.13,
+    "revocacao": 0.05
+   },
+   "reserva": {
+    "precisao": 0.91,
+    "revocacao": 0.88
+   },
+   "reserva_revoca_mais": 19
+  },
+  {
+   "faixa": [
+    2.5,
+    2.8
+   ],
+   "folhas_com_camada": 9,
+   "glifo": {
+    "precisao": 0.23,
+    "revocacao": 0.15
+   },
+   "reserva": {
+    "precisao": 0.89,
+    "revocacao": 0.88
+   },
+   "reserva_revoca_mais": 9
+  },
+  {
+   "faixa": [
+    2.8,
+    3.0
+   ],
+   "folhas_com_camada": 8,
+   "glifo": {
+    "precisao": 0.45,
+    "revocacao": 0.37
+   },
+   "reserva": {
+    "precisao": 0.89,
+    "revocacao": 0.9
+   },
+   "reserva_revoca_mais": 8
+  },
+  {
+   "faixa": [
+    3.0,
+    3.3
+   ],
+   "folhas_com_camada": 35,
+   "glifo": {
+    "precisao": 0.64,
+    "revocacao": 0.57
+   },
+   "reserva": {
+    "precisao": 0.92,
+    "revocacao": 0.9
+   },
+   "reserva_revoca_mais": 34
+  },
+  {
+   "faixa": [
+    3.3,
+    4.0
+   ],
+   "folhas_com_camada": 55,
+   "glifo": {
+    "precisao": 0.66,
+    "revocacao": 0.61
+   },
+   "reserva": {
+    "precisao": 0.94,
+    "revocacao": 0.91
+   },
+   "reserva_revoca_mais": 55
+  }
+ ],
+ "reserva_nao_revoca_mais": [
+  {
+   "livro": "📚Yusupov Artur. Build Up Your Chess (all volumes)",
+   "folha": 1719,
+   "caracteres_por_token": 3.145
+  },
+  {
+   "livro": "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945)",
+   "folha": 29,
+   "caracteres_por_token": 2.393
+  },
+  {
+   "livro": "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936)",
+   "folha": 127,
+   "caracteres_por_token": 1.688
+  }
+ ],
+ "corte_novo": {
+  "valor": 3.0,
+  "folhas_que_passam_a_avisar": 96,
+  "avisos_que_elas_tinham": {},
+  "por_livro": {
+   "Kmoch - Internationaal meestertournooi Zandvoort 1936 (1936)": 10,
+   "Niemeijer - Zwarte Magie 100 zwarte dame‑problemen (1945)": 26,
+   "Pachman L. Modern Chess Strateg": 1,
+   "Mieses - Blind Schaken (1938)": 57,
+   "📚Yusupov Artur. Build Up Your Chess (all volumes)": 1,
+   "La_casa_del_Ajedrez_El_metodo_Yusupov_4_Yusupov_Artur_Fundamentos": 1
+  }
+ },
+ "figurina_mais_baixa": {
+  "livro": "📚Chess Evolution 2013 №045-096",
+  "folha": 1079,
+  "caracteres_por_token": 3.417
+ }
+}

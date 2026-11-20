@@ -1,0 +1,1686 @@
+{
+ "codigo": {
+  "coleta_que_ajustou": {
+   "commit": [
+    "b7be28567cc14be21eab9eadfc03f1960593e06d"
+   ],
+   "folhas": 251,
+   "modelo_sha256": [
+    "ca4bcc00b9c59b07"
+   ],
+   "src_sujo": false,
+   "tessdata_sha256": {
+    "deu": "19d219bbb6672c86",
+    "eng": "7d4322bd2a774972",
+    "fra": "ced037562e8c80c1",
+    "nld": "ced0e5e046a84c90",
+    "por": "c4932b937207a951",
+    "spa": "6f2e04d02774a18f"
+   },
+   "tesseract": [
+    "5.5.0.20241111"
+   ]
+  },
+  "marca_no_produto": {
+   "commit": [
+    "1dd1a0cf70163370ffe8f2a5314e7a979ad6609c"
+   ],
+   "folhas": 57,
+   "modelo_sha256": [
+    "ca4bcc00b9c59b07"
+   ],
+   "src_sujo": false,
+   "tessdata_sha256": {
+    "deu": "19d219bbb6672c86",
+    "eng": "7d4322bd2a774972",
+    "fra": "ced037562e8c80c1",
+    "nld": "ced0e5e046a84c90",
+    "por": "c4932b937207a951",
+    "spa": "6f2e04d02774a18f"
+   },
+   "tesseract": [
+    "5.5.0.20241111"
+   ]
+  },
+  "regua": "s701-2026-11-06"
+ },
+ "item": "S-760, S-761, S-763, S-766",
+ "medido_em": "2026-11-06",
+ "pergunta": "A confiança por palavra se calibra por domínio? A marca paga a atenção de quem revisa? Algum sinal sem referência acusa a folha ruim? Corrigir uma vez corrige o livro?",
+ "regua": "palavra de prosa da régua, normalização tip, contra a camada montada; o split teste não foi aberto",
+ "ressalvas": [
+  "Tudo é dev contaminado: quem julga a G5 é o portão, no ouro-teste, que este item não abriu.",
+  "O ouro-dev tem só 19 palavras erradas depois da S-721: o IC é largo, e a medida que não foi vista pelo ajuste é a que deixa um livro de fora.",
+  "No domínio scan, a referência é OCR de terceiro: a prata ordena, e a probabilidade de lá é contra aquela referência. O ajuste tira a folha em que o oráculo erra mais de 10%; a validação publica com e sem.",
+  "Parte do erro do digital é ruído de rótulo: legenda e título lidos certo que a referência tira, por cruzarem o diagrama (`OLAFSSON`, `Short-Speelman`) contam como erro, e nenhuma marca os separa.",
+  "O livro c22d5e70, da prata, é da série de um livro do teste (S-750): é medido, e nunca ajusta.",
+  "Tempos sob contenção: três trilhas na máquina. Nenhum número de tempo é veredito aqui."
+ ],
+ "s760_alternativas_do_lstm": {
+  "custo": "0,88 a 1,34 s por folha como processo a mais, ou +15% substituindo o TSV, da S-745 e da S-729: não foi remedido sob contenção",
+  "medida": {
+   "digital": {
+    "com_alternativas": {
+     "captura": 0.7692,
+     "captura_ic95": [
+      0.5194,
+      0.9289
+     ],
+     "ece": 0.00225,
+     "ece_por_faixa": 0.17539,
+     "fracao_marcada": 0.0534
+    },
+    "sem_alternativas": {
+     "captura": 0.7692,
+     "captura_ic95": [
+      0.5171,
+      0.9353
+     ],
+     "ece": 0.00248,
+     "ece_por_faixa": 0.16312,
+     "fracao_marcada": 0.0562
+    }
+   },
+   "scan": {
+    "com_alternativas": {
+     "captura": 0.5422,
+     "captura_ic95": [
+      0.41,
+      0.7024
+     ],
+     "ece": 0.00377,
+     "ece_por_faixa": 0.04014,
+     "fracao_marcada": 0.0556
+    },
+    "sem_alternativas": {
+     "captura": 0.5484,
+     "captura_ic95": [
+      0.4216,
+      0.7099
+     ],
+     "ece": 0.00394,
+     "ece_por_faixa": 0.04105,
+     "fracao_marcada": 0.0548
+    }
+   }
+  },
+  "veredito": "não pagam, e ficam de fora: nenhuma diferença sai do IC"
+ },
+ "s760_s761_calibrador_e_marca": {
+  "digital": {
+   "ajuste": {
+    "conjunto": "reservado_ouro",
+    "erradas": 150,
+    "folhas": 60,
+    "identidades": [
+     "18d93bd07b7a826c",
+     "603581c988ea2bd6",
+     "69343a5746264fae",
+     "7a548a47f20f5f1f",
+     "a728e2c7e968913c"
+    ],
+    "livros": 5,
+    "palavras": 12408
+   },
+   "corte_de_revisar": 0.01621,
+   "deixa_um_livro_de_fora": {
+    "curva": [
+     {
+      "acerto": 0.25,
+      "amostras": 4,
+      "ate": 0.1,
+      "confianca": 0.05290970010596199,
+      "de": 0.0
+     },
+     {
+      "acerto": 0.42857142857142855,
+      "amostras": 7,
+      "ate": 0.2,
+      "confianca": 0.16379531837455627,
+      "de": 0.1
+     },
+     {
+      "acerto": 0.4,
+      "amostras": 10,
+      "ate": 0.3,
+      "confianca": 0.24438330085311072,
+      "de": 0.2
+     },
+     {
+      "acerto": 0.72,
+      "amostras": 25,
+      "ate": 0.4,
+      "confianca": 0.3528569711078437,
+      "de": 0.3
+     },
+     {
+      "acerto": 0.8181818181818182,
+      "amostras": 11,
+      "ate": 0.5,
+      "confianca": 0.44365931940527137,
+      "de": 0.4
+     },
+     {
+      "acerto": 0.5862068965517241,
+      "amostras": 29,
+      "ate": 0.6,
+      "confianca": 0.5611171504690341,
+      "de": 0.5
+     },
+     {
+      "acerto": 0.6046511627906976,
+      "amostras": 43,
+      "ate": 0.7,
+      "confianca": 0.6584107393113664,
+      "de": 0.6
+     },
+     {
+      "acerto": 0.6206896551724138,
+      "amostras": 58,
+      "ate": 0.8,
+      "confianca": 0.7619924684005891,
+      "de": 0.7
+     },
+     {
+      "acerto": 0.813953488372093,
+      "amostras": 129,
+      "ate": 0.9,
+      "confianca": 0.8653137672594644,
+      "de": 0.8
+     },
+     {
+      "acerto": 0.9960348055953299,
+      "amostras": 18158,
+      "ate": 1.0,
+      "confianca": 0.9954580841712083,
+      "de": 0.9
+     }
+    ],
+    "ece": 0.00248,
+    "ece_por_faixa": 0.16312,
+    "marca": {
+     "captura": 0.7692,
+     "captura_ic95": [
+      0.5171,
+      0.9353
+     ],
+     "capturadas": 130,
+     "erradas": 169,
+     "folhas": 87,
+     "fracao_ic95": [
+      0.0358,
+      0.0796
+     ],
+     "fracao_marcada": 0.0562,
+     "livros": 5,
+     "marcadas": 1038,
+     "palavras": 18474,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 118
+    },
+    "marca_por_teto_de_folha": {
+     "captura": 0.6805,
+     "captura_ic95": [
+      0.4444,
+      0.8629
+     ],
+     "capturadas": 115,
+     "erradas": 169,
+     "folhas": 87,
+     "fracao_ic95": [
+      0.047,
+      0.0478
+     ],
+     "fracao_marcada": 0.0474,
+     "livros": 5,
+     "marcadas": 876,
+     "palavras": 18474,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 118
+    },
+    "risco_cobertura": [
+     {
+      "cobertura": 0.5,
+      "erro_restante": 0.00249,
+      "erros_aceitos": 23
+     },
+     {
+      "cobertura": 0.8,
+      "erro_restante": 0.00217,
+      "erros_aceitos": 32
+     },
+     {
+      "cobertura": 0.9,
+      "erro_restante": 0.00211,
+      "erros_aceitos": 35
+     },
+     {
+      "cobertura": 0.95,
+      "erro_restante": 0.00251,
+      "erros_aceitos": 44
+     },
+     {
+      "cobertura": 0.98,
+      "erro_restante": 0.0037,
+      "erros_aceitos": 67
+     },
+     {
+      "cobertura": 0.99,
+      "erro_restante": 0.00525,
+      "erros_aceitos": 96
+     },
+     {
+      "cobertura": 1.0,
+      "erro_restante": 0.00915,
+      "erros_aceitos": 169
+     }
+    ]
+   },
+   "linha_de_comparacao": {
+    "confianca_de_quem_escreveu": {
+     "curva": [
+      {
+       "acerto": 0.9333333333333333,
+       "amostras": 255,
+       "ate": 0.1,
+       "confianca": 0.045607254334371475,
+       "de": 0.0
+      },
+      {
+       "acerto": 0.8205128205128205,
+       "amostras": 39,
+       "ate": 0.2,
+       "confianca": 0.14614685892209373,
+       "de": 0.1
+      },
+      {
+       "acerto": 0.9180327868852459,
+       "amostras": 61,
+       "ate": 0.3,
+       "confianca": 0.24659596217743546,
+       "de": 0.2
+      },
+      {
+       "acerto": 0.7037037037037037,
+       "amostras": 27,
+       "ate": 0.4,
+       "confianca": 0.34690417195652995,
+       "de": 0.3
+      },
+      {
+       "acerto": 0.9282511210762332,
+       "amostras": 223,
+       "ate": 0.5,
+       "confianca": 0.46404501195914133,
+       "de": 0.4
+      },
+      {
+       "acerto": 0.9696969696969697,
+       "amostras": 99,
+       "ate": 0.6,
+       "confianca": 0.5560050892852058,
+       "de": 0.5
+      },
+      {
+       "acerto": 0.9662162162162162,
+       "amostras": 296,
+       "ate": 0.7,
+       "confianca": 0.6363291677969932,
+       "de": 0.6
+      },
+      {
+       "acerto": 0.9429824561403509,
+       "amostras": 228,
+       "ate": 0.8,
+       "confianca": 0.7506942338818273,
+       "de": 0.7
+      },
+      {
+       "acerto": 0.933993399339934,
+       "amostras": 303,
+       "ate": 0.9,
+       "confianca": 0.8623121405014055,
+       "de": 0.8
+      },
+      {
+       "acerto": 0.9958685002655964,
+       "amostras": 16943,
+       "ate": 1.0,
+       "confianca": 0.9648260397051075,
+       "de": 0.9
+      }
+     ],
+     "ece": 0.06154,
+     "ece_por_faixa": 0.40931,
+     "risco_cobertura": [
+      {
+       "cobertura": 0.5,
+       "erro_restante": 0.00227,
+       "erros_aceitos": 21
+      },
+      {
+       "cobertura": 0.8,
+       "erro_restante": 0.00311,
+       "erros_aceitos": 46
+      },
+      {
+       "cobertura": 0.9,
+       "erro_restante": 0.00373,
+       "erros_aceitos": 62
+      },
+      {
+       "cobertura": 0.95,
+       "erro_restante": 0.00604,
+       "erros_aceitos": 106
+      },
+      {
+       "cobertura": 0.98,
+       "erro_restante": 0.00751,
+       "erros_aceitos": 136
+      },
+      {
+       "cobertura": 0.99,
+       "erro_restante": 0.00837,
+       "erros_aceitos": 153
+      },
+      {
+       "cobertura": 1.0,
+       "erro_restante": 0.00915,
+       "erros_aceitos": 169
+      }
+     ]
+    },
+    "constante": {
+     "curva": [
+      {
+       "acerto": 0.9908520082277796,
+       "amostras": 18474,
+       "ate": 1.0,
+       "confianca": 0.9908520082277796,
+       "de": 0.9
+      }
+     ],
+     "ece": 0.0,
+     "ece_por_faixa": 0.0,
+     "risco_cobertura": [
+      {
+       "cobertura": 0.5,
+       "erro_restante": 0.01137,
+       "erros_aceitos": 105
+      },
+      {
+       "cobertura": 0.8,
+       "erro_restante": 0.01076,
+       "erros_aceitos": 159
+      },
+      {
+       "cobertura": 0.9,
+       "erro_restante": 0.00974,
+       "erros_aceitos": 162
+      },
+      {
+       "cobertura": 0.95,
+       "erro_restante": 0.00946,
+       "erros_aceitos": 166
+      },
+      {
+       "cobertura": 0.98,
+       "erro_restante": 0.00933,
+       "erros_aceitos": 169
+      },
+      {
+       "cobertura": 0.99,
+       "erro_restante": 0.00924,
+       "erros_aceitos": 169
+      },
+      {
+       "cobertura": 1.0,
+       "erro_restante": 0.00915,
+       "erros_aceitos": 169
+      }
+     ]
+    },
+    "marca_s718": {
+     "captura": 0.5207,
+     "captura_ic95": [
+      0.3085,
+      0.728
+     ],
+     "capturadas": 88,
+     "erradas": 169,
+     "folhas": 87,
+     "fracao_ic95": [
+      0.047,
+      0.0478
+     ],
+     "fracao_marcada": 0.0474,
+     "livros": 5,
+     "marcadas": 876,
+     "palavras": 18474,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 118
+    }
+   },
+   "pesos": {
+    "caixa_alta": 2.5618,
+    "conf_ausente": 0.0,
+    "conf_logit": -0.6555,
+    "curta": 0.1246,
+    "discorda": 3.0895,
+    "distancia": -0.1,
+    "fora_do_lexico": 0.7778,
+    "forma_estranha": -0.9045,
+    "leitor_discorda": 0.9825,
+    "notacao": -4.686,
+    "origem_glifo": 1.0943,
+    "sem_letra": -3.0661,
+    "sem_par": 1.4138,
+    "vies": -3.5396
+   },
+   "validacao": {
+    "calibracao": {
+     "curva": [
+      {
+       "acerto": 0.5,
+       "amostras": 4,
+       "ate": 0.2,
+       "confianca": 0.1667291459986365,
+       "de": 0.1
+      },
+      {
+       "acerto": 1.0,
+       "amostras": 10,
+       "ate": 0.3,
+       "confianca": 0.2687506975296833,
+       "de": 0.2
+      },
+      {
+       "acerto": 0.6666666666666666,
+       "amostras": 3,
+       "ate": 0.4,
+       "confianca": 0.3332869110688698,
+       "de": 0.3
+      },
+      {
+       "acerto": 0.8,
+       "amostras": 5,
+       "ate": 0.5,
+       "confianca": 0.45252798274901185,
+       "de": 0.4
+      },
+      {
+       "acerto": 0.7142857142857143,
+       "amostras": 7,
+       "ate": 0.6,
+       "confianca": 0.5475933038078062,
+       "de": 0.5
+      },
+      {
+       "acerto": 0.2857142857142857,
+       "amostras": 7,
+       "ate": 0.7,
+       "confianca": 0.651284865601605,
+       "de": 0.6
+      },
+      {
+       "acerto": 0.8846153846153846,
+       "amostras": 26,
+       "ate": 0.8,
+       "confianca": 0.7638885571899074,
+       "de": 0.7
+      },
+      {
+       "acerto": 1.0,
+       "amostras": 55,
+       "ate": 0.9,
+       "confianca": 0.8694035457385746,
+       "de": 0.8
+      },
+      {
+       "acerto": 0.9991595226088418,
+       "amostras": 5949,
+       "ate": 1.0,
+       "confianca": 0.9948826681354586,
+       "de": 0.9
+      }
+     ],
+     "ece": 0.00839,
+     "ece_por_faixa": 0.28147
+    },
+    "captura_com_a_fracao_travada": [
+     {
+      "captura": 0.6842,
+      "captura_ic95": [
+       0.409,
+       1.0
+      ],
+      "fracao_marcada": 0.0099,
+      "fracao_pedida": 0.01
+     },
+     {
+      "captura": 0.7368,
+      "captura_ic95": [
+       0.4443,
+       1.0
+      ],
+      "fracao_marcada": 0.0199,
+      "fracao_pedida": 0.02
+     },
+     {
+      "captura": 0.7895,
+      "captura_ic95": [
+       0.5713,
+       1.0
+      ],
+      "fracao_marcada": 0.0298,
+      "fracao_pedida": 0.03
+     },
+     {
+      "captura": 0.9474,
+      "captura_ic95": [
+       0.75,
+       1.0
+      ],
+      "fracao_marcada": 0.0534,
+      "fracao_pedida": 0.05
+     },
+     {
+      "captura": 1.0,
+      "captura_ic95": [
+       1.0,
+       1.0
+      ],
+      "fracao_marcada": 0.1004,
+      "fracao_pedida": 0.1
+     },
+     {
+      "captura": 1.0,
+      "captura_ic95": [
+       1.0,
+       1.0
+      ],
+      "fracao_marcada": 0.2,
+      "fracao_pedida": 0.2
+     }
+    ],
+    "conjunto": "ouro_dev",
+    "marca_de_hoje_s718": {
+     "captura": 0.9474,
+     "captura_ic95": [
+      0.7857,
+      1.0
+     ],
+     "capturadas": 18,
+     "erradas": 19,
+     "folhas": 27,
+     "fracao_ic95": [
+      0.0471,
+      0.0482
+     ],
+     "fracao_marcada": 0.0476,
+     "livros": 5,
+     "marcadas": 289,
+     "palavras": 6066,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 10
+    },
+    "marca_no_produto": {
+     "captura": 0.9474,
+     "captura_ic95": [
+      0.75,
+      1.0
+     ],
+     "capturadas": 18,
+     "erradas": 19,
+     "folhas": 27,
+     "folhas_com_texto_diferente_de_antes": 0,
+     "folhas_comparadas": 27,
+     "fracao_ic95": [
+      0.0229,
+      0.0693
+     ],
+     "fracao_marcada": 0.0457,
+     "livros": 5,
+     "marcadas": 277,
+     "palavras": 6066,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 10
+    },
+    "marca_por_corte": {
+     "captura": 0.9474,
+     "captura_ic95": [
+      0.75,
+      1.0
+     ],
+     "capturadas": 18,
+     "erradas": 19,
+     "folhas": 27,
+     "fracao_ic95": [
+      0.0229,
+      0.0693
+     ],
+     "fracao_marcada": 0.0457,
+     "livros": 5,
+     "marcadas": 277,
+     "palavras": 6066,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 10
+    },
+    "marca_por_corte_sem_folha_de_referencia_ruim": {
+     "captura": 0.9474,
+     "captura_ic95": [
+      0.75,
+      1.0
+     ],
+     "capturadas": 18,
+     "erradas": 19,
+     "folhas": 27,
+     "fracao_ic95": [
+      0.0229,
+      0.0693
+     ],
+     "fracao_marcada": 0.0457,
+     "livros": 5,
+     "marcadas": 277,
+     "palavras": 6066,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 10
+    },
+    "marca_por_teto_de_folha": {
+     "captura": 1.0,
+     "captura_ic95": [
+      1.0,
+      1.0
+     ],
+     "capturadas": 19,
+     "erradas": 19,
+     "folhas": 27,
+     "fracao_ic95": [
+      0.0471,
+      0.0482
+     ],
+     "fracao_marcada": 0.0476,
+     "livros": 5,
+     "marcadas": 289,
+     "palavras": 6066,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 10
+    },
+    "risco_cobertura": [
+     {
+      "cobertura": 0.5,
+      "erro_restante": 0.0,
+      "erros_aceitos": 0
+     },
+     {
+      "cobertura": 0.8,
+      "erro_restante": 0.0,
+      "erros_aceitos": 0
+     },
+     {
+      "cobertura": 0.9,
+      "erro_restante": 0.0,
+      "erros_aceitos": 0
+     },
+     {
+      "cobertura": 0.95,
+      "erro_restante": 0.00017,
+      "erros_aceitos": 1
+     },
+     {
+      "cobertura": 0.98,
+      "erro_restante": 0.00084,
+      "erros_aceitos": 5
+     },
+     {
+      "cobertura": 0.99,
+      "erro_restante": 0.001,
+      "erros_aceitos": 6
+     },
+     {
+      "cobertura": 1.0,
+      "erro_restante": 0.00313,
+      "erros_aceitos": 19
+     }
+    ]
+   }
+  },
+  "scan": {
+   "ajuste": {
+    "conjunto": "reservado_prata",
+    "erradas": 488,
+    "folhas": 36,
+    "identidades": [
+     "05a0e10f297ee860",
+     "0da3a0e835775d81",
+     "1033806d3d63e61e",
+     "43beb378084291b0",
+     "9013f3b8725ba985",
+     "93cc211e9236033f",
+     "a9c024a3cd4ebd2e",
+     "d611aba22cf122df"
+    ],
+    "livros": 8,
+    "palavras": 10456
+   },
+   "corte_de_revisar": 0.1793,
+   "deixa_um_livro_de_fora": {
+    "curva": [
+     {
+      "acerto": 0.041666666666666664,
+      "amostras": 168,
+      "ate": 0.1,
+      "confianca": 0.039985886740343354,
+      "de": 0.0
+     },
+     {
+      "acerto": 0.13709677419354838,
+      "amostras": 124,
+      "ate": 0.2,
+      "confianca": 0.14744351535091563,
+      "de": 0.1
+     },
+     {
+      "acerto": 0.28695652173913044,
+      "amostras": 115,
+      "ate": 0.3,
+      "confianca": 0.24592153792911678,
+      "de": 0.2
+     },
+     {
+      "acerto": 0.3,
+      "amostras": 70,
+      "ate": 0.4,
+      "confianca": 0.3438971123917921,
+      "de": 0.3
+     },
+     {
+      "acerto": 0.3076923076923077,
+      "amostras": 91,
+      "ate": 0.5,
+      "confianca": 0.44908632094559664,
+      "de": 0.4
+     },
+     {
+      "acerto": 0.5043478260869565,
+      "amostras": 115,
+      "ate": 0.6,
+      "confianca": 0.553901767243238,
+      "de": 0.5
+     },
+     {
+      "acerto": 0.7424242424242424,
+      "amostras": 198,
+      "ate": 0.7,
+      "confianca": 0.6580158408024003,
+      "de": 0.6
+     },
+     {
+      "acerto": 0.772093023255814,
+      "amostras": 430,
+      "ate": 0.8,
+      "confianca": 0.7537384058770462,
+      "de": 0.7
+     },
+     {
+      "acerto": 0.8711194731890874,
+      "amostras": 1063,
+      "ate": 0.9,
+      "confianca": 0.8581480831063129,
+      "de": 0.8
+     },
+     {
+      "acerto": 0.9796940194714882,
+      "amostras": 17975,
+      "ate": 1.0,
+      "confianca": 0.9784698360690544,
+      "de": 0.9
+     }
+    ],
+    "ece": 0.00434,
+    "ece_por_faixa": 0.04049,
+    "marca": {
+     "captura": 0.5453,
+     "captura_ic95": [
+      0.386,
+      0.6763
+     ],
+     "capturadas": 638,
+     "erradas": 1170,
+     "folhas": 66,
+     "fracao_ic95": [
+      0.0261,
+      0.0935
+     ],
+     "fracao_marcada": 0.0533,
+     "livros": 10,
+     "marcadas": 1084,
+     "palavras": 20349,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 1402
+    },
+    "marca_por_teto_de_folha": {
+     "captura": 0.3795,
+     "captura_ic95": [
+      0.2939,
+      0.5127
+     ],
+     "capturadas": 444,
+     "erradas": 1170,
+     "folhas": 66,
+     "fracao_ic95": [
+      0.0483,
+      0.0488
+     ],
+     "fracao_marcada": 0.0486,
+     "livros": 10,
+     "marcadas": 988,
+     "palavras": 20349,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 1402
+    },
+    "risco_cobertura": [
+     {
+      "cobertura": 0.5,
+      "erro_restante": 0.00816,
+      "erros_aceitos": 83
+     },
+     {
+      "cobertura": 0.8,
+      "erro_restante": 0.01622,
+      "erros_aceitos": 264
+     },
+     {
+      "cobertura": 0.9,
+      "erro_restante": 0.0213,
+      "erros_aceitos": 390
+     },
+     {
+      "cobertura": 0.95,
+      "erro_restante": 0.02907,
+      "erros_aceitos": 562
+     },
+     {
+      "cobertura": 0.98,
+      "erro_restante": 0.04112,
+      "erros_aceitos": 820
+     },
+     {
+      "cobertura": 0.99,
+      "erro_restante": 0.04864,
+      "erros_aceitos": 980
+     },
+     {
+      "cobertura": 1.0,
+      "erro_restante": 0.0575,
+      "erros_aceitos": 1170
+     }
+    ]
+   },
+   "linha_de_comparacao": {
+    "confianca_de_quem_escreveu": {
+     "curva": [
+      {
+       "acerto": 0.5258620689655172,
+       "amostras": 348,
+       "ate": 0.1,
+       "confianca": 0.023541510072263162,
+       "de": 0.0
+      },
+      {
+       "acerto": 0.6705202312138728,
+       "amostras": 173,
+       "ate": 0.2,
+       "confianca": 0.15105839817016017,
+       "de": 0.1
+      },
+      {
+       "acerto": 0.6226415094339622,
+       "amostras": 212,
+       "ate": 0.3,
+       "confianca": 0.2527918301485346,
+       "de": 0.2
+      },
+      {
+       "acerto": 0.6725978647686833,
+       "amostras": 281,
+       "ate": 0.4,
+       "confianca": 0.35079134451490734,
+       "de": 0.3
+      },
+      {
+       "acerto": 0.8095238095238095,
+       "amostras": 252,
+       "ate": 0.5,
+       "confianca": 0.4487805333910609,
+       "de": 0.4
+      },
+      {
+       "acerto": 0.8745644599303136,
+       "amostras": 287,
+       "ate": 0.6,
+       "confianca": 0.5516404965031831,
+       "de": 0.5
+      },
+      {
+       "acerto": 0.8233695652173914,
+       "amostras": 368,
+       "ate": 0.7,
+       "confianca": 0.6492946414318951,
+       "de": 0.6
+      },
+      {
+       "acerto": 0.875,
+       "amostras": 496,
+       "ate": 0.8,
+       "confianca": 0.7528581023971141,
+       "de": 0.7
+      },
+      {
+       "acerto": 0.9388609715242882,
+       "amostras": 1194,
+       "ate": 0.9,
+       "confianca": 0.8620397211633636,
+       "de": 0.8
+      },
+      {
+       "acerto": 0.9706058071454177,
+       "amostras": 16738,
+       "ate": 1.0,
+       "confianca": 0.9595065094662742,
+       "de": 0.9
+      }
+     ],
+     "ece": 0.05009,
+     "ece_por_faixa": 0.27812,
+     "risco_cobertura": [
+      {
+       "cobertura": 0.5,
+       "erro_restante": 0.01838,
+       "erros_aceitos": 187
+      },
+      {
+       "cobertura": 0.8,
+       "erro_restante": 0.02838,
+       "erros_aceitos": 462
+      },
+      {
+       "cobertura": 0.9,
+       "erro_restante": 0.03342,
+       "erros_aceitos": 612
+      },
+      {
+       "cobertura": 0.95,
+       "erro_restante": 0.04009,
+       "erros_aceitos": 775
+      },
+      {
+       "cobertura": 0.98,
+       "erro_restante": 0.04944,
+       "erros_aceitos": 986
+      },
+      {
+       "cobertura": 0.99,
+       "erro_restante": 0.05281,
+       "erros_aceitos": 1064
+      },
+      {
+       "cobertura": 1.0,
+       "erro_restante": 0.0575,
+       "erros_aceitos": 1170
+      }
+     ]
+    },
+    "constante": {
+     "curva": [
+      {
+       "acerto": 0.9425033171163202,
+       "amostras": 20349,
+       "ate": 1.0,
+       "confianca": 0.9425033171163196,
+       "de": 0.9
+      }
+     ],
+     "ece": 0.0,
+     "ece_por_faixa": 0.0,
+     "risco_cobertura": [
+      {
+       "cobertura": 0.5,
+       "erro_restante": 0.04305,
+       "erros_aceitos": 438
+      },
+      {
+       "cobertura": 0.8,
+       "erro_restante": 0.04859,
+       "erros_aceitos": 791
+      },
+      {
+       "cobertura": 0.9,
+       "erro_restante": 0.05782,
+       "erros_aceitos": 1059
+      },
+      {
+       "cobertura": 0.95,
+       "erro_restante": 0.05902,
+       "erros_aceitos": 1141
+      },
+      {
+       "cobertura": 0.98,
+       "erro_restante": 0.05812,
+       "erros_aceitos": 1159
+      },
+      {
+       "cobertura": 0.99,
+       "erro_restante": 0.05793,
+       "erros_aceitos": 1167
+      },
+      {
+       "cobertura": 1.0,
+       "erro_restante": 0.0575,
+       "erros_aceitos": 1170
+      }
+     ]
+    },
+    "marca_s718": {
+     "captura": 0.3145,
+     "captura_ic95": [
+      0.2579,
+      0.4011
+     ],
+     "capturadas": 368,
+     "erradas": 1170,
+     "folhas": 66,
+     "fracao_ic95": [
+      0.0467,
+      0.0504
+     ],
+     "fracao_marcada": 0.0486,
+     "livros": 10,
+     "marcadas": 989,
+     "palavras": 20349,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 1402
+    }
+   },
+   "pesos": {
+    "caixa_alta": 2.7009,
+    "conf_ausente": 0.0,
+    "conf_logit": -0.6452,
+    "curta": 0.5945,
+    "discorda": 0.8073,
+    "distancia": 0.9532,
+    "fora_do_lexico": 1.1198,
+    "forma_estranha": -1.9036,
+    "leitor_discorda": 0.1015,
+    "notacao": -4.7205,
+    "origem_glifo": 2.0667,
+    "sem_letra": -3.986,
+    "sem_par": 1.6402,
+    "vies": -2.4287
+   },
+   "validacao": {
+    "calibracao": {
+     "curva": [
+      {
+       "acerto": 0.0196078431372549,
+       "amostras": 102,
+       "ate": 0.1,
+       "confianca": 0.039072118847893016,
+       "de": 0.0
+      },
+      {
+       "acerto": 0.12345679012345678,
+       "amostras": 81,
+       "ate": 0.2,
+       "confianca": 0.15324762010513213,
+       "de": 0.1
+      },
+      {
+       "acerto": 0.2037037037037037,
+       "amostras": 54,
+       "ate": 0.3,
+       "confianca": 0.25193192045465557,
+       "de": 0.2
+      },
+      {
+       "acerto": 0.13953488372093023,
+       "amostras": 43,
+       "ate": 0.4,
+       "confianca": 0.34720618337274,
+       "de": 0.3
+      },
+      {
+       "acerto": 0.25,
+       "amostras": 32,
+       "ate": 0.5,
+       "confianca": 0.4503573450329645,
+       "de": 0.4
+      },
+      {
+       "acerto": 0.5238095238095238,
+       "amostras": 42,
+       "ate": 0.6,
+       "confianca": 0.5514164040857605,
+       "de": 0.5
+      },
+      {
+       "acerto": 0.5606060606060606,
+       "amostras": 66,
+       "ate": 0.7,
+       "confianca": 0.6595208438294407,
+       "de": 0.6
+      },
+      {
+       "acerto": 0.6440677966101694,
+       "amostras": 118,
+       "ate": 0.8,
+       "confianca": 0.7563519105995031,
+       "de": 0.7
+      },
+      {
+       "acerto": 0.780045351473923,
+       "amostras": 441,
+       "ate": 0.9,
+       "confianca": 0.8583233953457959,
+       "de": 0.8
+      },
+      {
+       "acerto": 0.9754319048687458,
+       "amostras": 8914,
+       "ate": 1.0,
+       "confianca": 0.9811265438052285,
+       "de": 0.9
+      }
+     ],
+     "ece": 0.013,
+     "ece_por_faixa": 0.08283
+    },
+    "captura_com_a_fracao_travada": [
+     {
+      "captura": 0.1408,
+      "captura_ic95": [
+       0.0641,
+       0.1756
+      ],
+      "fracao_marcada": 0.0099,
+      "fracao_pedida": 0.01
+     },
+     {
+      "captura": 0.2669,
+      "captura_ic95": [
+       0.124,
+       0.3566
+      ],
+      "fracao_marcada": 0.0199,
+      "fracao_pedida": 0.02
+     },
+     {
+      "captura": 0.3886,
+      "captura_ic95": [
+       0.2157,
+       0.4908
+      ],
+      "fracao_marcada": 0.0299,
+      "fracao_pedida": 0.03
+     },
+     {
+      "captura": 0.5205,
+      "captura_ic95": [
+       0.3528,
+       0.6249
+      ],
+      "fracao_marcada": 0.0499,
+      "fracao_pedida": 0.05
+     },
+     {
+      "captura": 0.6818,
+      "captura_ic95": [
+       0.5396,
+       0.7775
+      ],
+      "fracao_marcada": 0.1,
+      "fracao_pedida": 0.1
+     },
+     {
+      "captura": 0.7962,
+      "captura_ic95": [
+       0.6523,
+       0.8786
+      ],
+      "fracao_marcada": 0.1999,
+      "fracao_pedida": 0.2
+     }
+    ],
+    "conjunto": "prata",
+    "marca_de_hoje_s718": {
+     "captura": 0.3079,
+     "captura_ic95": [
+      0.2411,
+      0.443
+     ],
+     "capturadas": 210,
+     "erradas": 682,
+     "folhas": 30,
+     "fracao_ic95": [
+      0.0463,
+      0.051
+     ],
+     "fracao_marcada": 0.0489,
+     "livros": 10,
+     "marcadas": 484,
+     "palavras": 9893,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 780
+    },
+    "marca_no_produto": {
+     "captura": 0.5597,
+     "captura_ic95": [
+      0.4014,
+      0.6626
+     ],
+     "capturadas": 389,
+     "erradas": 695,
+     "folhas": 30,
+     "folhas_com_texto_diferente_de_antes": 0,
+     "folhas_comparadas": 30,
+     "fracao_ic95": [
+      0.0264,
+      0.0961
+     ],
+     "fracao_marcada": 0.0588,
+     "livros": 10,
+     "marcadas": 612,
+     "palavras": 10413,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 780
+    },
+    "marca_por_corte": {
+     "captura": 0.5616,
+     "captura_ic95": [
+      0.4012,
+      0.6667
+     ],
+     "capturadas": 383,
+     "erradas": 682,
+     "folhas": 30,
+     "fracao_ic95": [
+      0.0273,
+      0.0975
+     ],
+     "fracao_marcada": 0.0601,
+     "livros": 10,
+     "marcadas": 595,
+     "palavras": 9893,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 780
+    },
+    "marca_por_corte_sem_folha_de_referencia_ruim": {
+     "captura": 0.4908,
+     "captura_ic95": [
+      0.3121,
+      0.6746
+     ],
+     "capturadas": 80,
+     "erradas": 163,
+     "folhas": 19,
+     "fracao_ic95": [
+      0.0121,
+      0.0591
+     ],
+     "fracao_marcada": 0.0321,
+     "livros": 7,
+     "marcadas": 195,
+     "palavras": 6068,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 265
+    },
+    "marca_por_teto_de_folha": {
+     "captura": 0.3519,
+     "captura_ic95": [
+      0.2666,
+      0.5527
+     ],
+     "capturadas": 240,
+     "erradas": 682,
+     "folhas": 30,
+     "fracao_ic95": [
+      0.0482,
+      0.0489
+     ],
+     "fracao_marcada": 0.0485,
+     "livros": 10,
+     "marcadas": 480,
+     "palavras": 9893,
+     "palavras_perdidas_que_marca_nenhuma_alcanca": 780
+    },
+    "risco_cobertura": [
+     {
+      "cobertura": 0.5,
+      "erro_restante": 0.00546,
+      "erros_aceitos": 27
+     },
+     {
+      "cobertura": 0.8,
+      "erro_restante": 0.01756,
+      "erros_aceitos": 139
+     },
+     {
+      "cobertura": 0.9,
+      "erro_restante": 0.02437,
+      "erros_aceitos": 217
+     },
+     {
+      "cobertura": 0.95,
+      "erro_restante": 0.03479,
+      "erros_aceitos": 327
+     },
+     {
+      "cobertura": 0.98,
+      "erro_restante": 0.05147,
+      "erros_aceitos": 499
+     },
+     {
+      "cobertura": 0.99,
+      "erro_restante": 0.05973,
+      "erros_aceitos": 585
+     },
+     {
+      "cobertura": 1.0,
+      "erro_restante": 0.06894,
+      "erros_aceitos": 682
+     }
+    ]
+   }
+  }
+ },
+ "s763_monitor": {
+  "canario": {
+   "primeira": {
+    "folhas": [
+     {
+      "alarme": false,
+      "cer": 0.0,
+      "cer_de_base": 0.0,
+      "folha": 643,
+      "identidade": "18d93bd07b7a826c",
+      "lingua": "eng",
+      "motor": "fusao"
+     },
+     {
+      "alarme": false,
+      "cer": 0.0,
+      "cer_de_base": 0.0,
+      "folha": 186,
+      "identidade": "69343a5746264fae",
+      "lingua": "por",
+      "motor": "fusao"
+     }
+    ],
+    "margem": 0.002,
+    "rotulo": "canário de camada, não humano"
+   },
+   "regressao_de_mentira": {
+    "folhas": [
+     {
+      "alarme": false,
+      "cer": 0.001586,
+      "cer_de_base": 0.0,
+      "folha": 643,
+      "identidade": "18d93bd07b7a826c",
+      "lingua": "eng",
+      "motor": "glifo"
+     },
+     {
+      "alarme": true,
+      "cer": 0.002715,
+      "cer_de_base": 0.0,
+      "folha": 186,
+      "identidade": "69343a5746264fae",
+      "lingua": "por",
+      "motor": "glifo"
+     }
+    ],
+    "margem": 0.002,
+    "rotulo": "canário de camada, não humano"
+   },
+   "segunda": {
+    "folhas": [
+     {
+      "alarme": false,
+      "cer": 0.0,
+      "cer_de_base": 0.0,
+      "folha": 643,
+      "identidade": "18d93bd07b7a826c",
+      "lingua": "eng",
+      "motor": "fusao"
+     },
+     {
+      "alarme": false,
+      "cer": 0.0,
+      "cer_de_base": 0.0,
+      "folha": 186,
+      "identidade": "69343a5746264fae",
+      "lingua": "por",
+      "motor": "fusao"
+     }
+    ],
+    "margem": 0.002,
+    "rotulo": "canário de camada, não humano"
+   }
+  },
+  "regra": "ver o cabeçalho de texto_confianca_2026-11-06/monitor.py: escrita antes de olhar o número",
+  "sinais_por_dominio": {
+   "digital": {
+    "folha_ruim_a_partir_de": 0.01,
+    "folhas": {
+     "livros": 5,
+     "manifesto": 27,
+     "reservado": 60,
+     "ruins": 16
+    },
+    "sinais": {
+     "densidade": {
+      "alarme_no_manifesto": {
+       "alarme_em_folha_boa": 0.08,
+       "alarmes": 2,
+       "alarmes_falsos": 2,
+       "folhas": 27,
+       "revocacao": 0.0,
+       "ruins": 2,
+       "taxa_de_falso_alarme": 1.0
+      },
+      "corte_do_reservado": 0.12226,
+      "pearson": -0.074,
+      "spearman": 0.097,
+      "spearman_ic95": [
+       -0.324,
+       0.43
+      ],
+      "spearman_mediana_dentro_do_livro": -0.19,
+      "vira_alarme": false
+     },
+     "discordancia": {
+      "alarme_no_manifesto": {
+       "alarme_em_folha_boa": 0.36,
+       "alarmes": 9,
+       "alarmes_falsos": 9,
+       "folhas": 27,
+       "revocacao": 0.0,
+       "ruins": 2,
+       "taxa_de_falso_alarme": 1.0
+      },
+      "corte_do_reservado": 0.0407,
+      "pearson": 0.172,
+      "spearman": 0.216,
+      "spearman_ic95": [
+       -0.166,
+       0.564
+      ],
+      "spearman_mediana_dentro_do_livro": -0.035,
+      "vira_alarme": false
+     },
+     "erro_estimado": {
+      "alarme_no_manifesto": {
+       "alarme_em_folha_boa": 0.04,
+       "alarmes": 2,
+       "alarmes_falsos": 1,
+       "folhas": 27,
+       "revocacao": 0.5,
+       "ruins": 2,
+       "taxa_de_falso_alarme": 0.5
+      },
+      "corte_do_reservado": 0.02913,
+      "pearson": 0.212,
+      "spearman": 0.437,
+      "spearman_ic95": [
+       0.07,
+       0.713
+      ],
+      "spearman_mediana_dentro_do_livro": 0.575,
+      "vira_alarme": false
+     },
+     "marcadas": {
+      "alarme_no_manifesto": {
+       "alarme_em_folha_boa": 0.24,
+       "alarmes": 7,
+       "alarmes_falsos": 6,
+       "folhas": 27,
+       "revocacao": 0.5,
+       "ruins": 2,
+       "taxa_de_falso_alarme": 0.857
+      },
+      "corte_do_reservado": 0.06486,
+      "pearson": 0.094,
+      "spearman": 0.234,
+      "spearman_ic95": [
+       -0.139,
+       0.516
+      ],
+      "spearman_mediana_dentro_do_livro": -0.007,
+      "vira_alarme": false
+     }
+    }
+   },
+   "scan": {
+    "folha_ruim_a_partir_de": 0.05,
+    "folhas": {
+     "livros": 9,
+     "manifesto": 19,
+     "reservado": 36,
+     "ruins": 20
+    },
+    "sinais": {
+     "densidade": {
+      "alarme_no_manifesto": {
+       "alarme_em_folha_boa": 0.286,
+       "alarmes": 8,
+       "alarmes_falsos": 4,
+       "folhas": 19,
+       "revocacao": 0.8,
+       "ruins": 5,
+       "taxa_de_falso_alarme": 0.5
+      },
+      "corte_do_reservado": 0.14518,
+      "pearson": 0.277,
+      "spearman": 0.492,
+      "spearman_ic95": [
+       0.116,
+       0.803
+      ],
+      "spearman_mediana_dentro_do_livro": 0.5,
+      "vira_alarme": false
+     },
+     "discordancia": {
+      "alarme_no_manifesto": {
+       "alarme_em_folha_boa": 0.143,
+       "alarmes": 5,
+       "alarmes_falsos": 2,
+       "folhas": 19,
+       "revocacao": 0.6,
+       "ruins": 5,
+       "taxa_de_falso_alarme": 0.4
+      },
+      "corte_do_reservado": 0.29897,
+      "pearson": 0.354,
+      "spearman": 0.271,
+      "spearman_ic95": [
+       -0.07,
+       0.651
+      ],
+      "spearman_mediana_dentro_do_livro": 0.067,
+      "vira_alarme": false
+     },
+     "erro_estimado": {
+      "alarme_no_manifesto": {
+       "alarme_em_folha_boa": 0.143,
+       "alarmes": 5,
+       "alarmes_falsos": 2,
+       "folhas": 19,
+       "revocacao": 0.6,
+       "ruins": 5,
+       "taxa_de_falso_alarme": 0.4
+      },
+      "corte_do_reservado": 0.06233,
+      "pearson": 0.56,
+      "spearman": 0.367,
+      "spearman_ic95": [
+       0.015,
+       0.691
+      ],
+      "spearman_mediana_dentro_do_livro": 0.283,
+      "vira_alarme": false
+     },
+     "marcadas": {
+      "alarme_no_manifesto": {
+       "alarme_em_folha_boa": 0.0,
+       "alarmes": 1,
+       "alarmes_falsos": 0,
+       "folhas": 19,
+       "revocacao": 0.2,
+       "ruins": 5,
+       "taxa_de_falso_alarme": 0.0
+      },
+      "corte_do_reservado": 0.09794,
+      "pearson": 0.576,
+      "spearman": 0.349,
+      "spearman_ic95": [
+       -0.034,
+       0.67
+      ],
+      "spearman_mediana_dentro_do_livro": 0.192,
+      "vira_alarme": false
+     }
+    }
+   }
+  }
+ },
+ "s766_repetidos": {
+  "livro_603581:603581c988ea2bd6": {
+   "colaterais_que_a_previa_mostra": 4,
+   "erradas_na_fusao_refeita_com_as_palavras": 73,
+   "erradas_na_fusao_refeita_sem_as_palavras": 73,
+   "folhas": 40,
+   "folhas_em_que_o_lexico_do_livro_muda_o_texto": 0,
+   "lingua": "eng",
+   "maiores_repeticoes": [
+    10,
+    9,
+    2,
+    2,
+    2
+   ],
+   "mesmo_lido_outro_certo": 0,
+   "palavras_ensinadas": 7,
+   "palavras_erradas": 73,
+   "pares_de_troca_um_a_um": 43,
+   "primeiras_correcoes": 23,
+   "repetidos_que_a_troca_tira": 20
+  },
+  "livro_69343a:69343a5746264fae": {
+   "colaterais_que_a_previa_mostra": 43,
+   "erradas_na_fusao_refeita_com_as_palavras": 70,
+   "erradas_na_fusao_refeita_sem_as_palavras": 72,
+   "folhas": 40,
+   "folhas_em_que_o_lexico_do_livro_muda_o_texto": 1,
+   "lingua": "por",
+   "maiores_repeticoes": [
+    7,
+    4,
+    2,
+    2,
+    2
+   ],
+   "mesmo_lido_outro_certo": 0,
+   "palavras_ensinadas": 10,
+   "palavras_erradas": 73,
+   "pares_de_troca_um_a_um": 37,
+   "primeiras_correcoes": 24,
+   "repetidos_que_a_troca_tira": 13
+  }
+ }
+}

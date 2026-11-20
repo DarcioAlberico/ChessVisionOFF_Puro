@@ -1,0 +1,58 @@
+{
+  "paginas": 18,
+  "segundos_por_pagina": 1.0938,
+  "etapas": {
+    "renderizacao": 0.0479,
+    "camada": 0.0,
+    "deteccao": 0.4418,
+    "binarizacao": 0.0077,
+    "contornos": 0.0293,
+    "colados": 0.0046,
+    "linhas": 0.0035,
+    "classificacao": 0.3209,
+    "correcoes": 0.038,
+    "leitura_de_linha": 0.0,
+    "leitor_de_linha": 0.0,
+    "fusao": 0.0,
+    "coluna": 0.0023,
+    "nao_instrumentado": 0.1976
+  },
+  "chamadas": {
+    "renderizacao": 1.0,
+    "camada": 0.0,
+    "deteccao": 1.0,
+    "binarizacao": 1.0,
+    "contornos": 4.72,
+    "colados": 1.0,
+    "linhas": 5.33,
+    "classificacao": 137.94,
+    "correcoes": 209.72,
+    "leitura_de_linha": 0.0,
+    "leitor_de_linha": 0.0,
+    "fusao": 0.0,
+    "coluna": 1.0
+  },
+  "item": "S-215",
+  "motor": "glifo",
+  "hoje_por_pagina": 0.7176,
+  "texto_por_pagina": 0.604,
+  "total_por_pagina": 1.3216,
+  "paginas_do_acervo": 26730,
+  "horas_hoje": 5.328,
+  "horas_texto": 4.485,
+  "horas_total": 9.813,
+  "fator": 1.842,
+  "politica": "sob-demanda",
+  "politica_frase": "texto sob demanda, por página",
+  "livros": [
+    "1000 Chess Problems - Yakov Vladimirov 2015 .pdf",
+    "1001_Sacrificios_e__Combinações_Vencedores_Fred_Reinfeld,_Bruce_hq.pdf",
+    "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce.pdf",
+    "1001_Winning_Chess_Sacrifices_and_Combinations,_Fred_Reinfeld,_Bruce_hq.pdf",
+    "1937 Kemeri.pdf",
+    "400 Quebra-cabeças de Estratégia de Xadrez.pdf"
+  ],
+  "ressalvas": [
+    "Medido com a máquina dividida com outras duas corridas, com OMP_NUM_THREADS=3: a mesma ressalva da corrida da fusão, ao lado dela."
+  ]
+}

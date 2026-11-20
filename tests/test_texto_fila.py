@@ -167,7 +167,7 @@ class PersistenciaTests(unittest.TestCase):
 
 class ReguaTests(unittest.TestCase):
     def test_sem_leitor_de_linha_a_regua_e_a_confianca(self) -> None:
-        """`modo_bloco` está desligado por padrão desde a S-188: é o estado normal do programa."""
+        """A leitura em blocos saiu da página na S-726: é o estado normal do programa."""
         so_glifo = de_lidos([Lido("a", 0.2, "a", "")], faixas=documento.FAIXAS)
         self.assertEqual("confianca", Fila(tuple(so_glifo)).regua)
 

@@ -36,7 +36,7 @@ estilos, catálogo de comandos, ícones — está em [SPEC_UI.md](SPEC_UI.md) e
 > | S-585 a S-598 | [ROADMAP_PDF_COM_PGN.md](ROADMAP_PDF_COM_PGN.md) |
 > | S-599 | [PLANO_FAIXAS_REVERSAS.md](PLANO_FAIXAS_REVERSAS.md) |
 > | S-601 a S-668 | [SPEC_MESA_DE_TEXTO.md](SPEC_MESA_DE_TEXTO.md) |
-> | S-702, S-710 a S-712, S-715 a S-718, S-720 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
+> | S-700 a S-772 | [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) |
 > | S-800 a S-910 | [SPEC_SOLIDEZ.md](SPEC_SOLIDEZ.md) |
 
 ---
@@ -277,6 +277,9 @@ e o que mudou é que existe um documento para as ferramentas editarem.
 - **S-236** · O itálico que o leitor já mede e joga fora — ✅ **implementada em 2026-08-25**
 - **S-237** · O negrito: a espessura medida, ou dita não-medida — ◐ **parcial**: a camada entrou, a
   rota geométrica foi medida e recusada, o itálico não entrou
+  *(estado em 2026-11-06: fechada. O itálico da camada entrou depois, é a `LinhaLida.italico_em`, e
+  a seção da S-237 em `SPEC_EDITOR.md` diz "a S-237 fecha"; o negrito da imagem segue recusado com
+  número, 82,2% contra 82,7%.)*
 - **S-238** · O arquivo do editor: salvar e reabrir sem perder diagrama, faixa nem correção —
   ✅ **implementada em 2026-08-24**
 - **S-239** · A correção humana carimba procedência, e vai para onde a S-212 a espera —

@@ -374,8 +374,8 @@ admissão por livro está na S-716.
   sem referência:** fração das sequências de lance que fecham legais a partir da FEN do diagrama
   (S-729) não cai em relação ao glifo — é o "modelo de língua" da notação, e o único juiz que não
   depende da camada.
-- **G4 — tempo, e o que ele custa no acervo.** O acervo tem **25.918 folhas em 54 PDFs** (contadas pelo
-  crítico da rodada 6; `custo.PAGINAS_DO_ACERVO` ainda diz 12.000 e fica desatualizado até a S-725). A 2 s
+- **G4 — tempo, e o que ele custa no acervo.** O acervo tinha **25.918 folhas em 54 PDFs** (contadas pelo
+  crítico da rodada 6; hoje são 26.730 em 58, e `custo.PAGINAS_DO_ACERVO` acompanha desde a S-725). A 2 s
   por folha, varrer o acervo leva ~14 h, e um livro de 800 folhas, ~27 min. A política da S-215
   (`texto_custo_20260826.json`: ler texto custava 2,21× a página sem texto, política "sob demanda")
   muda de faixa acima de 4× — a S-725 remede e a D4 decide. Este é o **único** orçamento de tempo do
@@ -441,6 +441,17 @@ ouro-dev **e** a Fase 105 não promover (S-755), a M1 não é rebaixada em silê
 marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU de mais uma rodada da Fase
 105 (D8). A escolha fica registrada aqui **antes** da primeira leitura do ouro-teste.
 
+**A escolha do dono, em 2026-11-08: (a), com livros novos para o leiaute.** Ela veio depois da primeira leitura do teste
+(2026-11-06), e por isso não ajusta nada nele: só diz o que se persegue daqui em diante. A meta da M1 passa a ser ≤ 0,50%,
+com a G5 cobrindo o erro que sobra (captura ≥ 90% com ≤ 5% das palavras). Hoje nenhuma das duas
+cumpre: fusão 2,11% [0,83; 3,72] e G5 76,9% no digital. O motivo de não pagar a Fase 105 é o próprio diagnóstico do
+teste: o Tesseract nas linhas certas erra 0,15%, então o reconhecimento já está pago, e o que falta é leiaute.
+
+O dev novo para o leiaute sai da **reserva** de `assets/texto_prosa/ouro.json`: 30 livros digitais que nunca foram ao
+teste, fora os marcados `fora_do_treino` e os reprovados (29 em inglês, 1 em espanhol). O teste só se lê de novo no
+portão. O livro da terceira língua chegou no mesmo dia e entrou no teste a mais: a pendência `terceira_lingua` caiu.
+A Fase 105 fica adiada, e não cancelada: volta se o scan mostrar que lá o gargalo é o reconhecimento.
+
 ---
 
 ## 4. As decisões que organizam o plano
@@ -497,6 +508,38 @@ marcado para revisão, com captura ≥ 90% — ou (b) pagar o orçamento de CPU 
 ---
 
 ## 5a. O que você vai ver, e quando
+
+> **Estado em 2026-11-06: as Fases 100, 102, 103 e 106 foram executadas, e o ouro-teste foi lido para os portões.** Números em
+> [metrics/texto_prosa_portoes_20261106.json](metrics/texto_prosa_portoes_20261106.json), medidos em `3f780eb5`, máquina parada.
+>
+> | portão | meta | medido no ouro-teste (96 folhas, 16 livros) | veredito |
+> |---|---|---|---|
+> | G100 | linha de base publicada | [metrics/texto_prosa_20261106.json](metrics/texto_prosa_20261106.json) | ✅ |
+> | G3, folha perdida em silêncio | 0 | **0** no ouro, na prata e em 26.730 folhas de 58 arquivos ([metrics/texto_g3_20261106.json](metrics/texto_g3_20261106.json)) | ✅ |
+> | G101, perda de leiaute | teto ≤ +0,3 p.p. | **+1,79 p.p. [+0,74; +3,05]**; degradado médio +0,16 [−1,73; +1,74] sem calibração | ❌ no teste |
+> | G102, CER de prosa da fusão | ≤ 0,8%, teto ≤ 1,2% | **2,11% [0,83; 3,72]** | ❌ |
+> | G102, WER da fusão | ≤ 2,0%, teto ≤ 3,0% | 2,70% | ❌ |
+> | G1(a), figurina | ≥ 99,5% | 100% fora 22 vetos (2.866 de 2.888) | ✅ |
+> | G1(b), notação contra o glifo | teto ≤ +1,0 p.p. | **−0,89 [−1,63; −0,25]** | ✅ |
+> | G2, figurina | piso ≥ −1,0 p.p. | revocação −0,26 [−0,66; 0], precisão −0,03 [−0,26; +0,18] | ✅ |
+> | não-inferioridade contra o Tesseract, prata admitida | teto ≤ +0,5 p.p. | +0,21 [−0,17; +0,79] | ❌ pelo teto |
+> | G4, tempo | digital 2,0 s, p95 4,0; scan 3,5 s, p95 6,0 | digital 1,68 s, p95 2,70; scan 2,66 s, p95 3,72, no CLI | ✅, mas não na janela |
+> | G103, glifo sozinho | ≤ 1,5%, teto ≤ 2,5% | **4,87% [2,51; 7,55]**, era 6,93% na linha de base | ❌ |
+> | G5, faixa "revisar" | captura ≥ 90% com ≤ 5% marcadas | no dev, livro de fora: 76,9% com 5,6%; scan: 54,5% | ❌ |
+>
+> **O padrão não muda.** `auto` continua o glifo: o G102 não passou, e a D4 não foi respondida. **O que os números dizem:** o reconhecimento já está
+> pago, com o Tesseract nas linhas certas a **0,15%** no teste, e o que falta é leiaute: as mesmas folhas caem a 1,94% nas caixas do glifo. O
+> teste foi lido, então nada se ajusta olhando para ele: mais trabalho de leiaute precisa de livro novo no dev.
+>
+> **O G3 só promete perda total, e a varredura achou o que fica fora dele.** Onze folhas derrubavam a leitura com caixa vazia, um defeito da S-714, já consertado.
+> Sem aviso restam 13 grades de números do *Schiller* lidas pela metade ou menos. As 42 folhas com mais de 6.000 caracteres lidos, 9 delas de prosa real do *Yusupov* afogada em
+> ruído, também passavam caladas: desde 2026-11-07 elas avisam, menos uma folha em branco manchada do *Bachmann*, com o `leitura_com_ruido` (ver o *Achado* da S-710). O aviso não
+> conserta o texto: só diz que ele saiu assim.
+>
+> **O plano B da seção 3 está valendo, e o dono escolheu (a) em 2026-11-08**: M1 ≤ 0,50% com a G5 compensando, e o leiaute
+> trabalhado em livros novos, que saem da reserva do ouro. A Fase 105 (D8) fica adiada. A G5 também não cumpre, então (a) hoje
+> não fecha sozinha: ver a seção 3. O que ficou de fora por recuo: S-703 só a ferramenta (D3), S-704 sem perfil calibrado (D3), S-724 (D1), S-740, S-741, S-742 e os
+> degraus 1 a 3 da S-745 (D2, D7, D3), a Fase 105 (D8), S-746 (só serve a ela), S-765 (D9), o G104 e a S-770 (D3 e D8).
 
 > **Estado em 2026-11-05: a primeira entrega foi feita**, com a especificação em
 > [SPEC_TEXTO_PRECISO.md](SPEC_TEXTO_PRECISO.md) e os números em
@@ -572,6 +615,8 @@ em 26 folhas); uma folha escaneada da prata, ~272 (4.084 em 15). Um livro de 300
   repositório. **No sorteio da S-702, o livro em espanhol não deu nenhuma folha com prosa** (é de
   exercícios), e o teste congelou com 16 livros em inglês e português; **falta um livro digital com
   prosa numa terceira língua**, que entra a mais, sem trocar os sorteados (decisão do dono).
+  **Entregue em 2026-11-08:** um livro em espanhol, com prosa, entrou a mais e passou na auditoria visual; o teste
+  fica com 17 livros em três línguas (ver a spec).
 - **Antes de a fusão virar padrão (~dezembro) — D1, D4 e D9.** Levar o Tesseract no instalador (+~48 MB
   e as licenças dele); aceitar que ler a folha com texto fique ~2–3× mais lento; e dizer quem escreve o
   livro exportado (seção 7).
@@ -592,7 +637,7 @@ O primeiro trabalho não melhora nada: ele torna mensurável o que se vai melhor
 `texto_prosa_2026-10-30/` (`banco.py`, `rodar.py`, `resumo.py`, `repontuar.py`, `degradar.py`) são o
 protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com teste.
 
-- **S-700** · `text/regua_prosa.py`: normalização, classes de token, alinhamento e placar por classe.
+- **S-700** · `text/regua_prosa.py`: normalização, classes de token, alinhamento e placar por classe. ✅ entregue em 2026-11-06
   - *Contexto:* o protótipo é `texto_prosa_2026-10-30/banco.py`. O alinhamento é Levenshtein com recuo,
     vetorizado por linha em `numpy` (mínimo acumulado para a inserção); 2.000×2.000 caracteres em ~1 s.
   - *Entrega:* funções puras `normalizar`, `classe_do_token`, `alinhar`, `pontuar` → `Placar`. Sem
@@ -608,7 +653,12 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Saída:* os números do relatório de 2026-10-30 reproduzidos pela função nova, iguais até a 4ª casa
     — **depois** de a S-701 consertar o classificador, nunca antes (reproduzir antes trava o defeito).
   - *Reversão:* módulo novo, sem chamador em produção.
-- **S-701** · O classificador de token da régua, testado contra os casos que já enganaram.
+  - *Achado:* a saída se cumpre: com o classificador e a normalização do protótipo, `reproduzir_regua.py` dá **zero diferença** até a
+    4ª casa em CER, WER, notação, espaço, figurina e inserções. A normalização do protótipo não era idempotente (`a-
+
+b`), e consertá-la
+    move até 0,1 p.p. só onde há linha lida vazia (degradado e prata). Spec em `docs/SPEC_TEXTO_PRECISO.md`.
+- **S-701** · O classificador de token da régua, testado contra os casos que já enganaram. ✅ entregue em 2026-11-06
   - *Contexto:* a primeira versão contou `f1-e1`, `b4×c3`, `Kg2=` e a letra de peça solta do
     Capablanca como prosa, e inflou o erro de prosa de **todos** os motores (0,0386 → 0,0328 no glifo).
     `text/notacao.fatiar` é **conservador de propósito** (S-208: lance não pode virar prosa no PGN);
@@ -637,6 +687,9 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Saída:* zero divergência na tabela; relatório diz a versão do classificador.
   - *Reversão:* a régua não tem chamador em produção; trocar a versão do classificador muda o número
     publicado, e por isso a versão vai no relatório.
+  - *Achado:* no ouro o conserto muda pouco (glifo 3,61 → 3,59%, Tesseract 1,33 → 1,32%, 6 tokens em 5.647). **Na prata admitida muda
+    muito:** 244 tokens de lixo de figurina saem da prosa, e o Tesseract vai de 6,03% a 3,85% (WER 13,1% a 7,7%), o oráculo de 3,65% a
+    1,40%. O "6,0% no scan" da seção 1 era em boa parte figurina escrita como lixo.
 - **S-702** · Conjuntos ouro-dev e ouro-teste congelados, com admissão que não usa motor nenhum.
   - *Contexto:* **a camada só é referência quando é a tinta.** O *Gaprindashvili* parece editorado e
     tem notação em lixo de OCR (`l:l'.xe3`) sob figurinas impressas. A primeira regra de admissão
@@ -699,7 +752,7 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     *Chess Evolution 2013* a ligadura `ft` perde o `t` na camada, e no *Capablanca* figurinas da tinta
     ficam fora da linha da camada. Os números ficam como publicados, com esta ressalva; a S-706 os
     republica nos cinco livros dev admitidos.
-- **S-703** · Scan-ouro: 30 folhas escaneadas com verdade humana.
+- **S-703** · Scan-ouro: 30 folhas escaneadas com verdade humana. ✅ entregue em 2026-11-06 (a ferramenta; a transcrição é da D3, e M3 e M4 seguem sem número)
   - *Contexto:* é o **único** jeito de dizer o erro absoluto em scan; a camada de terceiro (prata)
     só ordena. Sem este item, M3 e M4 não existem.
   - *Entrega:* ≥ 30 folhas de ≥ 8 livros escaneados, ≥ 5 línguas, **estratificadas por produção e
@@ -724,7 +777,11 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     sorteado antes da transcrição.
   - *Reversão:* folha com acordo abaixo de 99,9% volta para transcrição; nada do produto muda.
   - *Dono:* ~20–30 min por folha e mais a dupla digitação; **cerca de 15 horas humanas** (decisão D3).
-- **S-704** · Degradação sintética reprodutível e **calibrada** como fatia de robustez.
+  - *Achado:* **pronto para quando o dono quiser, e nada transcrito.** `assets/texto_prosa/scan_ouro.json`: 30 folhas, 10 livros, 6 línguas, 40% de até 150 dpi, 15 no misto, 6 de dupla digitação, cinco livros em cada split. Aba Leitura, *Transcrever*. O relógio mostra o custo real a partir da segunda folha. `cvoff-texto-prosa --conjunto scan-ouro --acordo` diz `M3 e M4 sem número` em vez de zerar. Spec em `docs/SPEC_TEXTO_PRECISO.md`.
+  - *Achado:* a geometria não separa prosa de misto (AUC 0,63 no ouro-dev), então o conteúdo da folha sai da camada de terceiro, sem motor nosso. Livro sem camada fica fora do sorteio, menos o Bachmann, com 3 folhas `a_conferir`: a metade no misto vale no pior caso.
+  - *Achado:* **a segunda passada só parte do vazio**, regra a mais: partindo da mesma camada, o acordo mediria a camada.
+  - *Achado:* o crítico achou o teste vazando pela quarentena: os 5 livros do teste do scan-ouro não estavam na lista de exclusão. Entraram, com os irmãos. Nos ativos derivados, palavras que só esses livros explicam: `acervo` 0, `idioma` 20, `nomes` 174 (teto, não prova; listas de fora).
+- **S-704** · Degradação sintética reprodutível e **calibrada** como fatia de robustez. ✅ entregue em 2026-11-06 (menos o perfil `calibrado`, que depende da S-703)
   - *Contexto:* o perfil `medio` de 2026-10-30 equivale a ~110 dpi e leva o glifo a 57,2%, contra
     14,4% na prata (scan real): ele não foi calibrado contra nada, e um alvo (M5) sobre um perfil sem
     calibração mede uma imagem que ninguém imprime.
@@ -739,15 +796,19 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Saída:* mesma folha e semente → mesma imagem, byte a byte (teste); o perfil calibrado publicado
     com a medida que o calibrou.
   - *Reversão:* módulo de medição, sem chamador em produção.
+  - *Achado:* `text/degradacao.py` traz as duas famílias (`medio` e os outros quatro, byte a byte os do protótipo; `fotocopia_*`, a
+    reservada à M5). O `calibrado` levanta `PerfilPendente` com o recuo da seção 7: sem a S-703, a M5 não tem número.
 - **S-705** · Prata: livros escaneados com camada de terceiro, rotulados como "só para ordenar", e
-  estratificados como o scan-ouro (ClearScan / ≤ 150 dpi / ≥ 300 dpi).
+  estratificados como o scan-ouro (ClearScan / ≤ 150 dpi / ≥ 300 dpi). ✅ entregue em 2026-11-06
   - *Entrega:* manifesto `assets/texto_prosa/prata.json`; o relatório imprime a palavra **"ordenação"**
     ao lado de todo número prata, e nunca o soma ao ouro.
   - *Verificação:* `cvoff-texto-prosa` (ou, até a S-706 existir, `reproduzir.py` + `resumo.py` de
     `texto_prosa_2026-10-30/`) sobre `prata`, com o filtro `--oraculo-max 0.10` registrado no relatório.
   - *Saída:* relatório com a palavra "ordenação" em todo número prata e os três estratos separados.
   - *Reversão:* manifesto; sem chamador em produção.
-- **S-706** · `cvoff-texto-prosa` e a linha de base publicada.
+  - *Achado:* 3 `clearscan`, 3 `ate_150`, 4 `de_300`, as 30 folhas de 2026-10-30. Folha de duas colunas não fecha com a montagem da camada, e o
+    CER mede a ordem junto: o relatório publica `palavras_de_prosa_achadas_em_qualquer_ordem` ao lado.
+- **S-706** · `cvoff-texto-prosa` e a linha de base publicada. ✅ entregue em 2026-11-06
   - *Entrega:* CLI que roda um manifesto, grava `docs/metrics/texto_prosa_<data>.json` (caminhos
     relativos — `test_nenhum_relatorio_publica_a_raiz_do_disco`), com commit, árvore suja, sha do
     modelo e do `tessdata`, versão do classificador de token, IC95 de dois níveis, as duas
@@ -769,8 +830,10 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     livros dev aprovados na auditoria, não nos sete de 2026-10-30.
 
   - **Portão G100:** as duas corridas idênticas; linha de base no ouro-dev, ouro-teste, degradado e
-    prata publicada; README cita o relatório.
-- **S-707** · A suíte irmã medida na mesma régua, antes da S-721.
+    prata publicada; README cita o relatório. **Passou em 2026-11-06:** `docs/metrics/texto_prosa_20261106.json`, zero diferença em duas corridas no dev, no degradado e na prata.
+  - *Achado:* **o dev é otimista:** o glifo, `auto`, erra 2,82% no dev e **6,93% [3,31; 12,19]** no ouro-teste (WER 18,66%), aberto uma vez, com `primeira_leitura_do_teste = 2026-11-06`. A camada na prosa dá 3,25% [0,75; 7,12] no teste, e
+    99,4% das palavras em qualquer ordem: é montagem, e quem a julga é a M0 do G107. No dev: fusão 0,32%, Tesseract 0,27%, oráculo 0,11%, camada na prosa 0,20%. Como medir um motor novo está na spec da S-706.
+- **S-707** · A suíte irmã medida na mesma régua, antes da S-721. ✅ entregue em 2026-11-06
   - *Contexto:* a `Suite_de_Edicao_de_Xadrez` já funde a prosa do Tesseract com a figurina do glifo
     deste projeto, token a token (`src/caissa/ocr/engines/glyph.py`: "a prosa fica do Tesseract; as
     figurinas viram figurinas"), tem um árbitro que prefere a camada quando ela é confiável
@@ -782,6 +845,8 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   - *Saída:* decisão escrita sobre o que a S-721 reaproveita da suíte (regras, árbitro, modelos por
     livro) — o que vencer na régua fica; nada é reescrito sem medir.
   - *Reversão:* medição.
+  - *Achado:* no dev a suíte empata na prosa (0,36% contra 0,32% da fusão, −0,03 p.p. [−0,76; +0,53]) e perde 34 p.p. de revocação de figurina (49,7% contra 83,8%). Na prata (ordenação) o CER dela é 24,01% contra 11,14%, mas ela acha mais
+    palavras (91,7% contra 88,3%): paga pela ordem. **Decisão:** o pipeline e o árbitro dela não entram; a S-721 leva quatro regras de `caissa/ocr/fusion.py`, medidas antes (âncora que já é palavra não se troca, `_keep_number_prefix`, `_truncates_long_notation`, disputa vira revisão). Modelos por livro não foram medidos. Spec em `docs/SPEC_TEXTO_PRECISO.md`.
 
 ### Fase 101 — Nenhuma folha perdida em silêncio
 
@@ -820,7 +885,13 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     um, o *Chess Evolution 2014* perdia 113 e o *2013*, 60, antes da S-711. *Corte:* o
     0,5 cumpre a regra deste item na varredura publicada, contando as folhas com ao menos 200 caracteres de camada: nenhuma
     abaixo de 0,7 sem aviso, em 812 folhas de 58 livros. Depois da S-711, das dez folhas que avisam, quatro têm texto que o glifo não leu
-    e seis são sinal solto de dentro de uma moldura; a varredura de livro inteiro do G101 continua por fazer.
+    e seis são sinal solto de dentro de uma moldura. A varredura de livro inteiro do G101 foi feita em 2026-11-06, com G3 = 0 em 26.730 folhas:
+    [metrics/texto_g3_20261106.json](metrics/texto_g3_20261106.json). Ela não gravou a densidade de cada folha, então a regra do corte segue valendo pelas 812.
+  - *Achado (2026-11-07):* **a densidade também acusa o lado de cima, e esse aviso faltava.** Fora da moldura, a folha lida como ruído saía calada: 15 mil a 78 mil sinais nas 9
+    folhas de prosa do *Yusupov*. Agora, com densidade de ao menos 4,0 e ao menos 500 lidos, sai `leitura_com_ruido`, em **84 das 26.730 folhas**. Vistas uma a uma, nenhuma tem leitura boa: 54
+    de diagramas com a hachura lida como letra, 2 de tabela com pontilhado, 18 de capa ou arte e 10 de prosa real no meio do ruído. É só aviso: não chama a reserva nem muda o texto,
+    porque o texto certo pode estar no meio. Abaixo do corte há prosa de verdade, até 3,18 (*Simple Chess*); e abaixo de 500 lidos há leitura certa acima dele (legendas do *Karpov* e do *Dufresne*).
+    Ficam calados a folha manchada 125 do *Bachmann* (2,05) e as 13 grades do *Schiller*, que são falta, e não excesso. O bloco `aviso_de_ruido` do relatório traz a conta.
   - *Reversão:* o aviso não muda texto nenhum; o corte é constante. O `ESQUEMA` 2 **não** é reversível
     (versão antiga não abre arquivo novo), e por isso entra junto com o primeiro uso dos avisos.
 - **S-711** · Região escura na borda: faixa colorida e moldura de scan. ✅ entregue em 2026-11-05, com outro mecanismo: ver o *Achado* no fim deste item.
@@ -854,6 +925,10 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     folha do ouro-dev muda": superado, porque 903 e 1210 eram as perdidas. A reversão é `moldura.TIRAR_MOLDURA`.
   - *Achado:* tirar a moldura abre o que havia dentro. Sinal solto de contracapa e de marca d'água saía sem aviso; agora sai com
     `folha_nao_lida`, por `guarda_de_leitura.RUIDO_POR_TOKEN`. Ver a spec.
+  - *Achado (2026-11-08):* o texto despedaçado dentro da moldura (*Mieses*, *Niemeijer*) também saía calado. O corte subiu de 1,3
+    para 3,0 caracteres por token depois do censo das 2.467 folhas com moldura: até ali a reserva revoca mais palavras em 88 de 90,
+    e 96 folhas passam a avisar. Acima de 3,0 o *Kmoch* ainda ganharia com a reserva, e fica aberto; o *Chess Evolution* começa
+    em 3,42 e perderia figurina. [metrics/texto_despedacado_20261108.json](metrics/texto_despedacado_20261108.json).
 - **S-712** · Linha intercalada. ✅ entregue em 2026-11-06, com outro mecanismo: ver o *Achado* no fim deste item.
   - *Entrega:* caixa de linha com altura > 1,8× a mediana da coluna é partida pela projeção
     horizontal antes de ler. As folhas 279 e 578 do *Chess Evolution* são fixture; o efeito é medido
@@ -872,7 +947,7 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     ainda duas letras da capa do *Estrin* saindo como foto, e o limite de tinta foi a 0,9.
   - *Achado:* a *Saída* se cumpre nos dois pontos: perda de leiaute **+0,56 p.p. [+0,33; +0,86]** em 40 folhas não vistas (era
     +3,83), e nenhuma linha alta no ouro-dev. No acervo inteiro, não: 1.210 de 41.950 linhas ainda passam de 1,8 mediana.
-- **S-713** · Perda de leiaute como métrica de primeira classe.
+- **S-713** · Perda de leiaute como métrica de primeira classe. ✅ entregue em 2026-11-06
   - *Entrega:* o relatório da régua publica, por livro, `perda_de_leiaute = CER(leitor de linha nas
     caixas do glifo) − CER(leitor de linha nas caixas da camada)`, e a variante `tess_pagina` (o
     Tesseract com o leiaute dele) ao lado — medida **antes** de S-711, S-712 e S-714, para cada conserto
@@ -881,7 +956,8 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     `tess_pagina` ao lado.
   - *Saída:* a métrica existe no relatório e o G101 a lê dali.
   - *Reversão:* só relatório.
-- **S-714** · Leiaute sob ruído.
+  - *Achado:* no dev, **+0,16 p.p. [−0,01; +0,56]**, quase todo do *Hertan*, acima do orçamento de +0,10; no degradado médio, **+9,19 p.p. [+3,74; +15,53]**, contra os ≤ 2 da S-714. O `tess_pagina` de 2026-10-30 pagava um erro por linha, de CRLF: é 0,37% no dev, e a primeira folha da S-715 custa menos do que a seção 1 dizia.
+- **S-714** · Leiaute sob ruído. ◐ parcial em 2026-11-06: ver o último *Achado*.
   - *Contexto:* no perfil médio a perda de leiaute é 12,1 p.p. [6,9; 17,1]. Suspeitos, em ordem: binarização
     (janela fixa contra escala da letra), poeira passando no filtro de componente, e linhas que se
     tocam depois do desfoque.
@@ -889,6 +965,10 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
     `texto_prosa_2026-10-30/`) no degradado calibrado, pareado contra o leiaute de hoje.
   - *Saída:* perda de leiaute ≤ 2 p.p. no perfil médio, sem piorar o ouro limpo.
   - *Reversão:* cada mudança de binarização ou filtro atrás de constante; desligada, volta a de hoje.
+  - *Achado:* **é a poeira, e não a binarização nem linha que toca**: uma mancha entra na linha, estica a caixa, e o `psm 7` lê a folga como nada. E o limiar alto fecha a caixa do nome da partida, que virava quadro de largura inteira.
+    `text/poeira.py` (`TIRAR_POEIRA`) e `quadros.MOLDURA_CRUZA_O_MEIO`. Trocar o Otsu **não entra**: parte as letras do glifo (7.532 inserções contra 1.150).
+  - *Achado:* por `cvoff-texto-prosa`, 27 folhas de 5 livros: perda de +9,19 [+3,74; +15,53] a **+0,16 [−1,73; +1,74]**, Tesseract de 10,74% a 1,71%, ouro limpo igual. A primeira publicação não se sustentou no crítico (+2,79, com *Dvoretsky* +8,50) e está substituída.
+    **Parcial:** folhas do conserto estão nas 27; em 15 não vistas, **+1,87 [−0,52; +5,62]**, teto fora de 2. **E o perfil calibrado não existe** (S-703): nada disto viu scan real.
 - **S-715** · O leiaute de reserva. ✅ entregue em 2026-11-05.
   - *Contexto:* o Tesseract lendo a página inteira com o leiaute dele **nunca desaba** — resgata as
     folhas 903 e 1210 do *Chess Evolution* (99,9% → 4,2% e 2,1%), as de linha intercalada (16% → 2,2%)
@@ -1001,7 +1081,9 @@ protótipo medido em 2026-10-30; esta fase os traz para dentro do pacote, com te
   scan-ouro, que depende da D3, entra no G104; perda de leiaute (diferença pareada leitor de linha nas
   caixas do glifo − nas caixas da camada) com teto do IC95 ≤ +0,3 p.p. no ouro-teste e ≤ +2 p.p. no
   degradado calibrado. Hoje: +1,17 p.p. [−0,03; +3,91] no ouro-dev (+0,12 [−0,06; +0,48] sem o *Chess
-  Evolution*) e +12,1 p.p. no degradado médio.
+  Evolution*) e +12,1 p.p. no degradado médio. *Em 2026-11-06:* G3 = 0 nos três, e a perda de leiaute reprova, ver a seção 5a.
+  - *Medido em 2026-11-06:* **não passa.** +1,79 p.p. [+0,74; +3,05] no ouro-teste, +0,15 [−0,01; +0,56] no dev. Nenhuma folha perdida pelo leiaute
+    nas 153 folhas medidas.
 
 ### Fase 102 — O leitor de linha ao lado do glifo
 
@@ -1061,7 +1143,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Achado:* entregue sem `--user-words`, `load_system_dawg=0` e a escala pela altura-x: cada um muda o que o Tesseract
     lê, e a saída deste item pede texto idêntico ao de 2026-10-30. Ficam para a S-721, medidos. O teste de caminho
     acentuado lê numa pasta com acento, mas esta máquina é UTF-8 e não reproduz a cp1252: a conferência fica para a S-724.
-- **S-721** · Fusão por token (`text/fusao.py`).
+- **S-721** · Fusão por token (`text/fusao.py`). ✅ entregue em 2026-11-06
   - *Contexto:* cinco regras foram medidas offline sobre as mesmas linhas (tabela da 1.5); a de partida
     é a **v5** (`texto_prosa_2026-10-30/fusao_v5.py`) no digital: ganha do glifo em 25 de 26 folhas e,
     nos seis livros limpos, perde do Tesseract puro só +0,05 p.p. [0,00; +0,12]; na notação fica a +1,26
@@ -1107,7 +1189,13 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     estrato misto e na prata admitida, diferença para o Tesseract puro com IC95 contendo zero ou abaixo.
   - *Reversão:* `MotorDeTexto` ganha `"fusao"`; o padrão só muda no G102, e voltar ao glifo sozinho é
     trocar o motor, sem migração (o texto fundido é texto como outro qualquer até a S-722).
-- **S-722** · O modelo de página guarda o que a fusão produz.
+  - *Achado:* **saída cumprida**, em `docs/metrics/texto_prosa_fusao_2026-11-06.json`, republicado na base integrada. Ouro-dev, prosa contra o Tesseract puro −0,034 p.p. [−0,123; +0,025]; G1(a) 721 de 721 fora dos 3 vetos, os 3 certos; G1(b) −1,90 p.p. [−3,95; −0,74]; G2 −0,12 [−0,54; 0] e −0,02 [−0,10; 0]. Misto −0,033 [−0,119; 0]; prata admitida +0,224 [−0,157; +0,840].
+  - *Achado:* **o teto de +0,84 p.p. na prata admitida não cabe nos ≤ +0,5 p.p. do G102 no scan**, e o limiar não mudou. A poeira da S-714 moveu a prata mais para o Tesseract que para a fusão: antes da junção, +0,179 na admitida e −0,129 na inteira; depois, +0,224 e +0,418 [−0,006; +0,998], com o sinal da inteira invertido. A regra (5) pesa aí: desligada, a prata inteira melhora −0,154 p.p. [−0,401; −0,016], e o dev não muda. Quem decide é o scan-ouro da S-703: a prata não sabe se a palavra guardada é ruído.
+  - *Achado:* **a regra (5) como está escrita reprova a saída** (prosa de 0,24% a 0,42% no dev; +1,18 p.p. na prata admitida): é o ruído do glifo. Ela guarda só palavra que existe, atrás de `fusao.GUARDA_SO_O_QUE_EXISTE`.
+  - *Achado:* `Pas` contra `♔a5` e `Axed` contra `♘xc4` (S-723) acabam com o lance inteiro não sendo vetado. Na v3 o veto por léxico e o por letras ficaram iguais folha a folha, e não sobrou escolha a fazer.
+  - *Achado:* **da S-707 entram duas das quatro.** A âncora e `_keep_number_prefix`, sim. `_truncates_long_notation` não disparou em 57 folhas. A disputa virar revisão não muda a captura no dev e a piora na prata (30,0% para 29,2%).
+  - *Achado:* **os três ajustes da S-720 não pagam, e ficam desligados.** Altura-x +0,004 [−0,029; +0,048] e −0,007 [−0,104; +0,100]. `load_system_dawg=0`: 0 de 120 linhas mudam, porque o LSTM não lê a variável. `--user-words` com os nomes: 1 de 316 linhas muda, para pior, e o `spa` termina com erro. **A S-766 pressupõe o `--user-words`, e precisa de outro caminho.**
+- **S-722** · O modelo de página guarda o que a fusão produz. ✅ entregue em 2026-11-06
   - *Contexto:* `LinhaLida` tem **uma** `procedencia` e **uma** `confianca` por linha
     (`text/pagina.py`); a faixa de confiança é por bloco (`documento.faixa_de_confianca`); `PROCEDENCIAS`
     e `ORDEM_DE_CONFIANCA` são tuplas à parte do `Literal` (sem a entrada nova, `menos_confiavel`
@@ -1123,7 +1211,10 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Reversão:* **este item não é reversível por interruptor** — uma versão antiga do programa não
     abre `.cvtxt` nem caderno gravado com `tesseract` (estoura `PaginaInvalida`). Fica escrito, e o
     formato novo só é gravado depois do portão G102.
-- **S-723** · A língua do livro.
+  - *Achado:* a leitura do novo e do antigo está pronta, e a gravação do novo fica atrás de `pagina.GRAVAR_FORMATO_NOVO`, **desligada**: quem a liga é o G102. Desligada, sai o formato de antes, com `tesseract` escrito `glifo`; em memória os campos estão sempre inteiros.
+  - *Achado:* **a procedência por intervalo da S-716 não existia**: era o `so_da_camada`, por linha. Agora há uma escrita só. Texto igual ao de antes do item nas 27 folhas do ouro-dev (0 diferentes). Nelas, 78,8% dos caracteres vêm do Tesseract, e 237 de 392 blocos são mistos.
+  - *Achado:* `documento.resumo` não tem quem o chame fora dos testes: quem diz de quem é o texto, na janela, é a frase do rodapé de `_leitura_terminou`.
+- **S-723** · A língua do livro. ✅ entregue em 2026-11-06
   - *Entrega:* parâmetro `lingua` em `ler_pagina` (hoje não existe); detecção por perfil de palavras
     funcionais nas primeiras folhas lidas, guardada no caderno do livro (`text/caderno.py`, só na
     `main`), com troca manual no menu Texto (**não** em `settings.py`: S-218). Escolhe `tessdata` e o
@@ -1132,6 +1223,19 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     comparada com a língua declarada à mão numa tabela do teste.
   - *Saída:* acerto de língua em todos os livros do acervo deduplicado (8 línguas).
   - *Reversão:* a língua manual no menu sempre vence a detectada.
+  - *Achado:* **saída não cumprida à risca: 52 de 54 livros certos, 2 sem resposta, nenhum errado.** Os dois sem resposta são
+    `1000 Chess Problems`, de problemas, com quase nenhuma prosa, e o `Пилавов`, scan russo sem camada: o glifo não tem classe de
+    cirílico, e lá escreve latim sem sentido. Nos dois a janela diz para escolher à mão depois de dez folhas. Sem a camada como
+    fonte eram 50: ela recupera o *Niemeijer* e o *Boleslavski*. O *Zhuravlev* é bilíngue, russo e inglês folha sim, folha não,
+    e deu inglês; está à parte na tabela, contado como certo. A tabela é `docs/metrics/texto_lingua_2026-11-06/linguas_declaradas.json`,
+    e não está no código do teste: o teste a lê. **Não há conjunto de teste aqui**: o decisor foi escrito antes de medir e não mudou
+    depois, mas o acervo é o único conjunto. As constantes não foram ajustadas olhando o resultado.
+  - *Achado:* `motor="fusao"` com o léxico da língua, no ouro-dev: CER de prosa 0,469% → 0,457%, em 32.407 caracteres; 20 de 28 folhas
+    iguais, 3 melhores, 1 pior. Dentro do ruído, e não é portão. **Um veto certo e um errado, os dois para a S-721:** `Pas` deixa
+    de vencer `♔a5` num livro em português, e `Axed` passa a vencer `♘xc4` num em inglês, porque `axed` está na lista.
+  - *Achado:* `motor="tesseract"`, citado no pedido, não existe nesta árvore; quem usa a língua são a fusão e a reserva.
+    A primeira folha de um livro novo ainda é lida no padrão (`eng`): a língua detectada vale da leitura seguinte em diante,
+    e a folha lida noutra língua volta a ser lida, porque o motor anotado no caderno a inclui.
 - **S-724** · O Tesseract no instalador.
   - *Contexto:* o binário existe nesta máquina em `C:\Program Files\Tesseract-OCR`, instalado à mão; o
     instalador não o leva. Licença Apache-2.0.
@@ -1149,7 +1253,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     bundle lê uma folha com a fusão; sem a pasta do Tesseract no bundle, lê com o glifo e avisa.
   - *Saída:* bundle medido dentro do teto, licenças no lugar e aprovado pelo dono (decisão D1).
   - *Reversão:* o bundle sem o Tesseract continua funcionando (decisão 4).
-- **S-725** · Desempenho, custo de varredura e cache.
+- **S-725** · Desempenho, custo de varredura e cache. ✅ entregue em 2026-11-06
   - *Contexto:* o protótipo chama o Tesseract uma vez por linha (≈ 40 processos por folha, 0,7–1,0 s
     com 10 threads). **Empilhar as linhas numa imagem só (`psm 6`) muda o reconhecimento**: medido pelo
     crítico da rodada 6, 14 de 55 linhas mudaram no Dvoretsky e 14 de 25 no *Minhas 60* (`7...2f6`→`7...
@@ -1170,7 +1274,12 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Saída:* G4 cumprido com cache desligado; a política da S-215 remedida e publicada.
   - *Reversão:* apagar `data/cache_texto/` é sempre seguro; o lote por folha tem a leitura por linha
     como reserva atrás de constante.
-- **S-726** · A S-188 relida com a régua nova, e o modo bloco aposentado com quem o usa.
+  - *Achado:* **o um processo por folha com TIFF é o que a S-720 já entrega.** Faltava a reserva, `tesseract.LOTE_POR_FOLHA`. Nas 27 folhas do ouro-dev (758 linhas), **0 diferentes** do lote em texto, linhas com confianças e avisos: leitura por linha, cache frio e cache quente (`texto_cache_20261106.json`).
+  - *Achado:* **para a D4**, `motor="fusao"` custa 3,09× a página sem texto, contra 1,84× do glifo, nas mesmas 18 folhas: continua "sob demanda", abaixo dos 4× que a tirariam da varredura. Acervo de 26.730 folhas: 21,4 h contra 9,8 h. `custo.PAGINAS_DO_ACERVO` dizia 12.000.
+  - *Achado:* **a parte da saída sobre o G4 fica aberta.** Tudo foi medido com a máquina dividida com outras duas corridas (o lado `hoje` foi de 0,72 a 0,93 s entre duas corridas seguidas), e nenhum número de tempo aqui julga o G4: ele se mede com a máquina parada, na janela e com o cache desligado.
+  - *Achado:* do crítico: sem `tessdata` ao lado do binário, a chave não via o `TESSDATA_PREFIX`. Motor assim não usa cache. E `marca_por_palavra` passou a ir ao arquivo, sem subir `ESQUEMA`.
+  - *Achado:* o cache só anda na janela. A folha inteira da reserva (`psm 3`) não passa por ele, e a entrada não guarda as caixas por palavra, que ninguém lê neste caminho.
+- **S-726** · A S-188 relida com a régua nova, e o modo bloco aposentado com quem o usa. ✅ entregue em 2026-11-06
   - *Entrega:* remedir o modo bloco **só na prosa**; se a fusão por token vencer (esperado: o modo bloco
     amarra a leitura às caixas do glifo e não conserta segmentação), aposentá-lo no caminho da página
     junto com **todos** os consumidores — `ui/state.texto_bloco` (gravado no estado da janela, com
@@ -1185,7 +1294,9 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     do estado; a suíte verde.
   - *Saída:* o modo bloco não existe no caminho da página; estado antigo abre sem a chave.
   - *Reversão:* é remoção: volta por `git revert` do commit, que precisa ser só dela.
-- **S-727** · Os CLIs de medição fixam o motor antes de o padrão mudar.
+  - *Achado:* CER de prosa no ouro-dev: fusão 0,24%, glifo 0,95%, bloco 6,33%, e fusão − bloco −6,09 p.p. [−8,95; −4,48], 27 folhas de 27. Na prata, que só ordena: 9,19%, 19,71% e 16,20%. O commit da remoção é `66c4a399`.
+  - *Achado:* **sem Tesseract, tirar o bloco melhora o digital e piora o scan ruim.** A fusão sem o binário é o glifo, diferença zero nas 57 folhas. Glifo − bloco é −5,37 p.p. no digital e +3,51 p.p. [−1,43; +9,81] no scan, com o bloco à frente em 5 dos 10 livros, 3 deles com folga (≤ 150 dpi: 35,34% contra 23,42%). O programa instalado não paga isso: `packaging/cvoff.spec` exclui o `onnxruntime`, e sem ele a caixa não fazia nada, em silêncio. Sobra quem instala do código com `--extra ocr` e sem Tesseract.
+- **S-727** · Os CLIs de medição fixam o motor antes de o padrão mudar. ✅ entregue em 2026-11-06
   - *Contexto:* na `main`, CLIs que publicam `docs/metrics/texto_*.json` (`texto_lexico`,
     `texto_paragrafo`, `texto_pesquisavel`, `texto_custo` e outros) chamam `ler_pagina` com o motor
     **padrão**. Virar o padrão para a fusão mudaria o que eles medem, sem guarda nenhuma.
@@ -1195,7 +1306,11 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Verificação:* teste que varre `cli/texto_*.py` e reprova chamada de `ler_pagina` sem `motor=`.
   - *Saída:* todo relatório `docs/metrics/texto_*.json` novo diz o motor; os antigos ficam como estão.
   - *Reversão:* acrescentar `motor=` explícito não muda número nenhum.
-- **S-728** · Léxico por língua.
+  - *Achado:* só um CLI chamava sem `motor=`: `texto_lexico`, na junção do glifo. `MOTOR_PADRAO` é `glifo` e o escrito
+    é `glifo`, logo número nenhum muda. Quem escrevia o motor e não o gravava: `texto_custo`, `texto_estilo_motor` e a
+    junção do `texto_lexico`. `texto_flutuante` e `texto_paragrafo` já gravavam. `texto_placar_final` tem um `ler_pagina`
+    próprio, homônimo, que não é o do leitor. `texto_pesquisavel` não publica JSON: diz o motor na saída.
+- **S-728** · Léxico por língua. ✅ entregue em 2026-11-06
   - *Contexto:* `text/lexico.py` tem perfis (`acervo`, `idioma`, `nomes`), não línguas; a S-721 e a
     S-723 pressupõem um léxico por língua.
   - *Entrega:* listas por língua (as 8 do acervo: en, pt, es, de, nl, fr, ro, ru) em `assets/lexico/` —
@@ -1207,7 +1322,15 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
     do glifo com o perfil de hoje dá o mesmo texto no ouro-dev (diferença zero).
   - *Saída:* listas das 8 línguas com procedência escrita e sha no manifesto.
   - *Reversão:* listas novas; o perfil do glifo não muda.
-- **S-729** · O árbitro de notação pela legalidade.
+  - *Achado:* a fonte é o `lstm-word-dawg` dos `.traineddata` desta máquina, as oito línguas presentes: 2,1 MB comprimidos,
+    0,3% do bundle de 684 MB, e **nenhum teto reprovou**. **Diferença zero** em 28 folhas do ouro-dev contra o commit de
+    antes. **As listas não são limpas por língua**, porque o corpus do Tesseract é da web: `after`, `para` e `avec` estão em
+    sete das oito, e `fixes` está em `por`. **Elas não barram sozinhas os vetos da G1(a)**; a S-721 precisa de outra regra.
+  - *Achado:* `PASTA_DO_LEXICO` usa `PROJECT_ROOT`, que num bundle é a pasta do `.exe`, e o `assets/` vai para dentro do
+    pacote (`BUNDLE_ROOT`). Lido o código, os três arquivos antigos **não são achados no bundle**, em silêncio, e o
+    `dicionario` lá não corrige nada. Não se rodou um bundle para confirmar, e não se mexeu: consertar muda o texto do
+    bundle. As listas novas usam `BUNDLE_ROOT`. Fica para a S-724.
+- **S-729** · O árbitro de notação pela legalidade. ✅ entregue em 2026-11-06
   - *Contexto:* as regras 1 e 2 da S-721 são heurísticas de forma (`27.` contra `21.` → "fica o do
     glifo"). A notação tem um modelo de língua exato — a legalidade do lance a partir da posição — e
     `text/notacao.py` já importa `chess` com o `validar` deixado de fora (S-208).
@@ -1221,6 +1344,11 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
   - *Saída:* G1(c) — a fração de sequências que fecham legais não cai; e na prata, os dígitos de casa
     errados do Tesseract (`R1D`→`RID`, `P5C`→`PSC`) voltam pela gramática.
   - *Reversão:* interruptor; desligado, valem as regras de forma da S-721.
+  - *Achado:* **saída cumprida pela gramática, e não pela legalidade.** G1(c): 12 de 19 no ouro-dev, igual ao glifo; 13 de 29 na prata, contra 13 de 32 do glifo, e 14 de 29 sem o árbitro. Casas válidas na prata, de 86,0% a 98,4%. Notação no dev, −0,85 p.p. [−1,31; −0,32], com a prosa intacta.
+  - *Achado:* **o crítico reprovou a primeira versão: virava `Tal`, `Key`, `Lev`, `as`, `by` e `Rei.` em lance no `ler_pagina`**, e o dev não via, porque as 27 folhas não têm esses casos. O léxico é cego abaixo de 4 letras (`lexico.MIN_TAMANHO`). Agora, sem dígito de verdade, a troca exige o glifo ter lido outra coisa. **Acerto contra a camada, em 40 folhas digitais: de 2 certas e 3 erradas em 8 trocas para 37 e 1 em 41 na v5, e 62 e 2 em 90 na v3 forçada.** Das 3 erradas, 2 são defeito da camada do Seirawan, e `♖ 1f7+` -> `♖ f7+` é erro de verdade.
+  - *Achado:* **a legalidade alcança 2,7% dos lances no dev (29 de 1.062) e 2,2% na prata (34 de 1.555), e troca 0 e 1 lance.** Fica `ler_pagina(posicao_do_diagrama=)`, sem chamador na janela, porque a FEN custa o classificador de peças. O que alcançaria mais: da posição inicial nas folhas com `1.`, e o tabuleiro levado de uma folha à outra.
+  - *Achado:* o top-k do glifo e o `lstm_choice_mode=2` **não entram**. O segundo sai no hOCR, e `tesseract.rodar(formato="hocr")` o lê: resolve 16 dígitos em 27 folhas da prata, ao preço de um processo a mais por folha; as outras 224 trocas são de letra de peça, que é a figurina do glifo.
+  - *Achado:* `rus+eng` conferido à mão, em 8 folhas do *Пилавов*: não há ouro nem prata em russo.
 - **Portão G102:** no ouro-teste (≥ 12 livros × 6 folhas, ou o recuo da D6), CER de prosa ≤ 0,8% com teto do IC95
   ≤ 1,2%, WER ≤ 2,0% com teto ≤ 3,0%, G1, G2 e G4 (sem a D6, no teste provisório da D6, rotulado);
   **no scan, por estrato, não-inferioridade contra o Tesseract puro** (teto do IC da diferença pareada
@@ -1240,7 +1368,7 @@ da v5 foi medido na outra posição: a S-721 o **remede** nesta antes de herdá-
 O glifo continua lendo a notação e é o caminho de reserva quando não há leitor de linha. Cada item
 ataca uma família da seção 1.6 e é medido pela régua — família e total.
 
-- **S-730** · Traço vertical contra ponto (23,7% das palavras de prosa erradas do glifo; 100 delas só no Hertan, Arial).
+- **S-730** · Traço vertical contra ponto (23,7% das palavras de prosa erradas do glifo; 100 delas só no Hertan, Arial). ✅ entregue em 2026-11-06
   - *Entrega:* `.`, `,`, `'`, `l`, `I`, `|`, `1`, `i` decididos pela geometria da caixa — altura
     sobre a altura-de-x, topo e base contra a linha de base, proporção —, como a `caixa_alta` faz com
     a caixa. Antes de escrever a regra, medir em que *rank* a classe certa está (memória
@@ -1250,34 +1378,50 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
   - *Saída:* a família cai a ≤ 1/4 do que é hoje no Hertan e no *Chess Evolution*, sem subir em nenhum
     livro; notação dentro de G1(b).
   - *Reversão:* constante, como a `caixa_alta`.
+  - *Achado:* **medido contra os 5 livros aprovados na auditoria da S-702**; o Hertan está entre eles, e o *Chess Evolution* não. Família 124 → 0
+    (Hertan 121 → 0), e 43 → 0 no *Chess Evolution*, à parte. A classe certa está em rank 2 em só 62 dos 149 `l`, e em rank 6 nos outros: o rank
+    não decide, e a geometria decide. A vírgula em barra de *Minhas 60* (`entanto,`→`entantol`) é a regra irmã. Ver a seção da S-730.
 - **S-731** · Caixa coerente na palavra (10,7%): palavra toda em maiúscula não ganha minúscula no meio
-  (`DEFEsA`); a primeira letra da linha usa a régua de altura da linha inteira.
+  (`DEFEsA`); a primeira letra da linha usa a régua de altura da linha inteira. ✅ entregue em 2026-11-06
   - *Verificação:* teste de decisão (palavra toda em maiúscula, primeira letra da linha); régua da
     família "caixa" por livro.
   - *Saída:* família caixa ≤ 1/3 do que é hoje no dev, sem nenhum `DEFEsA`.
   - *Reversão:* constante.
+  - *Achado:* família 59 → 1. **O modelo acertava**: 70 dos 71 casos tinham a classe certa em rank 1, e era a mediana da linha que a derrubava, em
+    linha com lance. A régua passou às letras de x, com vão de 1,06 a 1,32. O versalete precisa da palavra, e `P`/`p` da descida. A primeira versão foi
+    reprovada pelo crítico, fora do dev: `ChessCafe`, `McClure`, `GMs`, e `Qxf7`, `Kc5` em scan. Ver a seção da S-731.
 - **S-732** · Fronteira de palavra (7,9%): o vão de `f`+`t`, `f`+`f` com *kerning*; o léxico como
-  árbitro do corte, que já mediu melhor que a confiança (memória `lexico-arbitra-corte-melhor-que-confianca`).
+  árbitro do corte, que já mediu melhor que a confiança (memória `lexico-arbitra-corte-melhor-que-confianca`). ✅ entregue em 2026-11-06
   - *Verificação:* régua da família "fronteira" por livro; teste com pares de caixas sintéticos.
   - *Saída:* família fronteira ≤ 1/3 da de hoje, sem aumentar "espaço inserido".
   - *Reversão:* constante.
-- **S-733** · Ligadura `fi`/`fl`/`ff` sem o `1` a mais (2,2%).
+  - *Achado:* fronteira 38 → 9, inserções 562 → 550, espaço 23 → 15. O vão de baixo sozinho não separa (1.381 pares sem espaço acima de 0,30), e o léxico
+    sozinho também não (`carr ying`): o vão propõe, o léxico **sem nomes** dispõe. O léxico como árbitro do colado derruba `letra trocada` de 128 a 102
+    (`tums`, `acmal`, `Ffxcher`). `the`, `of` e `não` não estão no léxico por terem menos de 4 letras, e isso quebrava a primeira rodada: `text/palavras_curtas.py`.
+- **S-733** · Ligadura `fi`/`fl`/`ff` sem o `1` a mais (2,2%). ✅ entregue em 2026-11-06
   - *Verificação:* régua da família "ligadura com 1 a mais" (Dvoretsky).
   - *Saída:* zero `fi1`/`f1` em palavra do ouro-dev.
   - *Reversão:* constante.
-- **S-734** · Aspas duplas e apóstrofo (2,4%), medidos em `cru`: par de apóstrofos colados vira `"`; abre-aspas nunca vira `(`.
+  - *Achado:* família 14 → 0, zero `fi1`/`f1`. Só `1` e `|` contam como haste: com `l`, `h-file` saía `h-fie` na prata.
+- **S-734** · Aspas duplas e apóstrofo (2,4%), medidos em `cru`: par de apóstrofos colados vira `"`; abre-aspas nunca vira `(`. ✅ entregue em 2026-11-06, com uma Saída não cumprida: ver o *Achado*.
   - *Verificação:* régua em `cru` (onde `—` e `-` e as aspas contam) da família aspas e pontuação.
   - *Saída:* aspas duplas zero no Capablanca e no Dvoretsky; pontuação ≤ 1/2 da de hoje.
   - *Reversão:* constante.
+  - *Achado:* em `tip`, aspas duplas 8 → 0 no Dvoretsky, e pontuação 10 → 4. **O *Capablanca* foi reprovado na auditoria da S-702**, e medido à parte dá 7 → 3.
+    **Em `cru` a Saída não se cumpre:** a pontuação sobe de 50 a 58, porque o modelo não tem as aspas curvas e as palavras deixaram de ter outro erro. Curvar pelo
+    contexto, simulado por fora do leitor, dá 12 e não piora livro nenhum; não entra porque `lexico.PONTUACAO_DE_BORDA` e as classes de token não aparam a curva.
 - **S-735** · Acento (5,3%): til contra trema (`não`→`näo`), `ç` contra `C`; o segundo corte de caixa
   para a família acentuada (memória `caixa-alta-nao-cobre-acentuada`, ~1,65); contar as amostras de
-  cada classe acentuada antes de creditar qualquer número a ela (`par-scaron-tem-7-amostras`).
+  cada classe acentuada antes de creditar qualquer número a ela (`par-scaron-tem-7-amostras`). ✅ entregue em 2026-11-06
   - *Verificação:* régua da família acento por livro; antes, contar as amostras de cada classe
     acentuada em `training_data/`.
   - *Saída:* família acento ≤ 1/3 da de hoje no *Minhas 60*, sem `Õ` nem `Ó` inventados (o segundo
     corte não pode quebrar minúscula acentuada).
   - *Reversão:* constante, como a `caixa_alta`.
-- **S-736** · ADR: a geometria como entrada do classificador.
+  - *Achado:* em *Minhas 60*, acento + acento+caixa 25 → 2, sem `Õ` nem `Ó` inventados. **`ä` tem 15 amostras contra 3.797 de `ã`**: o que vence é ruído. A
+    cedilha é tamanho: `ç` desce de 0,38 a 0,50 altura-de-x, e `C` e `c`, até 0,06. **O segundo corte não muda nenhum caractere nas 27 folhas**: é guarda, com
+    teste, e o lado da maiúscula é estimado.
+- **S-736** · ADR: a geometria como entrada do classificador. ✅ entregue em 2026-11-06
   - *Contexto:* numa amostra de 3.000 recortes de `training_data/` (crítico da rodada 3), 57,6% estão
     em 32×32 e 42% guardam o tamanho original — mas justamente `l` (99% esticados) e `I` (100%) perderam
     a proporção, e são classes raras (2.573 e 786 recortes, contra 20.434 de `.` e 33.855 de `e`). A
@@ -1289,6 +1433,8 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
     de novo.
   - *Saída:* ADR commitada com decisão (fazer na Fase 105 ou não fazer) e o porquê.
   - *Reversão:* é uma decisão escrita; revê-la é outra ADR.
+  - *Achado:* **não fazer na Fase 105** (seção da S-736). Recortar custa cerca de 1,2 h de CPU nos 5 livros dev, e isso é o barato: nenhum dos 607.719 recortes
+    sabe de onde veio, então é trocar a base, e não migrá-la. As famílias de geometria já caíram sem tocar no modelo.
 - **Portão G103:** depois da Fase 102 o glifo lê sobretudo **notação** — e a família traço-ponto
   custa ali também (`Rf1`→`Rf.`, `11.`). O portão mede as duas coisas: glifo sozinho ≤ 1,5% de CER de
   prosa (teto ≤ 2,5%) no ouro-teste, para o caminho de reserva; e, na notação, G1(b), G1(c) e G2
@@ -1324,7 +1470,7 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
   - *Saída:* entra só se a diferença pareada for a favor (teto do IC < 0) em pelo menos um estrato e
     não-inferior nos outros; senão, fica registrado que não paga.
   - *Reversão:* interruptor; sem camada no PDF, o voto simplesmente não existe.
-- **S-743** · Algarismos de estilo antigo e notação oitocentista.
+- **S-743** · Algarismos de estilo antigo e notação oitocentista. ✅ entregue em 2026-11-06
   - *Contexto:* conferido na imagem pelo crítico da rodada 4: Gutmayer, Neumann, Dufresne e Bachmann
     são **Antiqua**, não Fraktur. O problema real do século XIX são os algarismos de estilo antigo, que
     destroem a casa e o número de lance — no Bachmann o Tesseract leu `10.`→`Io.`, `11.`→`ıı.`,
@@ -1336,13 +1482,19 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
     depois (a gramática da S-729 é o juiz).
   - *Saída:* nenhum `Io.`/`ıı.` nas folhas medidas; casas válidas ≥ 99%.
   - *Reversão:* constante no árbitro da S-729.
+  - *Achado:* **saída cumprida, depois de o crítico reprovar a primeira versão junto com a S-729.** *Bachmann*, 19 folhas: casas válidas de 72,9% a 99,5%, `Io.`/`ıı.` de 1 a 0. *Neumann*, 29 folhas: de 86,6% a 99,9%. Validade é o juiz da própria correção, e os dois livros não têm camada que julgue: o acerto contra a camada está na S-729, numa fatia digital em que o mapa do estilo antigo quase não aparece. O replay da posição inicial fecha legais no *Neumann* 28 de 44 lances contra 19 de 30, e o *Bachmann* tem começo de partida de menos para dizer algo.
 - **S-744** · Texto espaçado (*gesperrt*): `f a t a l e n` na ênfase alemã do Gutmayer volta a
-  `fatalen` quando o léxico concorda.
+  `fatalen` quando o léxico concorda. ✅ entregue em 2026-11-06
   - *Verificação:* folhas do Gutmayer com *gesperrt*: palavras espaçadas juntadas só quando o léxico
     concorda.
   - *Saída:* zero palavra espaçada que o léxico conhece; nenhuma junção de palavras distintas.
   - *Reversão:* constante.
-- **S-745** · A escada de linhas de base, antes de qualquer modelo da casa.
+  - *Achado:* **quem sofre é o glifo**, e o Tesseract já lê a palavra inteira. `text/espacado.py` (`JUNTAR_ESPACADO`), e nenhuma linha do ouro-dev muda. Nas 22 folhas do
+    Gutmayer, nenhuma junção de palavras distintas à vista; palavras conhecidas espaçadas de 14 a 4 nas olhadas, de 7 a 3 nas não vistas. **O zero não se cumpre**: o que sobra é
+    corrida com letra a mais, e a primeira versão, que achava a palavra no meio, juntava `d e sHan d e`.
+  - *Achado:* `fatalen` não está na lista alemã, e o exemplo do item fica espaçado. Em cerca de um terço das junções sai só um pedaço da palavra (`mann`), porque o resto veio com erro.
+  - *Achado:* o crítico achou `y a la postre` → `ya la postre` e `inden`. Corrida feita só de palavras é prosa, e duas curtas vencem uma palavra; o preço é `e i n e s` sair `ein es`.
+- **S-745** · A escada de linhas de base, antes de qualquer modelo da casa. ✅ entregue em 2026-11-06 (o degrau 0 e a tabela; 1, 2 e 3 pulados por recuo, e no scan-ouro não há número)
   - *Entrega:* no ouro-dev e no scan-ouro-dev, em ordem de custo: (0) o degrau que não custa nada —
     `--user-words`, dicionário desligado na notação, escala por altura-x e um modelo de n-gramas de
     caractere por língua para desempatar as alternativas do `lstm_choice_mode=2`; (1) `tessdata_best` (S-741);
@@ -1356,6 +1508,9 @@ ataca uma família da seção 1.6 e é medido pela régua — família e total.
   - *Saída:* a escada publicada com o melhor degrau nomeado — é contra ele que a S-755 compara.
   - *Reversão:* cada degrau é configuração do executor (modelo e opções); voltar é trocar a
     configuração.
+  - *Achado:* **o melhor degrau é a fusão de hoje, com `tessdata` fast e sem ajuste nenhum**: 0,235% [0,040%; 0,627%] de prosa no ouro-dev. No scan-ouro não há número. Tabela em `docs/metrics/texto_escada_2026-11-06.json` e em `docs/SPEC_TEXTO_PRECISO.md`. Os degraus 1, 2 e 3: **pulado por recuo** (D2, D7), e a S-746 com eles.
+  - *Achado:* **n-gramas medidos, não entram.** Contra a primeira escolha do hOCR, +0,042 p.p. [−0,008; +0,113] no dev e +0,084 [−0,046; +0,174] na prata; 7 folhas piores contra 1, e 18 contra 2. Das 32 trocas do dev, nenhuma acerta e 11 estragam nome próprio (`Reshevsky` → `Resheysky`). Até o oráculo das alternativas só tira 0,046 p.p.
+  - *Achado:* o custo que a S-729 não mediu: 0,88 s por folha no dev e 1,34 s na prata como processo a mais, ou +15% substituindo o TSV. Sob contenção, sem julgar o G4. Ele sozinho não recusaria; quem recusa é o ganho.
 - **S-746** · As linhas de treino do ajuste fino (o pedaço de dados que a escada precisa antes da
   Fase 105).
   - *Contexto:* a S-745 precisa de linhas rotuladas para o degrau 2, e a Fase 105 só começa depois da
@@ -1487,7 +1642,7 @@ de cada um.
 
 ### Fase 106 — Confiança, revisão e aprendizado
 
-- **S-760** · Confiança por palavra, calibrada por domínio.
+- **S-760** · Confiança por palavra, calibrada por domínio. ✅ entregue em 2026-11-06
   - *Contexto:* com ~99% de palavras certas, uma confiança **constante** já cumpre "ECE ≤ 0,03" — e o
     próprio projeto sabe: `calibracao.py` diz que o ECE ponderado "sai lisonjeiro por construção". A
     S-189 já tem `confianca_por_concordancia` (`text/leitura_de_linha.py`).
@@ -1499,7 +1654,8 @@ de cada um.
   - *Verificação:* `ece_por_faixa` e curva risco–cobertura na validação e no ouro-teste, por domínio.
   - *Saída:* calibrador publicado com as duas medidas; a fila da S-212 o consome.
   - *Reversão:* interruptor; desligado, vale a confiança de hoje (glifo calibrado, S-189).
-- **S-761** · A faixa "revisar" que paga a atenção de quem revisa (G5): captura ≥ 90% das palavras
+  - *Achado:* **calibra, e a curva anda.** Cada livro por um calibrador que não o viu, `ece_por_faixa` e erro aceitando 90%: digital 0,409 e 0,373% (a de quem escreveu) -> **0,163 e 0,211%**; scan, contra OCR de terceiro, 0,278 e 3,34% -> **0,040 e 2,13%**. Uma constante tem ECE zero nas duas réguas e 0,97% de erro: é a armadilha do contexto, e a curva a reprova. Ajustada no pedaço reservado do dev, porque a Fase 105 não vai começar (D8), sem o livro da série de um livro do teste. As alternativas do `lstm_choice_mode=2` não pagam (76,9% e 76,9%; 54,2% e 54,8%), e ficam de fora. Texto idêntico em 57 folhas. A medição no ouro-teste é do portão, e não foi feita. Spec em `docs/SPEC_TEXTO_PRECISO.md`.
+- **S-761** · A faixa "revisar" que paga a atenção de quem revisa (G5). ✅ entregue em 2026-11-06, e a G5 não cumpre. Captura ≥ 90% das palavras
   erradas restantes marcando ≤ 5% das palavras, **por palavra** (os intervalos `confianca_em` da
   S-722), com teto do IC95 (captura ≥ 85% no limite inferior). Corte **próprio** da fusão: o
   `corte_de_revisar` de hoje é o `ocr.MIN_CONFIDENCE`, que o `pdf_pesquisavel` e a `coleta` também
@@ -1507,7 +1663,8 @@ de cada um.
   - *Verificação:* no ouro-teste, captura de palavras erradas e fração marcada, com IC.
   - *Saída:* G5 cumprida (captura ≥ 90%, limite inferior ≥ 85%, marcadas ≤ 5%).
   - *Reversão:* o corte é constante própria da fusão; mudá-lo não mexe no `ocr.MIN_CONFIDENCE`.
-- **S-762** · A correção humana volta como dado, sem contaminar nada.
+  - *Achado:* **a captura é 77%, [52; 94], com 5,62% marcadas, no dev digital com o livro de fora, contra 52% da S-718; no scan, 55%, [39; 68], contra 31%.** O ouro-dev dá 95%, [75; 100], com 4,57%, mas são 19 palavras erradas em folhas que a S-721 viu: nas 60 folhas que ninguém olhou, a S-718 cai de 95% para 47%. **Longe da meta de 90%, com limite inferior de 85%.** O corte ganha do teto por folha (68% e 38%), e o IC da fração vai até 6,9% (9,6% no scan). Parte do que falta é ruído de rótulo: legenda lida certo que a referência tira. A G5 de portão se mede no fecho. Spec em `docs/SPEC_TEXTO_PRECISO.md`.
+- **S-762** · A correção humana volta como dado, sem contaminar nada. ✅ entregue em 2026-11-06
   - *Contexto:* `correcao.py` carimba o **bloco inteiro** como `humano` quando se edita um caractere —
     inclusive as palavras erradas que ninguém conferiu —, e o próprio código diz que "a correção é
     registro, e não rótulo" e recusa "treinar o modelo no próprio erro" (`coleta.py`). E a S-703
@@ -1520,7 +1677,12 @@ de cada um.
     confere que só o par tocado vai à quarentena da S-214.
   - *Saída:* correções da aba Texto chegam à quarentena com a versão do modelo; nenhuma chega a teste.
   - *Reversão:* a quarentena é revisável; nada entra no treino sem passar por ela.
-- **S-763** · Monitor de qualidade sem referência, validado antes de ser usado.
+  - *Achado:* o carimbo `humano` do bloco fica, porque serve à tela, e nenhum caminho de dado o lê. Sem valor novo no `Literal` e sem subir `ESQUEMA`: `corrigido_de:` mora em `text/procedencia.py`, e o
+    sha é `PaginaLida.modelo`, campo novo com padrão. `cvoff-texto-correcoes --quarentena` leva o par: em 7 folhas reais do dev, 85 pares, 70 com recorte, e 69 dos 70 recortes são a letra certa pelo classificador.
+  - *Achado:* **o scan-ouro não tem código ainda**, então a recusa dele é uma guarda à espera: a tela da S-703 tem de chamar `procedencia.exigir_verdade` e `dado_corrigido.exigir_documento_cego`. Na fusão o motor sai `glifo`
+    até a S-722.
+  - *Achado:* o manifesto só conhece os sorteados, e o volume seguinte de uma série do teste passava. `assets/texto_prosa/exclusao_do_teste.json` adianta a lista da S-750: identidades e chave de série, só resumos.
+- **S-763** · Monitor de qualidade sem referência, validado antes de ser usado. ✅ entregue em 2026-11-06, e nenhum sinal virou alarme
   - *Contexto:* a concordância glifo × leitor de linha **mede o glifo**, não a saída: por livro, a
     correlação entre o CER do glifo e o da fusão é só +0,51 por livro nos seis livros limpos (+0,46 por
     folha) — o *Minhas 60* tem glifo 6,92% e fusão 0,27%: a concordância anda com o erro do glifo, não
@@ -1534,6 +1696,7 @@ de cada um.
     domínio, publicadas.
   - *Saída:* só vira alarme o sinal que correlacionar no dev; a folha-canário relida a cada versão.
   - *Reversão:* alarme é aviso; não muda texto.
+  - *Achado:* **nenhum sinal passou da regra, escrita antes de olhar: nenhum alarme novo.** Spearman com o CER da saída, por folha: concordância +0,22 no digital e +0,27 no scan; densidade +0,10 e +0,49; o erro estimado da S-760, +0,44 e +0,37; alarmes falsos de 2 em 5 para cima, fora a fração acima do corte no scan, com um alarme só. A folha-canário é **de camada, não humana**, porque a humana depende da S-703 e da D3: `eng` e `por`, as línguas do dev, e nada no scan. `cvoff-texto-prosa --canario`: a mesma versão dá diferença zero; o glifo no lugar da fusão dispara em `por` e não em `eng`. Spec em `docs/SPEC_TEXTO_PRECISO.md`.
 - **S-764** · Regressão viva: cada família consertada vira teste escrito **antes** do conserto e
   conferido revertendo-o (a guarda que se pergunta ao próprio dado — memória
   `suite-de-treino-fases-80-a-86`). Duas camadas: a de **decisão** (a regra de geometria, de caixa, de
@@ -1555,7 +1718,7 @@ de cada um.
   - *Verificação:* exportar um livro do ouro-dev e medir a prosa do EPUB na régua.
   - *Saída:* a prosa do livro exportado igual à da aba, folha a folha.
   - *Reversão:* o envio é opção da exportação.
-- **S-766** · Corrigir uma vez, corrigir no livro inteiro.
+- **S-766** · Corrigir uma vez, corrigir no livro inteiro. ✅ entregue em 2026-11-06
   - *Contexto:* a S-762 leva a correção à quarentena de treino, não às folhas seguintes; a S-213
     (`semelhanca.py`) casa por imagem de glifo e não alcança a prosa que vem do Tesseract.
   - *Entrega:* palavras do livro no caderno — o nome que o dono corrigiu vira `--user-words` do executor
@@ -1563,6 +1726,7 @@ de cada um.
   - *Verificação:* num livro do dev, quantos erros repetidos somem depois da primeira correção.
   - *Saída:* a medida publicada e a prévia obrigatória (nenhuma troca em massa sem o dono ver).
   - *Reversão:* a troca em massa vai ao caderno como corrigida e se desfaz folha a folha.
+  - *Achado:* **a troca em massa paga, e o léxico nos árbitros quase nada.** Em 40 folhas de cada um de dois livros do dev, a troca tira 20 de 73 palavras erradas e 13 de 73; o léxico do livro, 0 e 2. Ele decide entre duas leituras, e não conserta o que os dois erram juntos. O `--user-words` não entra, pela medida da S-721. Os 43 colaterais de um dos livros são o motivo da prévia: palavra errada numa folha é certa em outra. O crítico achou o certo virando errado, com a janela não modal: o digitado depois da prévia agora é guardado antes da troca. Spec em `docs/SPEC_TEXTO_PRECISO.md`.
 
 ### Fase 107 — O portão final
 
@@ -1572,12 +1736,12 @@ de cada um.
     relatório publicado antes de qualquer ajuste.
   - *Saída:* M0–M5 e G1–G6 com ponto e teto; o plano B da seção 3 aplicado se algum falhar.
   - *Reversão:* medição.
-- **S-771** · README, ARCHITECTURE e o cabeçalho de `text/leitor.py` com o caminho novo e os números.
+- **S-771** · README, ARCHITECTURE e o cabeçalho de `text/leitor.py` com o caminho novo e os números. ✅ entregue em 2026-11-06, com os números de portão: o fecho depende de D3 e D8
   - *Verificação:* `pytest tests/test_docs.py` verde; os números citados batem com o relatório (guarda
     de número vivo, como as que o `test_docs` já tem).
   - *Saída:* README, ARCHITECTURE e cabeçalho de `text/leitor.py` atualizados.
   - *Reversão:* documentação.
-- **S-772** · Memória do projeto e a skill `ocr-texto-preciso` atualizadas com o que a execução ensinou.
+- **S-772** · Memória do projeto e a skill `ocr-texto-preciso` atualizadas com o que a execução ensinou. ✅ entregue em 2026-11-06
   - *Verificação:* a memória e a skill citam o relatório final e não contradizem o roadmap.
   - *Saída:* memória e skill atualizadas no mesmo dia do portão final.
   - *Reversão:* documentação.
@@ -1596,7 +1760,7 @@ dono não responder até lá — e o recuo **cumpre o próprio portão**, rotula
 | **D3** | Horas humanas para o scan-ouro | sim, ~15 h (30 folhas e a dupla digitação de 6) | começa no primeiro dia; precisa estar pronto antes do G104 | o G104 não fecha (M3/M4 sem número), e o produto sai dizendo que o erro de scan não foi medido | ~15 h humanas |
 | **D4** | Aceitar o orçamento do G4 (a leitura com fusão custa ~2–3× a do glifo, e pela política da S-215 isso pode tirar o texto da varredura padrão) | sim | antes do G102 | a fusão fica atrás de interruptor e não vira padrão | varredura de livro inteiro mais lenta (seção 3, G4) |
 | **D5** | Fontes, livros do acervo e **pesos derivados** (o `traineddata` ajustado da S-745, o modelo da Fase 105) | uso local; peso derivado de livro comercial **não** vai no instalador sem decisão expressa | antes da S-746 | os pesos ficam fora do bundle | licença das fontes comerciais e dos livros |
-| **D6** | Trazer ≥ 12 livros digitais novos (nascidos digitais, com prosa, ≥ 3 línguas; 8 é o mínimo) para o ouro-teste — **entregue em 2026-10-30**: 36 independentes; falta a terceira língua (seção 5a) | **sim** | antes do G102 | os portões G102 e G103 rodam no **teste provisório** (folhas nunca lidas dos 7 livros dev), com o teto recalculado por `amostra.py` para 7 livros e todo número rotulado "provisório (livro visto)"; o G107 não fecha sem eles | trazer os PDFs |
+| **D6** | Trazer ≥ 12 livros digitais novos (nascidos digitais, com prosa, ≥ 3 línguas; 8 é o mínimo) para o ouro-teste — **entregue em 2026-10-30**: 36 independentes; a terceira língua chegou em 2026-11-08 (espanhol, a mais) | **sim** | antes do G102 | os portões G102 e G103 rodam no **teste provisório** (folhas nunca lidas dos 7 livros dev), com o teto recalculado por `amostra.py` para 7 livros e todo número rotulado "provisório (livro visto)"; o G107 não fecha sem eles | trazer os PDFs |
 | **D7** | Downloads da escada e do dataset: `tesstrain`, modelo PP-OCR latino, `frak2021` (se houver Fraktur), fontes completas, corpus de domínio público | sim, um a um, com **nome, origem, tamanho e licença** declarados | antes do item que o usa | o degrau da S-745 que depende dele é pulado e registrado | variável |
 | **D8** | Orçamento de CPU da Fase 105 (dezenas de horas por corrida, várias corridas) | decidir depois da corrida-piloto da S-752 | antes da S-750 | a Fase 105 não começa; vale o plano B da seção 3 | horas de CPU desta máquina |
 | **D9** | Quem escreve o livro exportado: o tronco envia as folhas lidas pelo leitor novo à suíte, ou a suíte adota a fusão que vencer na S-707 | o que a S-707 medir melhor | antes da S-765 | o livro exportado continua com o motor da suíte, e o relatório diz | coordenação entre os dois repositórios |

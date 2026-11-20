@@ -27,7 +27,7 @@ verdade e é útil, e não diz "este diagrama está certo".
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -148,6 +148,7 @@ def tinta_do_diagrama(
     *,
     casas_incertas: Sequence[int] = (),
     confiancas: Sequence[float] = (),
+    corrigidas: Collection[int] = (),
     limiar_de_margem: float = LIMIAR_DE_MARGEM,
     limiar_de_confianca: float = UNCERTAIN_SQUARE_THRESHOLD,
 ) -> Tinta:
@@ -155,17 +156,21 @@ def tinta_do_diagrama(
 
     **Uma decisão, dois clientes**: o tabuleiro editável e o recorte tingem as mesmas casas com a
     mesma rampa porque os dois recebem esta `Tinta`. Decidir em cada widget é como eles divergem.
+
+    **`corrigidas` sai da tinta**: a dúvida era sobre o que o modelo leu ali, e a pessoa já pôs
+    outra coisa. As outras casas não são tocadas, e o que vem de `board_edit.differing_squares`
+    faz o desfazer devolver a tinta sem ninguém guardar nada.
     """
     valores = margens(probs)
     if valores:
         return Tinta(
-            casas=casas_ambar(probs, limiar_de_margem),
+            casas=tuple(casa for casa in casas_ambar(probs, limiar_de_margem) if casa not in corrigidas),
             valores=valores,
             limiar=limiar_de_margem,
             por_margem=True,
         )
     return Tinta(
-        casas=tuple(int(casa) for casa in casas_incertas if 0 <= int(casa) < 64),
+        casas=tuple(int(casa) for casa in casas_incertas if 0 <= int(casa) < 64 and int(casa) not in corrigidas),
         valores=tuple(float(valor) for valor in confiancas) if len(confiancas) == 64 else (),
         limiar=limiar_de_confianca,
         por_margem=False,

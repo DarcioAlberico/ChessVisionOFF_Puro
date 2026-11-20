@@ -1,0 +1,509 @@
+{
+ "codigo": {
+  "commit": "40858dd0a8201c27a5fdabacb547304bc59efdb7",
+  "modelo_sha256": "ca4bcc00b9c59b07",
+  "pacote": "prosa-transcricao/src",
+  "src_sujo": false,
+  "tessdata_sha256": {
+   "eng": "7d4322bd2a774972",
+   "por": "c4932b937207a951"
+  },
+  "tesseract": "5.5.0.20241111"
+ },
+ "escada": [
+  {
+   "degrau": "0a",
+   "estado": "medido e recusado pela S-721",
+   "leitura": "1 de 316 linhas muda, para pior; no spa o processo termina com erro, com a lista toda",
+   "o_que": "--user-words com os nomes",
+   "ouro_dev": {
+    "ouro_dev": {
+     "delta_notacao_pp": 0.0,
+     "delta_prosa_pp": 0.0,
+     "ic95_notacao_pp": [
+      0.0,
+      0.0
+     ],
+     "ic95_prosa_pp": [
+      0.0,
+      0.0
+     ],
+     "o_que": "--user-words com os nomes, ligado"
+    },
+    "prata": null,
+    "prata_admitida": null
+   },
+   "scan_ouro_dev": "sem número"
+  },
+  {
+   "degrau": "0b",
+   "estado": "medido e recusado pela S-721",
+   "leitura": "0 de 120 linhas mudam: o LSTM não lê essa variável em tempo de execução",
+   "o_que": "load_system_dawg=0 na notação",
+   "ouro_dev": {
+    "ouro_dev": {
+     "delta_notacao_pp": 0.0,
+     "delta_prosa_pp": 0.0,
+     "ic95_notacao_pp": [
+      0.0,
+      0.0
+     ],
+     "ic95_prosa_pp": [
+      0.0,
+      0.0
+     ],
+     "o_que": "load_system_dawg=0 na notação, ligado"
+    },
+    "prata": {
+     "delta_notacao_pp": 0.0,
+     "delta_prosa_pp": 0.0,
+     "ic95_notacao_pp": [
+      0.0,
+      0.0
+     ],
+     "ic95_prosa_pp": [
+      0.0,
+      0.0
+     ],
+     "o_que": "load_system_dawg=0 na notação, ligado"
+    },
+    "prata_admitida": {
+     "delta_notacao_pp": 0.0,
+     "delta_prosa_pp": 0.0,
+     "ic95_notacao_pp": [
+      0.0,
+      0.0
+     ],
+     "ic95_prosa_pp": [
+      0.0,
+      0.0
+     ],
+     "o_que": "load_system_dawg=0 na notação, ligado"
+    }
+   },
+   "scan_ouro_dev": "sem número"
+  },
+  {
+   "degrau": "0c",
+   "estado": "medido e recusado pela S-721",
+   "leitura": "diferença dentro do ruído nos dois conjuntos",
+   "o_que": "escala pela altura-x",
+   "ouro_dev": {
+    "ouro_dev": {
+     "delta_notacao_pp": 0.092,
+     "delta_prosa_pp": 0.004,
+     "ic95_notacao_pp": [
+      -0.211,
+      0.651
+     ],
+     "ic95_prosa_pp": [
+      -0.029,
+      0.048
+     ],
+     "o_que": "escala pela altura-x, ligada"
+    },
+    "prata": {
+     "delta_notacao_pp": 0.084,
+     "delta_prosa_pp": -0.154,
+     "ic95_notacao_pp": [
+      -0.943,
+      0.994
+     ],
+     "ic95_prosa_pp": [
+      -0.509,
+      0.066
+     ],
+     "o_que": "escala pela altura-x, ligada"
+    },
+    "prata_admitida": {
+     "delta_notacao_pp": -0.085,
+     "delta_prosa_pp": -0.007,
+     "ic95_notacao_pp": [
+      -1.27,
+      0.504
+     ],
+     "ic95_prosa_pp": [
+      -0.104,
+      0.1
+     ],
+     "o_que": "escala pela altura-x, ligada"
+    }
+   },
+   "scan_ouro_dev": "sem número"
+  },
+  {
+   "degrau": "0d",
+   "estado": "medido e recusado aqui",
+   "leitura": "o ponto piora nos dois conjuntos, em toda margem, com o IC tocando o zero: 7 folhas piores contra 1 no dev, 18 contra 2 na prata. Das 32 trocas do dev com margem de 1 nat, nenhuma leva a palavra da referência e 11 estragam uma certa (nome próprio). O custo não é o que recusa: é o ganho, porque até o oráculo só tira 0,046 p.p. no dev.",
+   "o_que": "n-gramas de caractere por língua desempatando lstm_choice_mode=2",
+   "ouro_dev": {
+    "hOCR - TSV, a primeira escolha": {
+     "delta_prosa_pp": 0.017,
+     "folhas_melhores": 0,
+     "folhas_piores": 3,
+     "ic95_prosa_pp": [
+      0.0,
+      0.045
+     ]
+    },
+    "lex - tess_hocr": {
+     "delta_prosa_pp": -0.004,
+     "folhas_melhores": 1,
+     "folhas_piores": 0,
+     "ic95_prosa_pp": [
+      -0.017,
+      0.0
+     ]
+    },
+    "ng_05 - tess_hocr": {
+     "delta_prosa_pp": 0.042,
+     "folhas_melhores": 1,
+     "folhas_piores": 7,
+     "ic95_prosa_pp": [
+      -0.008,
+      0.113
+     ]
+    },
+    "ng_10 - tess_hocr": {
+     "delta_prosa_pp": 0.042,
+     "folhas_melhores": 1,
+     "folhas_piores": 7,
+     "ic95_prosa_pp": [
+      -0.008,
+      0.113
+     ]
+    },
+    "ng_20 - tess_hocr": {
+     "delta_prosa_pp": 0.038,
+     "folhas_melhores": 1,
+     "folhas_piores": 6,
+     "ic95_prosa_pp": [
+      -0.012,
+      0.111
+     ]
+    },
+    "teto - tess_hocr": {
+     "delta_prosa_pp": -0.046,
+     "folhas_melhores": 6,
+     "folhas_piores": 0,
+     "ic95_prosa_pp": [
+      -0.133,
+      0.0
+     ]
+    }
+   },
+   "prata_ordenacao": {
+    "hOCR - TSV, a primeira escolha": {
+     "delta_prosa_pp": 0.056,
+     "folhas_melhores": 7,
+     "folhas_piores": 10,
+     "ic95_prosa_pp": [
+      -0.023,
+      0.161
+     ]
+    },
+    "lex - tess_hocr": {
+     "delta_prosa_pp": 0.005,
+     "folhas_melhores": 2,
+     "folhas_piores": 3,
+     "ic95_prosa_pp": [
+      -0.011,
+      0.022
+     ]
+    },
+    "ng_05 - tess_hocr": {
+     "delta_prosa_pp": 0.094,
+     "folhas_melhores": 2,
+     "folhas_piores": 18,
+     "ic95_prosa_pp": [
+      -0.032,
+      0.181
+     ]
+    },
+    "ng_10 - tess_hocr": {
+     "delta_prosa_pp": 0.084,
+     "folhas_melhores": 2,
+     "folhas_piores": 18,
+     "ic95_prosa_pp": [
+      -0.046,
+      0.174
+     ]
+    },
+    "ng_20 - tess_hocr": {
+     "delta_prosa_pp": 0.063,
+     "folhas_melhores": 2,
+     "folhas_piores": 15,
+     "ic95_prosa_pp": [
+      -0.065,
+      0.145
+     ]
+    },
+    "teto - tess_hocr": {
+     "delta_prosa_pp": -0.154,
+     "folhas_melhores": 22,
+     "folhas_piores": 0,
+     "ic95_prosa_pp": [
+      -0.297,
+      -0.073
+     ]
+    }
+   },
+   "scan_ouro_dev": "sem número"
+  },
+  {
+   "degrau": "1",
+   "estado": "pulado por recuo",
+   "o_que": "tessdata_best (S-741)",
+   "por_que": "D2, download não autorizado: fica o fast (seção 7 do roadmap)"
+  },
+  {
+   "degrau": "2",
+   "estado": "pulado por recuo",
+   "o_que": "ajuste fino do Tesseract (tesstrain + S-746)",
+   "por_que": "D2 e D7, downloads não autorizados; a S-746 só serve a este degrau e fica de fora"
+  },
+  {
+   "degrau": "3",
+   "estado": "pulado por recuo",
+   "o_que": "PP-OCR latino em ONNX",
+   "por_que": "D7, download não autorizado"
+  }
+ ],
+ "item": "S-745: a escada de linhas de base, antes de qualquer modelo da casa",
+ "medido_em": "2026-11-06",
+ "melhor_degrau": {
+  "fonte": "docs/metrics/texto_prosa_fusao_2026-11-06.json",
+  "nome": "a fusão de 2026-11-06 (motor=fusao) sobre o Tesseract 5.5 com tessdata fast, sem nenhum ajuste do degrau 0",
+  "ouro_dev_cer_prosa_pct": 0.235,
+  "ouro_dev_ic95_pct": [
+   0.04,
+   0.627
+  ],
+  "por_que": "nenhum dos quatro itens do degrau 0 paga, e os degraus 1, 2 e 3 foram pulados por recuo. A S-755 compara contra ele, até a D2 ou a D7 mudarem isto.",
+  "scan_ouro_dev": "sem número: não há verdade humana (S-703, decisão D3)"
+ },
+ "ngramas": {
+  "custo_do_processo": {
+   "pergunta": "A S-729 recusou as alternativas por pagar um processo a mais por folha, sem dizer quanto. Quanto é?",
+   "resposta": "0.88 s por folha no dev e 1.34 s na prata, se for um processo a mais; +15% se o hOCR substituir o TSV, e aí a primeira escolha do hOCR ainda perde 0.017 p.p. no dev. Sob contenção: não julga o G4.",
+   "veredito": "o custo sozinho não o tornaria inviável. Quem o recusa é o ganho."
+  },
+  "modelo": "trigramas de caractere, suavização 0,5, contados nos tipos de lexico.da_lingua",
+  "ouro_dev": {
+   "cer_prosa_pct": {
+    "lex": 0.282,
+    "ng_05": 0.328,
+    "ng_10": 0.328,
+    "ng_20": 0.324,
+    "tess": 0.269,
+    "tess_hocr": 0.286,
+    "teto": 0.24
+   },
+   "folhas": 27,
+   "livros": 5,
+   "palavras": 5759,
+   "pares": {
+    "hOCR - TSV, a primeira escolha": {
+     "delta_prosa_pp": 0.017,
+     "folhas_melhores": 0,
+     "folhas_piores": 3,
+     "ic95_prosa_pp": [
+      0.0,
+      0.045
+     ]
+    },
+    "lex - tess_hocr": {
+     "delta_prosa_pp": -0.004,
+     "folhas_melhores": 1,
+     "folhas_piores": 0,
+     "ic95_prosa_pp": [
+      -0.017,
+      0.0
+     ]
+    },
+    "ng_05 - tess_hocr": {
+     "delta_prosa_pp": 0.042,
+     "folhas_melhores": 1,
+     "folhas_piores": 7,
+     "ic95_prosa_pp": [
+      -0.008,
+      0.113
+     ]
+    },
+    "ng_10 - tess_hocr": {
+     "delta_prosa_pp": 0.042,
+     "folhas_melhores": 1,
+     "folhas_piores": 7,
+     "ic95_prosa_pp": [
+      -0.008,
+      0.113
+     ]
+    },
+    "ng_20 - tess_hocr": {
+     "delta_prosa_pp": 0.038,
+     "folhas_melhores": 1,
+     "folhas_piores": 6,
+     "ic95_prosa_pp": [
+      -0.012,
+      0.111
+     ]
+    },
+    "teto - tess_hocr": {
+     "delta_prosa_pp": -0.046,
+     "folhas_melhores": 6,
+     "folhas_piores": 0,
+     "ic95_prosa_pp": [
+      -0.133,
+      0.0
+     ]
+    }
+   },
+   "razao_mediana_hocr_sobre_tsv": 1.15,
+   "segundos_tess": 0.75,
+   "segundos_tess_hocr": 0.88,
+   "trocas": {
+    "lex": {
+     "estragou_palavra_da_referencia": 0,
+     "para_palavra_da_referencia": 1,
+     "trocas": 3
+    },
+    "ng_05": {
+     "estragou_palavra_da_referencia": 11,
+     "para_palavra_da_referencia": 0,
+     "trocas": 34
+    },
+    "ng_10": {
+     "estragou_palavra_da_referencia": 11,
+     "para_palavra_da_referencia": 0,
+     "trocas": 32
+    },
+    "ng_20": {
+     "estragou_palavra_da_referencia": 10,
+     "para_palavra_da_referencia": 0,
+     "trocas": 28
+    },
+    "teto": {
+     "estragou_palavra_da_referencia": 0,
+     "para_palavra_da_referencia": 120,
+     "trocas": 120
+    }
+   }
+  },
+  "prata": {
+   "cer_prosa_pct": {
+    "lex": 8.824,
+    "ng_05": 8.913,
+    "ng_10": 8.904,
+    "ng_20": 8.883,
+    "tess": 8.764,
+    "tess_hocr": 8.82,
+    "teto": 8.665
+   },
+   "folhas": 30,
+   "livros": 10,
+   "palavras": 10312,
+   "pares": {
+    "hOCR - TSV, a primeira escolha": {
+     "delta_prosa_pp": 0.056,
+     "folhas_melhores": 7,
+     "folhas_piores": 10,
+     "ic95_prosa_pp": [
+      -0.023,
+      0.161
+     ]
+    },
+    "lex - tess_hocr": {
+     "delta_prosa_pp": 0.005,
+     "folhas_melhores": 2,
+     "folhas_piores": 3,
+     "ic95_prosa_pp": [
+      -0.011,
+      0.022
+     ]
+    },
+    "ng_05 - tess_hocr": {
+     "delta_prosa_pp": 0.094,
+     "folhas_melhores": 2,
+     "folhas_piores": 18,
+     "ic95_prosa_pp": [
+      -0.032,
+      0.181
+     ]
+    },
+    "ng_10 - tess_hocr": {
+     "delta_prosa_pp": 0.084,
+     "folhas_melhores": 2,
+     "folhas_piores": 18,
+     "ic95_prosa_pp": [
+      -0.046,
+      0.174
+     ]
+    },
+    "ng_20 - tess_hocr": {
+     "delta_prosa_pp": 0.063,
+     "folhas_melhores": 2,
+     "folhas_piores": 15,
+     "ic95_prosa_pp": [
+      -0.065,
+      0.145
+     ]
+    },
+    "teto - tess_hocr": {
+     "delta_prosa_pp": -0.154,
+     "folhas_melhores": 22,
+     "folhas_piores": 0,
+     "ic95_prosa_pp": [
+      -0.297,
+      -0.073
+     ]
+    }
+   },
+   "razao_mediana_hocr_sobre_tsv": 1.15,
+   "segundos_tess": 1.17,
+   "segundos_tess_hocr": 1.34,
+   "trocas": {
+    "lex": {
+     "estragou_palavra_da_referencia": 1,
+     "para_palavra_da_referencia": 2,
+     "trocas": 30
+    },
+    "ng_05": {
+     "estragou_palavra_da_referencia": 37,
+     "para_palavra_da_referencia": 6,
+     "trocas": 157
+    },
+    "ng_10": {
+     "estragou_palavra_da_referencia": 36,
+     "para_palavra_da_referencia": 5,
+     "trocas": 147
+    },
+    "ng_20": {
+     "estragou_palavra_da_referencia": 28,
+     "para_palavra_da_referencia": 5,
+     "trocas": 124
+    },
+    "teto": {
+     "estragou_palavra_da_referencia": 0,
+     "para_palavra_da_referencia": 342,
+     "trocas": 342
+    }
+   },
+   "uso": "ordenação"
+  },
+  "regra": "palavra de letras, de 3 letras ou mais, fora do léxico da língua: troca pela alternativa (confiança >= 5%, até 2 posições) cujo trigrama ganha pela margem",
+  "variantes": {
+   "lex": "o controle: a alternativa que é palavra do léxico",
+   "ng_05": "margem 0,5 nat",
+   "ng_10": "1 nat",
+   "ng_20": "2 nats",
+   "teto": "o oráculo: a alternativa que está na referência"
+  }
+ },
+ "pergunta": "Qual o melhor leitor de linha que não exige modelo da casa? É contra ele que a S-755 compara.",
+ "ressalvas": [
+  "O ouro_dev é dev contaminado, e a regra foi escrita sem olhar o teste, que não foi aberto. O scan-ouro não tem número: sem verdade, M3 e M4 não existem.",
+  "prata só ordena: a referência é OCR de terceiro. No Kmoch ela erra 30% a 42% da prosa, e o ganho de n-gramas ali pode ser concordar com o erro dela.",
+  "Tempo sob contenção (duas outras medições na máquina): só a razão entre os dois tempos, folha a folha, fala de alguma coisa, e não julga o G4.",
+  "Os três ajustes da S-721 não foram remedidos, a pedido: os números são os dela."
+ ]
+}

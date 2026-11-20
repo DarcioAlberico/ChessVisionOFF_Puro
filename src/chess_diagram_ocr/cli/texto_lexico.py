@@ -2,6 +2,7 @@
 
     cvoff-texto-lexico "Lista de Palavras"
     cvoff-texto-lexico "Lista de Palavras" --dry-run
+    cvoff-texto-lexico --linguas-de "C:/Program Files/Tesseract-OCR"
 
 **Existe para que trocar a lista não seja mexer em código.** O léxico de `text/lexico.py` lê
 arquivos de dados -- e `PERFIS` diz quais deles cada perfil une --, e este comando é o que os
@@ -30,26 +31,38 @@ está corrompido -- as linhas são concatenações de dois nomes partidos ao mei
 `partindras` -> `A.Korospartindras`), e depois das réguas acima ainda sobrariam **39.409**
 palavras falsas como `Cortesulio`, `Linaresariano` e `Frauosep`. Palavra falsa no léxico é pior
 que palavra faltando: a que falta só deixa de corrigir, a falsa vira **alvo** de correção.
+
+## As listas por língua (S-728)
+
+`--linguas-de` tira de dentro do `.traineddata` a lista de palavras do próprio Tesseract, com o `combine_tessdata` e
+o `dawg2wordlist` da instalação, e grava `assets/lexico/linguas/<código>.txt.gz` com o `manifesto.json` ao lado. Nada
+baixa da rede, e nada vem da camada dos livros. Por que só a minúscula, e o alemão com a inicial maiúscula: ver
+`aceita_na_lingua`.
 """
 
 from __future__ import annotations
 
 import argparse
 import gzip
+import hashlib
 import io
 import json
 import logging
 import re
+import subprocess
+import tempfile
+import unicodedata
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ..atomic_io import atomic_write_bytes, atomic_write_text
 from ..config import DEFAULT_PDF_DIR, PROJECT_ROOT
 from ..logging_setup import configure_logging
-from ..text.lexico import CAMINHO_IDIOMA, CAMINHO_NOMES, MIN_TAMANHO, PALAVRA
+from ..text.lexico import CAMINHO_IDIOMA, CAMINHO_NOMES, MIN_TAMANHO, PALAVRA, PASTA_DAS_LINGUAS
 from ..text.notacao import LANCE
+from ..text.tesseract import LINGUAS
 from . import EXIT_BAD_INPUT, EXIT_OK, add_verbose, cli_errors
 
 logger = logging.getLogger(__name__)
@@ -158,9 +171,83 @@ def escrever(caminho: Path, palavras: set[str]) -> int:
     return len(dados)
 
 
+_PALAVRA_DE_LINGUA = re.compile(r"^[^\W\d_]+(?:['’-][^\W\d_]+)*$")
+"""Qualquer alfabeto. `PALAVRA` é só latino até `ÿ`, e não aceitaria `după` nem o russo."""
+
+
+def aceita_na_lingua(token: str, lingua: str) -> str | None:
+    """A entrada que este token vira na lista da língua, ou `None`.
+
+    **A lista do Tesseract é larga e suja, medido:** 338.080 linhas no inglês, com `Rd`, `Kf`, `<a`, sigla e marca.
+    Três réguas. Menos de `MIN_TAMANHO` letras sai: 2 e 3 letras são lixo e notação, e a palavra curta de verdade tem
+    tabela à mão em `text/fusao.py`. Sigla e nome próprio saem por só a minúscula entrar: o nome já mora em
+    `nomes.txt.gz`. E o alemão fica também com a inicial maiúscula, porque lá é assim que o substantivo se escreve.
+    """
+    palavra = unicodedata.normalize("NFC", token.strip())
+    if not _PALAVRA_DE_LINGUA.match(palavra) or LANCE.match(palavra):
+        return None
+    if sum(c.isalpha() for c in palavra) < MIN_TAMANHO:
+        return None
+    substantivo = lingua == "deu" and palavra[0].isupper() and palavra[1:].islower()
+    return palavra.casefold() if palavra.islower() or substantivo else None
+
+
+def lista_da_lingua(linhas: Sequence[str], lingua: str) -> set[str]:
+    return {entrada for entrada in (aceita_na_lingua(linha, lingua) for linha in linhas) if entrada}
+
+
+def _linhas_do_tessdata(instalacao: Path, lingua: str, pasta: Path) -> list[str]:
+    """As linhas do `lstm-word-dawg` de uma língua, pelos dois programas da própria instalação do Tesseract."""
+    prefixo = pasta / f"{lingua}."
+    saida = pasta / f"{lingua}.palavras.txt"
+    for comando in (
+        [instalacao / "combine_tessdata.exe", "-u", instalacao / "tessdata" / f"{lingua}.traineddata", prefixo],
+        [instalacao / "dawg2wordlist.exe", f"{prefixo}lstm-unicharset", f"{prefixo}lstm-word-dawg", saida],
+    ):
+        subprocess.run([str(parte) for parte in comando], check=True, capture_output=True)  # noqa: S603
+    return saida.read_text(encoding="utf-8").splitlines()
+
+
+def empacotar_linguas(instalacao: Path, destino: Path, *, seco: bool = False) -> dict[str, Any]:
+    """Grava as oito listas e o manifesto, e devolve o manifesto. `seco` só conta.
+
+    Rodar de novo sobre o mesmo `tessdata` dá os mesmos bytes: `escrever` grava o gzip com `mtime=0`.
+    """
+    linguas: dict[str, Any] = {}
+    for lingua in LINGUAS:
+        pesos = instalacao / "tessdata" / f"{lingua}.traineddata"
+        with tempfile.TemporaryDirectory(prefix="cvoff-lingua-") as pasta:
+            linhas = _linhas_do_tessdata(instalacao, lingua, Path(pasta))
+            versao = (Path(pasta) / f"{lingua}.version").read_text(encoding="utf-8").strip()
+        palavras = lista_da_lingua(linhas, lingua)
+        caminho = destino / f"{lingua}.txt.gz"
+        linguas[lingua] = {
+            "arquivo": caminho.name,
+            "entradas": len(palavras),
+            "linhas_no_tessdata": len(linhas),
+            "traineddata": {"arquivo": pesos.name, "sha256": hashlib.sha256(pesos.read_bytes()).hexdigest(), "versao": versao},
+        }
+        if not seco:
+            escrever(caminho, palavras)
+            linguas[lingua]["sha256"] = hashlib.sha256(caminho.read_bytes()).hexdigest()
+    manifesto = {
+        "item": "S-728",
+        "origem": "lstm-word-dawg do tessdata fast instalado com o Tesseract, extraído com combine_tessdata -u e dawg2wordlist",
+        "licenca": "Apache-2.0, cópia em LICENSE.tessdata",
+        "regra": "cli/texto_lexico.py, aceita_na_lingua",
+        "linguas": linguas,
+    }
+    if not seco:
+        atomic_write_text(destino / "manifesto.json", json.dumps(manifesto, ensure_ascii=False, indent=2) + "\n")
+    return manifesto
+
+
 LIVROS_DA_MEDICAO = 5
 PAGINAS_DA_MEDICAO = 12
 DESTINO_DA_MEDICAO = PROJECT_ROOT / "docs" / "metrics" / "texto_lexico.json"
+
+MOTOR_DA_JUNCAO: Literal["glifo"] = "glifo"
+"""Quem lê a folha na medida da junção: a população dela é o livro tipografado, e não a camada (S-727)."""
 
 
 LIVROS_TIPOGRAFADOS = (
@@ -198,7 +285,7 @@ def medir_juncao_no_glifo(livros: Sequence[str], folhas: Sequence[int]) -> dict[
             continue
         for indice in folhas:
             try:
-                pagina = ler_pagina(caminho, indice, reconhecedor=reconhecedor)
+                pagina = ler_pagina(caminho, indice, motor=MOTOR_DA_JUNCAO, reconhecedor=reconhecedor)
             except (ValueError, RuntimeError, OSError):
                 continue
             lidas += 1
@@ -210,6 +297,7 @@ def medir_juncao_no_glifo(livros: Sequence[str], folhas: Sequence[int]) -> dict[
     _novas, juncoes = juntar_hifenizadas(linhas, lexico)
     return {
         "medida": True,
+        "motor": MOTOR_DA_JUNCAO,
         "livros": list(livros),
         "folhas_lidas": lidas,
         "linhas": len(linhas),
@@ -368,12 +456,26 @@ def main(argv: list[str] | None = None) -> int:
             "junção onde ela mora. Custa segundos por folha (S-215)."
         ),
     )
+    parser.add_argument(
+        "--linguas-de",
+        type=Path,
+        default=None,
+        help="Pasta da instalação do Tesseract: grava as listas por língua em assets/lexico/linguas/ (S-728).",
+    )
     add_verbose(parser)
     args = parser.parse_args(argv)
     configure_logging(verbose=args.verbose)
 
     if args.medir:
         return _medir_e_gravar(args)
+    if args.linguas_de is not None:
+        if not (args.linguas_de / "tessdata").is_dir():
+            print(f"instalacao do Tesseract nao encontrada: {args.linguas_de}")
+            return EXIT_BAD_INPUT
+        feito = empacotar_linguas(args.linguas_de, PASTA_DAS_LINGUAS, seco=args.dry_run)
+        for lingua, dados in feito["linguas"].items():
+            print(f"  {lingua} {dados['entradas']:>7d} de {dados['linhas_no_tessdata']:>7d} linhas")
+        return EXIT_OK
 
     pasta = Path(args.pasta)
     if not pasta.is_dir():

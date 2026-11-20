@@ -51,11 +51,32 @@ TIMEOUT_POR_LINHA = 1.0
 """Segundos. O teto é 10× o p99 medido por folha, com piso de 10 s: um Tesseract travado não pode prender
 a `Tarefa` do Qt, e uma folha de 80 linhas lidas em 4 s não pode ser morta por um teto curto."""
 
+LOTE_POR_FOLHA = True
+"""Um processo por folha, com o TIFF de várias páginas (S-720, S-725). Desligado, um processo por linha: a reserva, e a régua do lote."""
+
+PSM_DA_LINHA = 7
+
+VERSAO_DO_EXECUTOR = 1
+"""Sobe quando o que este módulo faz com o recorte ou com o TSV muda a leitura sem mudar uma constante. Vai na chave do cache (S-725)."""
+
 TETO_DE_MEGAPIXELS = 60.0
 """Acima disto a imagem não vai ao Tesseract: ~124 MB por processo a 600 dpi, e um PDF pode pedir gigabytes."""
 
 MARGEM_DO_RECORTE = 10
 """Pixels brancos em volta da linha. Sem eles o `psm 7` come a primeira e a última letra."""
+
+ESCALA_PELA_ALTURA_X = False
+"""A escala do recorte pela altura-x medida, um ajuste que a S-720 adiou (S-721). Medido e deixado desligado: ver a spec."""
+
+ALTURA_X_ALVO = (20.0, 30.0)
+"""Pixels. Um scan de 150 dpi tem altura-x nativa de 7 a 10 px; o *Bachmann*, a 220 dpi, de ~52 px."""
+
+RUS_COM_ENG = True
+"""Livro russo lê com `rus+eng` (S-729): só com `rus`, a notação em letra sai cirílica (`№х45`, `Вхд5`), e com `eng` ao lado sai `Nxd5`,
+`Bxd5`. Oito folhas do *Пилавов*: ver a spec. Só no número de lance fica igual: quem precisa do dígito é a gramática."""
+
+PALAVRAS_DO_USUARIO: Path | None = None
+"""O `--user-words` da S-720: jogadores, aberturas e torneios. `None` não passa nada. Medido e deixado sem lista: ver a spec."""
 
 _NOMES_DO_BINARIO = ("tesseract.exe", "tesseract") if os.name == "nt" else ("tesseract",)
 _INSTALADO_EM = (Path(r"C:\Program Files\Tesseract-OCR"), Path(r"C:\Program Files (x86)\Tesseract-OCR"))
@@ -134,6 +155,11 @@ def versao_de(texto: str) -> str:
 
 def versao_medida(versao: str) -> bool:
     return bool(versao) and versao.split(".")[0].isdigit() and int(versao.split(".")[0]) in VERSOES_MEDIDAS
+
+
+def lingua_do_processo(lingua: str) -> str:
+    """O `-l` que vai ao processo. A língua do livro continua `rus`, para o léxico e para o caderno."""
+    return "rus+eng" if RUS_COM_ENG and lingua == "rus" else lingua
 
 
 def _opcoes_do_processo(ambiente: Mapping[str, str]) -> dict[str, object]:
@@ -280,11 +306,21 @@ def rodar(
     psm: int,
     timeout: float,
     popen: Callable[..., subprocess.Popen[bytes]] = subprocess.Popen,
+    opcoes: Sequence[str] = (),
+    formato: str = "tsv",
 ) -> str:
-    """Um processo, a imagem pelo stdin, o TSV de volta. Levanta `FalhaDoTesseract` e nunca devolve `""` calado."""
+    """Um processo, a imagem pelo stdin, o TSV de volta. Levanta `FalhaDoTesseract` e nunca devolve `""` calado.
+
+    `opcoes` são argumentos a mais, antes do formato (`-c load_system_dawg=0`); `formato`, `tsv` ou `hocr`.
+    """
     if motor.binario is None:
         raise FalhaDoTesseract(motor.motivo or "O Tesseract não foi encontrado.")
-    comando = [str(motor.binario), "stdin", "stdout", "-l", lingua, "--psm", str(psm), "--dpi", str(int(dpi)), "tsv"]
+    comando = [
+        str(motor.binario), "stdin", "stdout", "-l", lingua_do_processo(lingua), "--psm", str(psm), "--dpi", str(int(dpi)),
+        *opcoes,
+        *(("--user-words", str(PALAVRAS_DO_USUARIO)) if PALAVRAS_DO_USUARIO is not None else ()),
+        formato,
+    ]
     try:
         processo = popen(comando, **_opcoes_do_processo(ambiente_do_processo(motor)))
     except OSError as exc:
@@ -333,6 +369,38 @@ def palavras_do_tsv(texto: str) -> list[Palavra]:
     return palavras
 
 
+def altura_x(recorte: np.ndarray) -> float | None:
+    """A altura-x de uma linha, na projeção horizontal da tinta: a faixa de linhas com mais da metade do pico."""
+    import cv2
+
+    cinza = cv2.cvtColor(recorte, cv2.COLOR_RGB2GRAY) if recorte.ndim == 3 else recorte
+    if cinza.size == 0:
+        return None
+    _, binaria = cv2.threshold(cinza, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    perfil = (binaria > 0).sum(axis=1).astype(float)
+    if perfil.max() <= 0:
+        return None
+    return float((perfil >= 0.5 * perfil.max()).sum()) or None
+
+
+def escalado(recorte: np.ndarray) -> np.ndarray:
+    """O recorte com a altura-x no alvo. Dentro da faixa, ou sem altura-x medida, volta o mesmo."""
+    import cv2
+
+    medida = altura_x(recorte)
+    baixo, alto = ALTURA_X_ALVO
+    if medida is None or baixo <= medida <= alto:
+        return recorte
+    fator = (baixo if medida < baixo else alto) / medida
+    interpolacao = cv2.INTER_CUBIC if fator > 1 else cv2.INTER_AREA
+    return cv2.resize(recorte, None, fx=fator, fy=fator, interpolation=interpolacao)
+
+
+def assinatura_do_preprocessamento() -> str:
+    """O que muda o recorte antes do processo, escrito na chave do cache: virar uma constante daqui invalida a entrada (S-725)."""
+    return f"margem={MARGEM_DO_RECORTE};escala={ESCALA_PELA_ALTURA_X};alvo={ALTURA_X_ALVO};russo={RUS_COM_ENG}"
+
+
 def confiancas_por_token(palavras: Sequence[Palavra]) -> tuple[float, ...]:
     """Uma confiança por token de `" ".join(p.texto for p in palavras).split()` (S-853).
 
@@ -350,6 +418,8 @@ def _tiff_de(recortes: Sequence[np.ndarray]) -> bytes:
     imagens = []
     for recorte in recortes:
         cinza = cv2.cvtColor(recorte, cv2.COLOR_RGB2GRAY) if recorte.ndim == 3 else recorte
+        if ESCALA_PELA_ALTURA_X:
+            cinza = escalado(cinza)
         m = MARGEM_DO_RECORTE
         imagens.append(
             Image.fromarray(cv2.copyMakeBorder(cinza, m, m, m, m, cv2.BORDER_CONSTANT, value=255))
@@ -366,27 +436,39 @@ def ler_linhas(
     dpi: int = DEFAULT_DPI,
     motor: Motor | None = None,
     rodar_tesseract: Callable[..., str] = rodar,
+    sem_dicionario: bool = False,
 ) -> list[LinhaDoTesseract | None]:
     """Um recorte de linha por página do TIFF, um processo só. Levanta `FalhaDoTesseract`.
 
     Recorte vazio responde `None` sem ir ao processo: ele não tem como ser página de TIFF, e tirá-lo
     deslocaria todas as respostas seguintes. **`None` e não `""`** (S-853): é o contrato do
     `leitor_de_linha` -- `None` é "não leu", e a linha fica com o glifo; `""` é "leu vazio", e a fusão
-    derrubava a prosa do glifo por uma leitura que nunca aconteceu.
+    derrubava a prosa do glifo por uma leitura que nunca aconteceu. `sem_dicionario` é para linha de notação:
+    `load_system_dawg=0`.
     """
     achado = achar_motor() if motor is None else motor
     validos = [i for i, r in enumerate(recortes) if r.size]
     saida: list[LinhaDoTesseract | None] = [None for _ in recortes]
     if not validos:
         return saida
-    tsv = rodar_tesseract(
-        achado,
-        _tiff_de([recortes[i] for i in validos]),
-        lingua=lingua,
-        dpi=dpi,
-        psm=7,
-        timeout=max(TIMEOUT_MINIMO, TIMEOUT_POR_LINHA * len(validos)),
-    )
+
+    def lote(indices: Sequence[int]) -> str:
+        return rodar_tesseract(
+            achado,
+            _tiff_de([recortes[i] for i in indices]),
+            lingua=lingua,
+            dpi=dpi,
+            psm=PSM_DA_LINHA,
+            timeout=max(TIMEOUT_MINIMO, TIMEOUT_POR_LINHA * len(indices)),
+            **({"opcoes": ("-c", "load_system_dawg=0")} if sem_dicionario else {}),
+        )
+
+    if not LOTE_POR_FOLHA:
+        for indice in validos:
+            palavras = palavras_do_tsv(lote([indice]))
+            saida[indice] = LinhaDoTesseract(" ".join(p.texto for p in palavras), tuple(p.confianca for p in palavras), tuple(palavras))
+        return saida
+    tsv = lote(validos)
     por_pagina: dict[int, list[Palavra]] = {}
     for palavra in palavras_do_tsv(tsv):
         por_pagina.setdefault(palavra.pagina, []).append(palavra)
@@ -427,10 +509,13 @@ def ler_folha(
 __all__ = [
     "LINGUAS",
     "LINGUA_PADRAO",
+    "LOTE_POR_FOLHA",
     "MARGEM_DO_RECORTE",
+    "PSM_DA_LINHA",
     "TETO_DE_MEGAPIXELS",
     "TIMEOUT_MINIMO",
     "TIMEOUT_POR_LINHA",
+    "VERSAO_DO_EXECUTOR",
     "VERSOES_MEDIDAS",
     "FalhaDoTesseract",
     "LinhaDoTesseract",
@@ -438,7 +523,9 @@ __all__ = [
     "Palavra",
     "achar_motor",
     "ambiente_do_processo",
+    "assinatura_do_preprocessamento",
     "examinar",
+    "lingua_do_processo",
     "ler_folha",
     "ler_linhas",
     "palavras_do_tsv",

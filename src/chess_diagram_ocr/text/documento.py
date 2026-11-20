@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from .pagina import Bloco, BlocoDeDiagrama, PaginaLida
 
@@ -51,6 +52,38 @@ def corte_de_revisar() -> float:
     from ..ocr import MIN_CONFIDENCE
 
     return float(MIN_CONFIDENCE)
+
+
+def faixas_da_linha(linha: Any, *, por_palavra: bool = False) -> list[str | None]:
+    """A faixa de cada caractere de `linha.texto`, quando a linha sabe dizer. `None` é a faixa do bloco (S-718, S-722).
+
+    **A marca ranqueada vem primeiro, e com ela ligada nada mais pinta.** O teto de 5% é a S-718, e o sinal cru da
+    confiança, que inunda, não entra por cima dele. Sem ela, é `confianca_em` que responde palavra a palavra, com o corte de sempre: o corte
+    da S-761 é o da fusão (`fusao.CORTE_DE_REVISAR`), e ela o escreve em `revisar_em`. **Só a palavra pinta, e nunca o espaço.**
+    """
+    texto = linha.texto
+    saida: list[str | None] = [None] * len(texto)
+    for inicio, fim in getattr(linha, "revisar_em", ()):
+        for i in range(max(0, inicio), min(len(texto), fim)):
+            if not texto[i].isspace():
+                saida[i] = REVISAR
+    if por_palavra:
+        return saida
+    for inicio, fim, confianca in getattr(linha, "confianca_em", ()):
+        for i in range(max(0, inicio), min(len(texto), fim)):
+            if saida[i] is None and not texto[i].isspace():
+                saida[i] = faixa_de_confianca(confianca, linha.procedencia_no(i))
+    return saida
+
+
+def faixa_do_espaco(faixa: str | None) -> str | None:
+    """O espaço da junção de duas linhas: nunca é `revisar`, ou as marcas do fim e do começo viram uma corrida só (S-718)."""
+    return None if faixa == REVISAR else faixa
+
+
+def tem_faixa_por_palavra(pagina: PaginaLida, bloco: Bloco) -> bool:
+    """A faixa deste bloco é por palavra? Com a marca ligada (S-718), ou quando as linhas dizem quanto vale cada uma (S-722)."""
+    return pagina.marca_por_palavra or any(getattr(linha, "confianca_em", ()) for linha in getattr(bloco, "linhas", ()))
 
 
 def faixa_de_confianca(confianca: float, procedencia: str = "") -> str:
@@ -88,6 +121,9 @@ class Segmento:
     italico: bool = False
     """O bloco está em itálico. `None` vira `False` pela mesma razão do `negrito` acima (S-236)."""
 
+    marca_por_palavra: bool = False
+    """A página tem a marca ranqueada ligada: só `revisar_em` pinta palavra. Ver `faixas_da_linha`."""
+
     @property
     def e_diagrama(self) -> bool:
         return self.tipo == "diagrama"
@@ -119,12 +155,13 @@ def segmentos(pagina: PaginaLida) -> Iterator[Segmento]:
                 tipo="diagrama" if isinstance(bloco, BlocoDeDiagrama) else "texto",
                 texto=texto,
                 # **Com a marca por palavra, a confiança do bloco não pinta nada** (S-718): ela é do glifo,
-                # e boa parte do texto é de outro leitor. Quem marca é `LinhaLida.revisar_em`.
-                faixa=TRANQUILO if pagina.marca_por_palavra else faixa_de_confianca(bloco.confianca, bloco.procedencia),
+                # e boa parte do texto é de outro leitor. Quem marca é `LinhaLida.revisar_em`, ou `confianca_em` (S-722).
+                faixa=TRANQUILO if tem_faixa_por_palavra(pagina, bloco) else faixa_de_confianca(bloco.confianca, bloco.procedencia),
                 bloco=bloco,
                 coluna=coluna.indice,
                 negrito=getattr(bloco, "negrito", None) is True,
                 italico=getattr(bloco, "italico", None) is True,
+                marca_por_palavra=pagina.marca_por_palavra,
             )
 
 
@@ -148,8 +185,10 @@ def contagem_por_faixa(pagina: PaginaLida) -> dict[str, int]:
     """Quantos blocos em cada faixa. É o que a linha de status da aba resume."""
     contagem = dict.fromkeys(FAIXAS, 0)
     for bloco in pagina.blocos:
-        if pagina.marca_por_palavra:
-            marcado = any(getattr(linha, "revisar_em", ()) for linha in getattr(bloco, "linhas", ()))
+        if tem_faixa_por_palavra(pagina, bloco):
+            marcado = any(
+                REVISAR in faixas_da_linha(linha, por_palavra=pagina.marca_por_palavra) for linha in getattr(bloco, "linhas", ())
+            )
             contagem[REVISAR if marcado else TRANQUILO] += 1
             continue
         contagem[faixa_de_confianca(bloco.confianca, bloco.procedencia)] += 1
@@ -197,11 +236,21 @@ def resumo(pagina: PaginaLida) -> str:
         partes.append(f"{len(pagina.diagramas)} diagrama(s)")
     if procedencias:
         partes.append("de " + ", ".join(f"{v} {k}" for k, v in sorted(procedencias.items())))
+    if pagina.tem_detalhe_de_procedencia:
+        partes.append(_texto_por_procedencia(pagina))
     pedem_olho = contagem[REVISAR] + contagem[CONFERIR]
     if pedem_olho:
         partes.append(f"{pedem_olho} pedem conferência ({contagem[REVISAR]} adivinhados)")
     partes.append(estado_do_negrito(pagina))
     return " · ".join(partes)
+
+
+def _texto_por_procedencia(pagina: PaginaLida) -> str:
+    """`texto: 71% tesseract, 29% glifo` (S-722). O bloco misto conta como `glifo` acima, e esta é a resposta dele."""
+    contagem = pagina.caracteres_por_procedencia()
+    total = sum(contagem.values()) or 1
+    ordem = sorted(contagem.items(), key=lambda par: (-par[1], par[0]))
+    return "texto: " + ", ".join(f"{round(100 * n / total)}% {quem}" for quem, n in ordem)
 
 
 def diagramas_visiveis(segs: Sequence[Segmento]) -> list[BlocoDeDiagrama]:
@@ -222,7 +271,10 @@ __all__ = [
     "diagramas_visiveis",
     "estado_do_negrito",
     "faixa_de_confianca",
+    "faixa_do_espaco",
+    "faixas_da_linha",
     "resumo",
     "segmentos",
+    "tem_faixa_por_palavra",
     "texto_para_arquivo",
 ]

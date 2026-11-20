@@ -2,13 +2,13 @@
  "limiar": 0.8,
  "gramas": 5,
  "min_tokens": 60,
- "total": 37,
+ "total": 38,
  "pares": [
   {
    "a": "src/chess_diagram_ocr/importacao_de_imagens.py::Lote.to_dict",
    "linha_a": 276,
    "b": "src/chess_diagram_ocr/review_queue.py::ReviewQueue.to_dict",
-   "linha_b": 229,
+   "linha_b": 230,
    "semelhanca": 1.0,
    "proposito": "S-864: só a forma; são dois arquivos do dono (o lote de importação e a fila de revisão), cada um com a sua versão e os seus campos"
   },
@@ -20,11 +20,27 @@
    "semelhanca": 0.962
   },
   {
+   "a": "src/chess_diagram_ocr/text/pagina.py::BlocoDeTexto.para_json",
+   "linha_a": 720,
+   "b": "src/chess_diagram_ocr/text/pagina.py::BlocoDeTarja.para_json",
+   "linha_b": 861,
+   "semelhanca": 0.959,
+   "proposito": "forma igual e campos de cada um: o somador de contadores de dois tipos sem relação (censo de livros e envio à quarentena), e o para_json de dois blocos irmãos da página; juntar seria um ajudante que só repete o for"
+  },
+  {
    "a": "src/chess_diagram_ocr/cli/scan.py::parse_args",
    "linha_a": 121,
    "b": "src/chess_diagram_ocr/cli/texto_conflitos.py::parse_args",
-   "linha_b": 45,
+   "linha_b": 44,
    "semelhanca": 0.944
+  },
+  {
+   "a": "src/chess_diagram_ocr/games_census.py::BookCensus.merge",
+   "linha_a": 114,
+   "b": "src/chess_diagram_ocr/text/dado_corrigido.py::EnvioAQuarentena.juntar",
+   "linha_b": 223,
+   "semelhanca": 0.942,
+   "proposito": "forma igual e campos de cada um: o somador de contadores de dois tipos sem relação (censo de livros e envio à quarentena), e o para_json de dois blocos irmãos da página; juntar seria um ajudante que só repete o for"
   },
   {
    "a": "src/chess_diagram_ocr/qt/sala_partidas.py::PartidasDaBase.buscar_partidas",
@@ -74,9 +90,9 @@
   },
   {
    "a": "src/chess_diagram_ocr/qt/visor.py::VisorDePagina.dispensar_em",
-   "linha_a": 788,
+   "linha_a": 789,
    "b": "src/chess_diagram_ocr/qt/visor.py::VisorDePagina.estudar_em",
-   "linha_b": 796,
+   "linha_b": 797,
    "semelhanca": 0.893,
    "proposito": "S-864: dois gestos com guardas diferentes (no modo de seleção o duplo clique é outra coisa, o botão direito não); achar a caixa já é um lugar só, o index_at"
   },
@@ -158,20 +174,12 @@
    "a": "src/chess_diagram_ocr/cli/experiment.py::parse_args",
    "linha_a": 22,
    "b": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
-   "linha_b": 58,
+   "linha_b": 56,
    "semelhanca": 0.846
   },
   {
-   "a": "src/chess_diagram_ocr/text/ouro.py::para_json",
-   "linha_a": 192,
-   "b": "src/chess_diagram_ocr/text/pagina.py::LinhaLida.para_json",
-   "linha_b": 401,
-   "semelhanca": 0.846,
-   "proposito": "S-864: só a forma do dicionário literal; cada relatório tem os seus campos, e juntá-los seria um mapa de nomes no lugar de um literal que se lê"
-  },
-  {
    "a": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
-   "linha_a": 58,
+   "linha_a": 56,
    "b": "src/chess_diagram_ocr/cli/texto_variantes.py::parse_args",
    "linha_b": 253,
    "semelhanca": 0.843
@@ -195,15 +203,15 @@
    "a": "src/chess_diagram_ocr/cli/scan.py::parse_args",
    "linha_a": 121,
    "b": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
-   "linha_b": 58,
+   "linha_b": 56,
    "semelhanca": 0.835,
    "proposito": "S-857: os parse_args dos CLIs ja leem as opcoes comuns de cli/__init__.py; o que sobra e a forma do argparse, com opcoes proprias de cada comando"
   },
   {
    "a": "src/chess_diagram_ocr/cli/texto_conflitos.py::parse_args",
-   "linha_a": 45,
+   "linha_a": 44,
    "b": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
-   "linha_b": 58,
+   "linha_b": 56,
    "semelhanca": 0.833
   },
   {
@@ -254,7 +262,7 @@
   },
   {
    "a": "src/chess_diagram_ocr/cli/field.py::parse_args",
-   "linha_a": 71,
+   "linha_a": 69,
    "b": "src/chess_diagram_ocr/cli/games.py::parse_args",
    "linha_b": 90,
    "semelhanca": 0.809,
@@ -264,13 +272,13 @@
    "a": "src/chess_diagram_ocr/cli/evaluate.py::parse_args",
    "linha_a": 34,
    "b": "src/chess_diagram_ocr/cli/field.py::parse_args",
-   "linha_b": 71,
+   "linha_b": 69,
    "semelhanca": 0.804,
    "proposito": "S-857: os parse_args dos CLIs ja leem as opcoes comuns de cli/__init__.py; o que sobra e a forma do argparse, com opcoes proprias de cada comando"
   },
   {
    "a": "src/chess_diagram_ocr/batch.py::BookResult.to_dict",
-   "linha_a": 126,
+   "linha_a": 127,
    "b": "src/chess_diagram_ocr/text/semelhanca.py::Placar.para_json",
    "linha_b": 328,
    "semelhanca": 0.8,
@@ -280,7 +288,7 @@
    "a": "src/chess_diagram_ocr/cli/texto_inventario.py::parse_args",
    "linha_a": 220,
    "b": "src/chess_diagram_ocr/cli/texto_train.py::parse_args",
-   "linha_b": 58,
+   "linha_b": 56,
    "semelhanca": 0.8
   }
  ]

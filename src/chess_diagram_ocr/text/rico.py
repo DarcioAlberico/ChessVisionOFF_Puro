@@ -20,7 +20,7 @@ Uma `Corrida` é um trecho contíguo de texto com os mesmos atributos. Além del
 
     faixa          a régua de confiança, que é de outro dono (text/documento.py)
     bloco          de que bloco da PaginaLida ela saiu -- SEM_BLOCO quando foi escrita à mão
-    procedencia    quem leu aquilo: camada, glifo, rapidocr, humano -- ou None
+    procedencia    quem leu aquilo: camada, glifo, tesseract, rapidocr, humano -- ou None
     tipo           texto, diagrama ou separador
 
 **`faixa` não entra em `Atributos`, e essa fronteira é o item.** Confiança é medida do
@@ -75,7 +75,7 @@ from dataclasses import dataclass, fields, replace
 from typing import Any, get_args
 
 from . import documento, notacao
-from .pagina import BlocoDeDiagrama, PaginaLida, Procedencia
+from .pagina import BlocoDeDiagrama, PaginaLida, Procedencia, procedencia_gravada
 
 SEM_BLOCO = -1
 """O `bloco` de uma corrida que não saiu da página: texto escrito à mão.
@@ -93,10 +93,10 @@ Fechado porque `para_texto` e a fusão dependem dele: uma corrida de tipo descon
 saber se pode ser fundida com a vizinha nem o que o exportador deve fazer com ela."""
 
 PROCEDENCIAS: tuple[str, ...] = get_args(Procedencia)
-"""As quatro de `text/pagina.py`, **derivadas do `Literal`** e não recopiadas.
+"""As de `text/pagina.py`, **derivadas do `Literal`** e não recopiadas.
 
-Copiar a lista aqui seria a segunda declaração do mesmo conjunto -- e a que ficaria para trás no dia
-em que uma quinta procedência entrasse."""
+Copiar a lista aqui seria a segunda declaração do mesmo conjunto -- e a que ficaria para trás quando a quinta
+procedência entrou, na S-722."""
 
 CORES_DE_AUTOR: tuple[str, ...] = ("destaque", "citacao", "nota", "variante")
 """Os nomes de cor que o autor pode aplicar, nos dois canais -- letra (`cor`) e fundo (`realce`).
@@ -358,7 +358,7 @@ class Corrida:
         if self.bloco != SEM_BLOCO:
             dados["bloco"] = self.bloco
         if self.procedencia is not None:
-            dados["procedencia"] = self.procedencia
+            dados["procedencia"] = procedencia_gravada(self.procedencia)
         if self.tipo != TEXTO:
             dados["tipo"] = self.tipo
         return dados
@@ -438,6 +438,11 @@ class DocumentoRico:
             return None
         blocos = self.origem.blocos
         return blocos[corrida.bloco] if 0 <= corrida.bloco < len(blocos) else None
+
+    @property
+    def pede_formato_novo(self) -> bool:
+        """Só o formato da S-722 guarda o que este documento sabe? Ver `pagina.GRAVAR_FORMATO_NOVO`."""
+        return any(c.procedencia == "tesseract" for c in self.corridas) or (self.origem is not None and self.origem.pede_formato_novo)
 
     def normalizado(self) -> DocumentoRico:
         """O mesmo documento com as corridas fundidas. Ver `fundir`."""
@@ -526,15 +531,18 @@ def _corridas_do_segmento(segmento: documento.Segmento, *, bloco: int, procedenc
     if " ".join(linha.texto for linha in linhas) != segmento.texto:
         return [inteiro]
 
-    grupos = _agrupar(linhas)
-    return [
-        Corrida(
-            texto=texto,
-            atributos=Atributos(negrito=negrito, italico=italico, estilo=estilo),
-            **{**comum, "faixa": documento.REVISAR if revisar else segmento.faixa},
+    grupos = _agrupar(linhas, por_palavra=segmento.marca_por_palavra)
+    # `fundir`: o espaço de uma palavra `tranquilo` é a faixa do bloco na conta da chave, e é a mesma corrida.
+    return list(
+        fundir(
+            Corrida(
+                texto=texto,
+                atributos=Atributos(negrito=negrito, italico=italico, estilo=estilo),
+                **{**comum, "faixa": faixa or segmento.faixa, "procedencia": quem or procedencia},
+            )
+            for (negrito, italico, faixa, quem), texto in grupos
         )
-        for (negrito, italico, revisar), texto in grupos
-    ]
+    )
 
 
 def estilo_do_segmento(segmento: documento.Segmento) -> str:
@@ -603,8 +611,27 @@ def _marcas(texto: str, intervalos: Sequence[tuple[int, int]], resumo: bool) -> 
     return marcas
 
 
-def _pedacos(linha: Any) -> list[tuple[tuple[bool, bool, bool], str]]:
-    """Uma linha partida onde a tipografia dela muda, ou a marca de revisão (S-718). Uma peça só quando não muda.
+_Chave = tuple[bool, bool, str | None, Procedencia | None]
+"""`(negrito, itálico, faixa, de quem)`. `None` nos dois últimos é "o do bloco": a linha não tem o que dizer ali."""
+
+
+def _de_quem(linha: Any, texto: str) -> list[Procedencia | None]:
+    """De quem é cada caractere (S-722). **O espaço entre duas origens vai com a palavra de antes**, para não virar corrida."""
+    trechos = getattr(linha, "procedencia_em", ())
+    if not trechos:
+        return [None] * len(texto)
+    saida: list[Procedencia | None] = [None] * len(texto)
+    for inicio, fim, quem in trechos:
+        for i in range(max(0, inicio), min(len(texto), fim)):
+            saida[i] = quem
+    for i in range(1, len(texto)):
+        if saida[i] is None:
+            saida[i] = saida[i - 1]
+    return saida
+
+
+def _pedacos(linha: Any, *, por_palavra: bool = False) -> list[tuple[_Chave, str]]:
+    """Uma linha partida onde a tipografia dela muda, a faixa (S-718, S-722) ou o leitor (S-722). Uma peça só quando não muda.
 
     A soma dos pedaços é `linha.texto` caractere a caractere, e isso é o contrato: quem os junta de
     volta tem de reencontrar o texto do bloco, que é o que a S-235 travou.
@@ -614,18 +641,24 @@ def _pedacos(linha: Any) -> list[tuple[tuple[bool, bool, bool], str]]:
     italico = _marcas(texto, getattr(linha, "italico_em", ()), getattr(linha, "italico", None) is True)
     # **A marca é da palavra, e nunca do espaço** (S-718). `camada.remapear` une o branco entre duas marcas vizinhas, que
     # é a regra certa para o negrito, e 17 de 414 folhas chegavam aqui com duas palavras numa marca só.
-    revisar = [m and not c.isspace() for m, c in zip(_marcas(texto, getattr(linha, "revisar_em", ()), False), texto, strict=True)]
-    pedacos: list[tuple[tuple[bool, bool, bool], str]] = []
+    faixa = documento.faixas_da_linha(linha, por_palavra=por_palavra)
+    quem = _de_quem(linha, texto)
+    pedacos: list[tuple[_Chave, str]] = []
     comeco = 0
     for i in range(1, len(texto) + 1):
-        muda = i == len(texto) or (negrito[i], italico[i], revisar[i]) != (negrito[comeco], italico[comeco], revisar[comeco])
+        muda = i == len(texto) or (negrito[i], italico[i], faixa[i], quem[i]) != (
+            negrito[comeco],
+            italico[comeco],
+            faixa[comeco],
+            quem[comeco],
+        )
         if muda:
-            pedacos.append(((negrito[comeco], italico[comeco], revisar[comeco]), texto[comeco:i]))
+            pedacos.append(((negrito[comeco], italico[comeco], faixa[comeco], quem[comeco]), texto[comeco:i]))
             comeco = i
-    return pedacos or [((False, False, False), texto)]
+    return pedacos or [((False, False, None, None), texto)]
 
 
-def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool, bool], str]]:
+def _agrupar(linhas: Sequence[Any], *, por_palavra: bool = False) -> list[tuple[_Chave, str]]:
     """O parágrafo partido nos trechos de mesma tipografia, na ordem, com o texto de cada um.
 
     **O corte deixou de ser na linha e passou a ser no caractere** (S-429). A `LinhaLida` traz
@@ -640,13 +673,13 @@ def _agrupar(linhas: Sequence[Any]) -> list[tuple[tuple[bool, bool, bool], str]]
     a linha. **Menos depois de uma marca `revisar`** (S-718): o espaço não é da palavra, e com ele as marcas do fim de
     uma linha e do começo da seguinte viravam uma corrida só, e corrigir uma tirava a outra.
     """
-    grupos: list[tuple[tuple[bool, bool, bool], list[str]]] = []
+    grupos: list[tuple[_Chave, list[str]]] = []
     ultima = len(linhas) - 1
     for n, linha in enumerate(linhas):
-        pedacos = _pedacos(linha)
+        pedacos = _pedacos(linha, por_palavra=por_palavra)
         if n != ultima:
             chave, _texto = pedacos[-1]
-            pedacos.append(((chave[0], chave[1], False), " "))
+            pedacos.append(((chave[0], chave[1], documento.faixa_do_espaco(chave[2]), chave[3]), " "))
         for chave, texto in pedacos:
             if grupos and grupos[-1][0] == chave:
                 grupos[-1][1].append(texto)

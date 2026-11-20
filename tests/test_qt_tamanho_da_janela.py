@@ -8,8 +8,8 @@ vez lida uma página, o piso subia para **1245x1218**, mais alto que a tela de u
 
 | elo | pedia | passou a pedir | quem declara |
 | --- | ----- | -------------- | ------------ |
-| `LARGURA_MINIMA_DAS_ABAS` | 720 px | **500 px** | `qt/janela.py` |
-| `LARGURA_MINIMA_DO_VISOR` | 520 px | **440 px** | `qt/janela.py` |
+| `LARGURA_MINIMA_DAS_ABAS` | 720 px | **500 px** | `ui/geometria.py` |
+| `LARGURA_MINIMA_DO_VISOR` | 520 px | **440 px** | `ui/geometria.py` |
 | a aba mais exigente (Galeria) | 711 x 800 | 54 x 54 (rola) | `qt/painel_da_galeria.py` |
 | o painel de Resultado depois de ler | 301 x 1095 | 54 x 54 (rola) | `qt/painel_de_resultado.py` |
 

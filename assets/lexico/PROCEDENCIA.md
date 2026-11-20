@@ -55,6 +55,43 @@ da S-210 bloqueada). A pergunta aqui é a mesma, com outro material.
 **O que este arquivo não faz é dar parecer jurídico.** Registra o fato — de onde veio, o que é — e
 o custo medido de cada saída, para que a decisão seja barata.
 
+## As oito listas por língua (`linguas/`, S-728)
+
+| arquivo | língua | entradas | linhas no `tessdata` |
+|---|---|---:|---:|
+| `linguas/eng.txt.gz` | inglês | 87.680 | 338.080 |
+| `linguas/por.txt.gz` | português | 52.199 | 145.870 |
+| `linguas/spa.txt.gz` | espanhol | 67.361 | 179.447 |
+| `linguas/deu.txt.gz` | alemão | 52.854 | 89.378 |
+| `linguas/nld.txt.gz` | holandês | 172.929 | 478.341 |
+| `linguas/fra.txt.gz` | francês | 31.986 | 74.068 |
+| `linguas/ron.txt.gz` | romeno | 74.038 | 185.844 |
+| `linguas/rus.txt.gz` | russo | 139.107 | 293.898 |
+
+**Origem.** O componente `lstm-word-dawg` dos `.traineddata` que vieram com o Tesseract 5.5 desta máquina (`tessdata`
+fast, `C:\Program Files\Tesseract-OCR\tessdata`), extraído com o `combine_tessdata -u` e o `dawg2wordlist` da mesma
+instalação. As oito línguas estavam lá, `ron` e `nld` inclusive. **Nada baixado, e nada da camada dos livros do acervo.**
+`linguas/manifesto.json` traz, por língua, o sha do `.traineddata`, a versão gravada nele, as contagens e o sha da lista.
+`cvoff-texto-lexico --linguas-de <pasta do Tesseract>` refaz tudo byte a byte; um clone sem o Tesseract fica com as listas
+versionadas e não as refaz.
+
+**Licença.** Apache-2.0. A cópia em `linguas/LICENSE.tessdata` é o `doc/LICENSE` da instalação, posta ao lado porque
+`assets/` vai no bundle e a licença pede que a cópia acompanhe o que se redistribui. O `.traineddata` não traz licença
+própria dentro dele: o que se conferiu no disco é a licença que a instalação declara. Estas listas são **derivadas**: o
+que mudou é a régua abaixo.
+
+**A régua** (`cli/texto_lexico.py`, `aceita_na_lingua`). Só a minúscula, com ao menos `MIN_TAMANHO` letras, sem dígito e
+sem lance; no alemão, também a inicial maiúscula, porque lá é assim que o substantivo se escreve.
+
+**O que estas listas não são: listas limpas de uma língua só.** O corpus de onde o Tesseract as tirou é da web. Medido
+depois da régua: `after`, `with`, `para` e `avec` estão em sete das oito; `fixes`, um dos vetos errados da G1(a), está em
+`por`. **O que falta cada uma tem pouco, e o que sobra é muito**: `peão`, `peón`, `după` e `после` só estão na própria
+língua, e `pawn` só no inglês; mas a lista não serve para dizer que uma palavra é de **outra** língua, e não barra sozinha
+`Pas`, `Das` ou `fixes` num livro em português. Quem precisar disso para a S-721 precisa de outra regra.
+
+**O perfil do glifo não as lê.** Nenhuma delas está em `PERFIS`, e o `dicionario` continua decidindo pelos três arquivos de
+cima: **zero** folhas diferentes em 28 do ouro-dev, contra o commit de antes (`docs/metrics/texto_lingua_2026-11-06/medir.py`).
+
 ## O que um clone limpo **não** reconstrói
 
 `cvoff-texto-lexico` lê uma pasta local, e `Lista de Palavras/` não é versionada. Quem clonar este

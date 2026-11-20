@@ -19,8 +19,9 @@ implementações do mesmo conceito, e a segunda seguindo por conta própria.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from importlib.metadata import PackageNotFoundError, version
+from typing import Any
 
 __all__ = [
     "ABRIR_FOLHA_DO_CADERNO",
@@ -456,6 +457,9 @@ def dica_da_cor_rapida(canal: str, nome: str) -> str:
 
 DICA_DO_RODAPE_DA_FOLHA = "Clique para escolher outra folha: o campo da folha, na aba Leitura da fita."
 """A dica da frase do rodapé da aba Texto, que leva ao campo da folha (S-655)."""
+
+FOLHA_SEM_TEXTO_LIDO = "A folha {folha} não tem texto lido ({como}): tente outro motor."
+"""A folha vazia não é falha nem é «0 trecho(s)» (item 26). Dizia também «ou o modo bloco», que saiu na S-726."""
 
 ABRIR_FOLHA_DO_CADERNO = "Abrir folha"
 """O botão «Ler folha» quando a folha do campo já está no caderno do livro (S-612): abrir não
@@ -972,7 +976,74 @@ ROTULOS_DE_LINGUA: dict[str, str] = {
     "ron": "Romeno",
     "rus": "Russo",
 }
-"""A língua do livro, que o Tesseract precisa saber e a pessoa escolhe à mão até a S-723 (S-717)."""
+"""As oito línguas do acervo, pelo código do Tesseract (S-717, S-723)."""
+
+LINGUA_DETECTADA_PELO_LIVRO = "Detectar pelo livro"
+PERGUNTA_DA_LINGUA_DO_LIVRO = "Em que língua o Tesseract lê este livro?"
+LINGUA_NAO_DETECTADA = "A língua deste livro não foi detectada nas folhas lidas: escolha-a em Texto, «Língua do livro»."
+DICA_DA_LINGUA_DO_LIVRO = (
+    "A língua deste livro, em que o Tesseract lê a prosa: detectada nas primeiras folhas lidas, "
+    "ou a escolhida aqui, que sempre vence. Para voltar à detecção, menu Texto, «Língua do livro»."
+)
+
+
+def frase_da_lingua_do_livro(codigo: str, *, manual: bool) -> str:
+    """O rodapé quando a língua do livro muda (S-723). Diz de onde ela veio, porque é o que decide se vale corrigir."""
+    como = "escolhida à mão" if manual else "detectada nas folhas lidas"
+    return f"Língua deste livro: {ROTULOS_DE_LINGUA.get(codigo, codigo)} ({como})."
+
+
+ROTULOS_DE_PROCEDENCIA: dict[str, str] = {
+    "camada": "camada do PDF",
+    "glifo": "glifo",
+    "tesseract": "Tesseract",
+    "rapidocr": "RapidOCR",
+    "humano": "à mão",
+}
+"""As procedências, como a tela as diz. Nunca o identificador cru (S-722)."""
+
+
+def frase_de_procedencia(caracteres: Mapping[Any, int]) -> str:
+    """`Texto: 79% Tesseract, 21% glifo.` (S-722). O maior primeiro; vazio sem nada a contar."""
+    total = sum(caracteres.values())
+    if not total:
+        return ""
+    ordem = sorted(caracteres.items(), key=lambda par: (-par[1], par[0]))
+    return "Texto: " + ", ".join(f"{round(100 * n / total)}% {ROTULOS_DE_PROCEDENCIA.get(quem, quem)}" for quem, n in ordem) + "."
+
+
+def frase_do_cache_limpo(quantas: int, tamanho: int) -> str:
+    """O rodapé depois de «Limpar o cache de leitura» (S-725). Só a leitura guardada sai: o caderno fica."""
+    if not quantas:
+        return "O cache de leitura já estava vazio."
+    from . import formato  # aqui, e não no topo: `formato` importa este módulo
+
+    megas = formato.decimal(tamanho / (1024 * 1024), 1).removesuffix(",0")
+    return f"Cache de leitura limpo: {quantas} folha(s), {megas} MB. As folhas do caderno não mudam."
+
 
 NADA_A_REVISAR = "Nenhuma palavra a revisar nesta folha."
 """O `proxima_a_revisar` numa folha sem marca: rodapé, e não caixa -- é resposta, e não erro (S-718)."""
+
+# ----------------------------------------------------------------- o modo transcrição (S-703)
+
+TRANSCRICAO_PASSADA = "Passada"
+TRANSCRICAO_FOLHA = "Folha"
+TRANSCRICAO_PARTIDA = "Partir de"
+TRANSCRICAO_PARTIDAS = {"vazio": "Vazio", "camada": "Camada de terceiro"}
+TRANSCRICAO_ESCOLHER_PASTA = "Pasta da transcrição…"
+TRANSCRICAO_ESCOLHER_BACKUP = "Pasta do backup…"
+TRANSCRICAO_FECHAR = "Voltar ao texto"
+TRANSCRICAO_LINHA_A_MAIS = "Linha a mais"
+TRANSCRICAO_CONCLUIR = "Concluir folha"
+TRANSCRICAO_ESCOLHA_A_PASTA = "Escolha a pasta da transcrição e a do backup, as duas fora do repositório: a transcrição é texto de livro."
+TRANSCRICAO_ABRA_UM_LIVRO = "Abra um PDF da pasta do acervo: é nela que as folhas do scan-ouro são procuradas."
+TRANSCRICAO_LIVRO_NAO_ACHADO = "O livro desta folha não está na pasta do PDF aberto."
+TRANSCRICAO_FORA_DA_PASSADA = "Esta folha não é desta passada: a segunda só digita as folhas da dupla digitação."
+TRANSCRICAO_OUTRA_COPIA = "Esta cópia do livro tem outra folha, e a verdade dela não valeria para o manifesto."
+TRANSCRICAO_BACKUP_FALHOU = "A folha está gravada, e o backup falhou: confira a pasta dele."
+TRANSCRICAO_NAO_GRAVOU = "O digitado está na tela e não foi gravado: {motivo}"
+TRANSCRICAO_FOLHA_VAZIA = "A folha está vazia: não há o que concluir."
+TRANSCRICAO_LINHAS_ILEGIVEIS = "{quantas} linha(s) do arquivo desta passada estão cortadas e foram ignoradas: a folha delas volta à gravação anterior."
+TRANSCRICAO_ESTADO = "Passada {passada}, em {pasta}. Backup: {backup}."
+TRANSCRICAO_BACKUPS = {"nao_declarado": "não declarado, e nada se grava sem ele", "em_dia": "em dia", "atrasado": "atrasado"}

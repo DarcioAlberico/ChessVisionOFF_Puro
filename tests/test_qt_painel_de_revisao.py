@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
 from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
 from chess_diagram_ocr.arquivo_do_dono import Lida
+from chess_diagram_ocr.pdf_to_pgn import DiagramPosition, build_pgn_text
 from chess_diagram_ocr.review_queue import ReviewItem, ReviewQueue, carregar_fila, gravar_fila
 from chess_diagram_ocr.ui import varredura_de_revisao
 
@@ -31,6 +33,10 @@ if TEM_PYQT:
     from PyQt6.QtCore import QThread
 
     from chess_diagram_ocr.qt import painel_de_revisao as qt_revisao
+
+
+_LIDA = "4k3/8/8/8/8/8/8/4K3"
+"""O que a exportação leu; `_item` traz a decisão, o tabuleiro vazio."""
 
 
 def _item(pagina: int, *, status: str = "pending", prioridade: float = 1.0) -> ReviewItem:
@@ -84,6 +90,70 @@ class PainelTests(unittest.TestCase):
         painel.selecionar_posicao(2)
         self.assertEqual(painel.tabela.indexOfTopLevelItem(painel.tabela.currentItem()), 1)
         self.assertEqual(painel.posicao_selecionada(), 2)
+
+    def _reescrever(self, painel: qt_revisao.PainelDeRevisao, pgn: Path, resposta: object) -> mock.MagicMock:
+        """O gesto inteiro, com as caixas substituídas: abrir uma de verdade trava a suíte."""
+        caixa = mock.MagicMock(return_value=resposta)
+        with (
+            mock.patch.object(qt_revisao.QFileDialog, "getOpenFileName", return_value=(str(pgn), "")),
+            mock.patch.object(qt_revisao.QMessageBox, "question", caixa),
+        ):
+            painel.reescrever_pgn()
+        return caixa
+
+    def _pgn_do_livro(self) -> Path:
+        posicao = DiagramPosition(page_index=0, diagram_index=0, fen=_LIDA, confidence=0.5)
+        pgn = self.pasta / "livro.pgn"
+        pgn.write_text(build_pgn_text([posicao], source_name="livro.pdf") + "\n", encoding="utf-8")
+        return pgn
+
+    def test_corrigir_o_pgn_pergunta_e_grava_com_copia(self) -> None:
+        painel = self.painel([_item(0, status="done")])
+        pgn = self._pgn_do_livro()
+        antes = pgn.read_bytes()
+        vistos: list[str] = []
+        painel.estado.connect(vistos.append)
+
+        caixa = self._reescrever(painel, pgn, qt_revisao.QMessageBox.StandardButton.Yes)
+
+        caixa.assert_called_once()
+        self.assertIn("livro.pgn", caixa.call_args.args[2])
+        self.assertIn("8/8/8/8/8/8/8/8", pgn.read_text(encoding="utf-8"))
+        copias = list(self.pasta.glob("livro.pgn.bak-*"))
+        self.assertEqual(len(copias), 1)
+        self.assertEqual(copias[0].read_bytes(), antes)
+        self.assertIn(copias[0].name, vistos[-1])
+
+    def test_dizer_nao_nao_grava_nada(self) -> None:
+        painel = self.painel([_item(0, status="done")])
+        pgn = self._pgn_do_livro()
+        antes = pgn.read_bytes()
+        caixa = self._reescrever(painel, pgn, qt_revisao.QMessageBox.StandardButton.No)
+        caixa.assert_called_once()
+        self.assertEqual(pgn.read_bytes(), antes)
+        self.assertEqual(list(self.pasta.glob("livro.pgn.bak-*")), [])
+
+    def test_sem_nada_a_mudar_nao_pergunta(self) -> None:
+        """Pergunta só quando há o que perder."""
+        painel = self.painel([_item(7, status="done")])
+        pgn = self._pgn_do_livro()
+        vistos: list[str] = []
+        painel.estado.connect(vistos.append)
+        caixa = self._reescrever(painel, pgn, qt_revisao.QMessageBox.StandardButton.Yes)
+        caixa.assert_not_called()
+        self.assertIn("Nada a reescrever", vistos[-1])
+
+    def test_sem_item_revisado_nem_abre_o_seletor(self) -> None:
+        painel = self.painel([_item(0)])
+        with mock.patch.object(qt_revisao.QFileDialog, "getOpenFileName") as seletor:
+            painel.reescrever_pgn()
+        seletor.assert_not_called()
+
+    def test_o_botao_esta_ligado(self) -> None:
+        painel = self.painel([_item(0, status="done")])
+        with mock.patch.object(qt_revisao.QFileDialog, "getOpenFileName", return_value=("", "")) as seletor:
+            painel.btn_reescrever.click()
+        seletor.assert_called_once()
 
     def test_marcar_revisado_grava_e_redesenha(self) -> None:
         painel = self.painel([_item(0), _item(1)])

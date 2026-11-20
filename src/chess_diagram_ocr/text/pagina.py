@@ -45,9 +45,10 @@ medição, que aquele livro é uma grade lida em fileiras.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+import re
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, get_args
+from typing import Any, Literal, TypeVar, get_args
 
 from .boxes import Caixa
 from .colunas import atravessa, atribuir_coluna
@@ -240,15 +241,16 @@ def _ordenar_faixa_unica(elementos: Sequence[Elemento]) -> list[Elemento]:
 # **Nada aqui decide apresentação.** A ordem de leitura é do domínio; como desenhar é da
 # interface. É a regra que organiza este projeto, e ela vale igual para o bloco de texto.
 
-Procedencia = Literal["camada", "glifo", "rapidocr", "humano"]
+Procedencia = Literal["camada", "glifo", "tesseract", "rapidocr", "humano"]
 """De onde saiu o texto deste bloco.
 
 `camada` é a camada de texto do PDF -- não é palpite, é o que o editor escreveu. `glifo` é o
-classificador da Fase 29. `rapidocr` é o motor de fora, que já existia na S-43. `humano` é
-correção à mão, e é a única procedência que uma releitura não tem direito de apagar.
+classificador da Fase 29. `tesseract` é o leitor de linha da fusão (S-722), e o nome é o do motor, como
+`rapidocr`, o motor de fora que já existia na S-43. `humano` é correção à mão, e é a única procedência que
+uma releitura não tem direito de apagar.
 """
 
-PROCEDENCIAS: tuple[Procedencia, ...] = ("camada", "glifo", "rapidocr", "humano")
+PROCEDENCIAS: tuple[Procedencia, ...] = ("camada", "glifo", "tesseract", "rapidocr", "humano")
 """Os valores aceitos, e é só isso que esta tupla é: o conjunto que `de_json` cobra.
 
 **A ordem aqui não significa nada, e dizer que significava foi um defeito.** A primeira versão
@@ -259,14 +261,32 @@ contrário do que o campo existe para dizer. Quem responde essa pergunta agora �
 `ORDEM_DE_CONFIANCA`, que é uma tupla separada porque a resposta merecia ser escrita, e não
 deduzida da ordem em que alguém digitou quatro nomes."""
 
-ORDEM_DE_CONFIANCA: tuple[Procedencia, ...] = ("rapidocr", "glifo", "camada", "humano")
-"""As mesmas quatro, da menos para a mais confiável. **Aqui a ordem é o dado.**
+ORDEM_DE_CONFIANCA: tuple[Procedencia, ...] = ("rapidocr", "glifo", "tesseract", "camada", "humano")
+"""As mesmas cinco, da menos para a mais confiável. **Aqui a ordem é o dado.**
 
 `humano` no topo porque é a única que uma releitura não tem direito de apagar; `camada` acima das
-duas leituras porque não é leitura -- é o que o editor do PDF escreveu; e `glifo` acima de
-`rapidocr` porque é o motor de casa, calibrado (S-205) e medido neste acervo, enquanto o outro
-entra sem calibração. Essa última é a única das três que é escolha e não fato, e é por isso que
-está escrita."""
+leituras porque não é leitura -- é o que o editor do PDF escreveu; e `glifo` acima de `rapidocr`
+porque é o motor de casa, calibrado (S-205) e medido neste acervo, enquanto o outro entra sem
+calibração e não lê acento.
+
+**`tesseract` acima de `glifo` é medido na prosa, e é só na prosa que ele escreve** (S-722): 1,33% contra
+3,61% de CER no digital, 6,0% contra 14,4% no scan. A notação ele estraga, e a fusão não a deixa com ele. A
+confiança dele ainda não é calibrada (S-760), e isto aqui não fala dela: fala de quem responde pelo texto.
+Por isso uma linha mista de glifo e Tesseract continua `glifo`, como saía antes de ele ter nome."""
+
+GRAVAR_FORMATO_NOVO = False
+"""Grava `tesseract`, `procedencia_em` e `confianca_em` no arquivo? **Só depois do portão G102** (S-722).
+
+**O formato novo não é reversível por interruptor depois de gravado**: um programa anterior não abre `.cvtxt` nem
+caderno com `tesseract` (estoura `PaginaInvalida`). Enquanto a fusão for experimental, ler o novo e o antigo é de
+graça, e gravar o novo não: desligada, a folha sai como saía antes deste item, com o `tesseract` escrito `glifo` e sem
+os intervalos. **Os campos continuam inteiros em memória**, e a aba e a exportação os leem; o que se perde ao reabrir é
+o detalhe. Quem liga é o G102, junto com a virada do padrão."""
+
+
+def procedencia_gravada(procedencia: Procedencia) -> Procedencia:
+    """O que vai para o arquivo. Ver `GRAVAR_FORMATO_NOVO`: sem ele, `tesseract` sai como a fusão saía, `glifo`."""
+    return "glifo" if procedencia == "tesseract" and not GRAVAR_FORMATO_NOVO else procedencia
 
 
 def menos_confiavel(procedencias: Sequence[Procedencia]) -> Procedencia:
@@ -278,6 +298,52 @@ def menos_confiavel(procedencias: Sequence[Procedencia]) -> Procedencia:
     if not procedencias:
         return "camada"
     return min(procedencias, key=ORDEM_DE_CONFIANCA.index)
+
+
+def trechos_de_procedencia(palavras: Iterable[tuple[str, Procedencia]]) -> tuple[tuple[int, int, Procedencia], ...]:
+    """`[(palavra, de quem)]`, na ordem em que um `" ".join` as escreve, como intervalos de `LinhaLida.procedencia_em`.
+
+    Vizinhas de mesma origem viram um trecho, com o espaço entre elas. **Uma origem só não pede detalhe**, e sai
+    vazio: o campo da linha já diz tudo, e o arquivo não carrega um intervalo por linha para repetir isso.
+    """
+    saida: list[tuple[int, int, Procedencia]] = []
+    posicao = 0
+    for texto, quem in palavras:
+        if saida and saida[-1][2] == quem:
+            saida[-1] = (saida[-1][0], posicao + len(texto), quem)
+        else:
+            saida.append((posicao, posicao + len(texto), quem))
+        posicao += len(texto) + 1
+    return tuple(saida) if len(saida) > 1 else ()
+
+
+def trechos_de_confianca(palavras: Iterable[tuple[str, float | None]]) -> tuple[tuple[int, int, float], ...]:
+    """`[(palavra, confiança de quem a escreveu)]` como intervalos de `LinhaLida.confianca_em`. `None` fica sem trecho."""
+    saida: list[tuple[int, int, float]] = []
+    posicao = 0
+    for texto, confianca in palavras:
+        if confianca is not None:
+            saida.append((posicao, posicao + len(texto), float(confianca)))
+        posicao += len(texto) + 1
+    return tuple(saida)
+
+
+V = TypeVar("V")
+
+_NAO_BRANCO = re.compile(r"\S+")
+
+
+def remapear_com_valor(
+    trechos: Iterable[tuple[int, int, V]],
+    remapear: Callable[[Sequence[tuple[int, int]]], Sequence[tuple[int, int]]],
+) -> tuple[tuple[int, int, V], ...]:
+    """Os intervalos com valor sobre um texto reescrito. `remapear` é o mesmo que o `negrito_em` usa.
+
+    **Um de cada vez, e é por isso que esta função existe**: `camada.remapear` une marcas vizinhas, que é a regra certa
+    para o negrito e errada aqui, em que cada intervalo tem o seu valor. O que a reescrita comeu não vira intervalo.
+    """
+    return tuple((inicio, fim, valor) for a, b, valor in trechos for inicio, fim in remapear([(a, b)]) if inicio < fim)
+
 
 Unidade = Literal["pt", "px"]
 UNIDADES: tuple[Unidade, ...] = get_args(Unidade)
@@ -396,19 +462,49 @@ class LinhaLida:
     """Quais palavras de `texto` pedem olho (S-718), em intervalos `[início, fim)` como os de estilo.
 
     **Vive em memória, e `para_json` não o escreve**: é recalculado a cada leitura, e o que sobrevive
-    ao arquivo é a faixa da corrida que ele produz. Gravá-lo pediria subir o `ESQUEMA`, que é a S-722."""
+    ao arquivo é a faixa da corrida que ele produz. O `ESQUEMA` subiu na S-722 e ele continuou fora: é derivado da
+    folha inteira, e quem grava o dado de que a marca sai são os campos abaixo."""
+
+    procedencia_em: tuple[tuple[int, int, Procedencia], ...] = ()
+    """De quem é cada trecho de `texto`, em `[início, fim, procedência)` (S-722). O mesmo desenho de `negrito_em`.
+
+    **Isto é o detalhe, e `procedencia` é o resumo: a menos confiável das que compõem a linha.** Vazio quer dizer que não
+    há detalhe a dar: uma origem só, ou arquivo gravado antes deste campo. Com ele, os trechos cobrem todas as palavras,
+    e só o espaço entre duas origens fica de fora. **É a única procedência por intervalo do programa**: a S-716 a
+    prometia em memória, e o que havia era o `so_da_camada` por linha, que passou a ser derivado daqui."""
+
+    confianca_em: tuple[tuple[int, int, float], ...] = ()
+    """Quanto vale cada palavra de `texto` (S-722), em `[início, fim, valor)`. Só os motores que combinam leitores o preenchem, e só onde se sabe.
+
+    **Na fusão, a prosa traz a confiança calibrada da S-760**, a probabilidade de a palavra estar certa, e `confianca` é a da mais fraca. O lance fica com
+    a de quem o escreveu: a referência da notação é a camada, e calibrar contra ela mediria a referência. Com `confianca_palavra.LIGADO` desligado, tudo aqui
+    é a de quem escreveu, e `confianca` é a do glifo."""
+
+    def procedencia_no(self, posicao: int) -> Procedencia:
+        """De quem é o caractere nesta posição de `texto`. Sem detalhe que o cubra, vale o campo da linha."""
+        return next((quem for inicio, fim, quem in self.procedencia_em if inicio <= posicao < fim), self.procedencia)
+
+    @property
+    def pede_formato_novo(self) -> bool:
+        """Só o formato novo guarda o que esta linha sabe: é o que decide se a folha paga versão (S-710, S-722)."""
+        return self.procedencia == "tesseract" or bool(self.procedencia_em) or bool(self.confianca_em)
 
     def para_json(self) -> dict[str, Any]:
-        return {
+        dados: dict[str, Any] = {
             "texto": self.texto,
             "bbox": list(self.bbox),
             "confianca": self.confianca,
-            "procedencia": self.procedencia,
+            "procedencia": procedencia_gravada(self.procedencia),
             "negrito": self.negrito,
             "italico": self.italico,
             "negrito_em": [list(t) for t in self.negrito_em],
             "italico_em": [list(t) for t in self.italico_em],
         }
+        if GRAVAR_FORMATO_NOVO and self.procedencia_em:
+            dados["procedencia_em"] = [list(t) for t in self.procedencia_em]
+        if GRAVAR_FORMATO_NOVO and self.confianca_em:
+            dados["confianca_em"] = [list(t) for t in self.confianca_em]
+        return dados
 
     @classmethod
     def de_json(cls, dados: Any, onde: str = "linha") -> LinhaLida:
@@ -426,7 +522,48 @@ class LinhaLida:
             italico=_tres_estados(dados.get("italico"), onde, "italico"),
             negrito_em=_trechos_de(dados.get("negrito_em"), onde, "negrito_em"),
             italico_em=_trechos_de(dados.get("italico_em"), onde, "italico_em"),
+            procedencia_em=_procedencias_em(dados.get("procedencia_em"), onde),
+            confianca_em=_confiancas_em(dados.get("confianca_em"), onde),
         )
+
+
+def _trio_de(par: Any, onde: str, campo: str) -> tuple[int, int, Any]:
+    """`(início, fim, valor)`, com o mesmo contrato de `_trechos_de`: `fim > início >= 0`, ou `PaginaInvalida`."""
+    try:
+        inicio, fim, valor = par
+        inicio, fim = int(inicio), int(fim)
+    except (TypeError, ValueError) as exc:
+        raise PaginaInvalida(f"{onde}: {campo} tem item que não é (início, fim, valor): {par!r}") from exc
+    if not 0 <= inicio < fim:
+        raise PaginaInvalida(f"{onde}: {campo} tem item fora de ordem ou negativo: {par!r}")
+    return (inicio, fim, valor)
+
+
+def _procedencias_em(valor: Any, onde: str) -> tuple[tuple[int, int, Procedencia], ...]:
+    """Ausente é vazio, e ilegível levanta: as duas metades de `_trechos_de`, pela mesma razão."""
+    if valor is None:
+        return ()
+    if not isinstance(valor, (list, tuple)):
+        raise PaginaInvalida(f"{onde}: procedencia_em é uma lista -- veio {valor!r}")
+    saida: list[tuple[int, int, Procedencia]] = []
+    for item in valor:
+        inicio, fim, quem = _trio_de(item, onde, "procedencia_em")
+        saida.append((inicio, fim, _procedencia_de(quem, onde)))
+    return tuple(saida)
+
+
+def _confiancas_em(valor: Any, onde: str) -> tuple[tuple[int, int, float], ...]:
+    if valor is None:
+        return ()
+    if not isinstance(valor, (list, tuple)):
+        raise PaginaInvalida(f"{onde}: confianca_em é uma lista -- veio {valor!r}")
+    saida: list[tuple[int, int, float]] = []
+    for item in valor:
+        inicio, fim, confianca = _trio_de(item, onde, "confianca_em")
+        if isinstance(confianca, bool) or not isinstance(confianca, (int, float)):
+            raise PaginaInvalida(f"{onde}: confianca_em tem valor que não é número: {item!r}")
+        saida.append((inicio, fim, float(confianca)))
+    return tuple(saida)
 
 
 def _linhas_de(dados: Mapping[str, object], onde: str) -> tuple[LinhaLida, ...]:
@@ -542,6 +679,16 @@ class BlocoDeTexto:
     def texto(self) -> str:
         return " ".join(linha.texto for linha in self.linhas)
 
+    def procedencia_da_palavra(self, numero: int) -> Procedencia:
+        """De quem é a palavra `numero` de `texto.split()`. É o que diz quem errou numa palavra corrigida (S-762, S-722)."""
+        restante = numero
+        for linha in self.linhas:
+            palavras = list(_NAO_BRANCO.finditer(linha.texto))
+            if restante < len(palavras):
+                return linha.procedencia_no(palavras[restante].start())
+            restante -= len(palavras)
+        return self.procedencia
+
     @classmethod
     def de_linhas(cls, linhas: Sequence[LinhaLida], *, recuado: bool = False) -> BlocoDeTexto:
         """Fecha o bloco derivando bbox, confiança e procedência das linhas -- sem inventar nada.
@@ -575,7 +722,7 @@ class BlocoDeTexto:
             "tipo": "texto",
             "bbox": list(self.bbox),
             "confianca": self.confianca,
-            "procedencia": self.procedencia,
+            "procedencia": procedencia_gravada(self.procedencia),
             "recuado": self.recuado,
             "negrito": self.negrito,
             "italico": self.italico,
@@ -635,7 +782,7 @@ class BlocoDeDiagrama:
             "indice": self.indice,
             "bbox": list(self.bbox),
             "confianca": self.confianca,
-            "procedencia": self.procedencia,
+            "procedencia": procedencia_gravada(self.procedencia),
             "placement": self.placement,
         }
 
@@ -679,7 +826,7 @@ class BlocoDeTabela:
             "celulas": [list(linha) for linha in self.celulas],
             "bbox": list(self.bbox),
             "confianca": self.confianca,
-            "procedencia": self.procedencia,
+            "procedencia": procedencia_gravada(self.procedencia),
         }
 
     @classmethod
@@ -716,7 +863,7 @@ class BlocoDeTarja:
             "tipo": "tarja",
             "bbox": list(self.bbox),
             "confianca": self.confianca,
-            "procedencia": self.procedencia,
+            "procedencia": procedencia_gravada(self.procedencia),
             "linhas": [linha.para_json() for linha in self.linhas],
         }
 
@@ -800,8 +947,8 @@ class Coluna:
         )
 
 
-ESQUEMA = 2
-"""Versão do formato de `para_json`. Sobe quando um campo muda de significado, não quando nasce.
+ESQUEMA = 3
+"""Até que versão do formato de `para_json` este programa lê. Sobe quando um campo muda de significado, não quando nasce.
 
 Campo novo com padrão é compatível nos dois sentidos e não paga versão -- é a mesma regra do
 `char_meta.json` da S-179.
@@ -809,24 +956,36 @@ Campo novo com padrão é compatível nos dois sentidos e não paga versão -- �
 **O 2 é a exceção escrita (S-710), e só a folha com aviso o paga.** `avisos` diz que a leitura pode
 estar incompleta, e um programa que abre o arquivo e o ignora mostraria como inteira uma folha que o
 arquivo sabe que não é: esse campo muda o que o resto do arquivo significa. Por isso a folha **sem**
-aviso continua saindo no formato 1, sem o campo, e um programa anterior a este a abre como sempre."""
+aviso continua saindo no formato 1, sem o campo, e um programa anterior a este a abre como sempre.
+
+**O 3 é a S-722, pela mesma regra.** Um programa anterior recusa `tesseract`, e ignoraria os intervalos. Só a folha que
+os tem o paga, e só depois do G102: ver `GRAVAR_FORMATO_NOVO`. O 1 e o 2 continuam legíveis, e saem como sempre saíram."""
+
+ESQUEMA_DOS_AVISOS = 2
 
 FOLHA_NAO_LIDA = "folha_nao_lida"
 LEITURA_PARCIAL = "leitura_parcial"
+LEITURA_COM_RUIDO = "leitura_com_ruido"
 LEIAUTE_DE_RESERVA = "leiaute_de_reserva"
 CAMADA_NA_FOLHA = "camada_na_folha"
 CAMADA_RECUSADA = "camada_recusada"
 LEITOR_INDISPONIVEL = "leitor_indisponivel"
+CACHE_NAO_GRAVADO = "cache_nao_gravado"
 AVISOS: tuple[str, ...] = (
     FOLHA_NAO_LIDA,
     LEITURA_PARCIAL,
+    LEITURA_COM_RUIDO,
     LEIAUTE_DE_RESERVA,
     CAMADA_NA_FOLHA,
     CAMADA_RECUSADA,
     LEITOR_INDISPONIVEL,
+    CACHE_NAO_GRAVADO,
 )
 """Os códigos conhecidos. **`de_json` aceita um que não esteja aqui**: quem lê um aviso de versão mais
 nova ainda o mostra pela mensagem, e recusar o arquivo por isso perderia a folha inteira."""
+
+AVISOS_DA_SESSAO: frozenset[str] = frozenset({CACHE_NAO_GRAVADO})
+"""O que é da leitura de agora, e não da folha (S-725): uma folha inteira não passa a dizer, no arquivo, que o disco esteve cheio."""
 
 
 @dataclass(frozen=True)
@@ -887,12 +1046,18 @@ class PaginaLida:
     avisos: tuple[Aviso, ...] = ()
     """O que a leitura sabe de si mesma: folha que não foi lida inteira, leiaute de reserva (S-710)."""
 
+    modelo: str = ""
+    """O sha do classificador que leu a folha, vazio quando não foi ele ou não se sabe (S-762).
+
+    Campo novo com padrão: não paga `ESQUEMA`, e um programa anterior o ignora. É o que a correção precisa para dizer de quem veio o erro."""
+
     marca_por_palavra: bool = False
     """A marca desta folha é por palavra, e não a faixa de confiança do bloco (S-718).
 
     **Só o motor que combina dois leitores a liga.** A confiança do glifo não pode ser pintada sobre
     texto que outro leitor escreveu: no *Hertan* o texto certo do Tesseract sairia `revisar` porque o
-    glifo errou ali. Em memória, como `LinhaLida.revisar_em`."""
+    glifo errou ali. **Vai ao arquivo**: campo novo com padrão, que não paga `ESQUEMA`, como `modelo`. Sem ele, a folha reaberta voltava a contar
+    pela confiança do glifo sobre texto de outro leitor. `LinhaLida.revisar_em` continua em memória: o que sobrevive é a faixa da corrida."""
 
     # -------------------------------------------------------------------------------- leituras
 
@@ -934,11 +1099,50 @@ class PaginaLida:
             contagem[bloco.procedencia] = contagem.get(bloco.procedencia, 0) + 1
         return contagem
 
+    def caracteres_por_procedencia(self) -> dict[Procedencia, int]:
+        """Quantos caracteres (fora o espaço) de cada procedência, lendo os intervalos onde há (S-722).
+
+        É a resposta de que `procedencias` não dá conta: um bloco misto conta inteiro como `glifo`, por mais que quase
+        todo ele tenha vindo do Tesseract."""
+        contagem: dict[Procedencia, int] = {}
+        for linha in self._linhas_dos_blocos():
+            for posicao, caractere in enumerate(linha.texto):
+                if not caractere.isspace():
+                    quem = linha.procedencia_no(posicao)
+                    contagem[quem] = contagem.get(quem, 0) + 1
+        return contagem
+
+    def _linhas_dos_blocos(self) -> Iterator[LinhaLida]:
+        for bloco in self.blocos:
+            yield from getattr(bloco, "linhas", ())
+
+    @property
+    def tem_detalhe_de_procedencia(self) -> bool:
+        return any(linha.procedencia_em for linha in self._linhas_dos_blocos())
+
+    @property
+    def pede_formato_novo(self) -> bool:
+        """Esta folha sabe algo que só o formato da S-722 guarda?"""
+        margens = [linha for linha in (self.cabecalho, self.rodape) if linha is not None]
+        return (
+            any(bloco.procedencia == "tesseract" for bloco in self.blocos)
+            or any(linha.pede_formato_novo for linha in self._linhas_dos_blocos())
+            or any(linha.pede_formato_novo for linha in margens)
+        )
+
     # ---------------------------------------------------------------------------- serialização
+
+    def _avisos_gravados(self) -> tuple[Aviso, ...]:
+        return tuple(aviso for aviso in self.avisos if aviso.codigo not in AVISOS_DA_SESSAO)
+
+    def _esquema_gravado(self) -> int:
+        if GRAVAR_FORMATO_NOVO and self.pede_formato_novo:
+            return ESQUEMA
+        return ESQUEMA_DOS_AVISOS if self._avisos_gravados() else 1
 
     def para_json(self) -> dict[str, Any]:
         dados: dict[str, Any] = {
-            "esquema": ESQUEMA if self.avisos else 1,
+            "esquema": self._esquema_gravado(),
             "documento": self.documento,
             "pagina": self.pagina,
             "largura": self.largura,
@@ -949,8 +1153,12 @@ class PaginaLida:
             "rodape": self.rodape.para_json() if self.rodape else None,
             "colunas": [coluna.para_json() for coluna in self.colunas],
         }
-        if self.avisos:
-            dados["avisos"] = [aviso.para_json() for aviso in self.avisos]
+        if self._avisos_gravados():
+            dados["avisos"] = [aviso.para_json() for aviso in self._avisos_gravados()]
+        if self.modelo:
+            dados["modelo"] = self.modelo
+        if self.marca_por_palavra:
+            dados["marca_por_palavra"] = True
         return dados
 
     @classmethod
@@ -997,6 +1205,8 @@ class PaginaLida:
             rodape=LinhaLida.de_json(rodape, "rodape") if rodape else None,
             numero_impresso=int(numero) if numero is not None else None,
             avisos=tuple(Aviso.de_json(a, f"avisos[{i}]") for i, a in enumerate(dados.get("avisos") or [])),
+            modelo=str(dados.get("modelo", "") or ""),
+            marca_por_palavra=dados.get("marca_por_palavra") is True,
         )
 
     def com_posicoes(self, posicoes: Sequence[str]) -> PaginaLida:
@@ -1061,12 +1271,17 @@ def de_diagramas(
 
 __all__ = [
     "AVISOS",
+    "AVISOS_DA_SESSAO",
+    "CACHE_NAO_GRAVADO",
     "CAMADA_NA_FOLHA",
     "CAMADA_RECUSADA",
     "ESQUEMA",
+    "ESQUEMA_DOS_AVISOS",
     "FOLHA_NAO_LIDA",
+    "GRAVAR_FORMATO_NOVO",
     "LEIAUTE_DE_RESERVA",
     "LEITOR_INDISPONIVEL",
+    "LEITURA_COM_RUIDO",
     "LEITURA_PARCIAL",
     "ORDEM_DE_CONFIANCA",
     "PROCEDENCIAS",
@@ -1088,5 +1303,9 @@ __all__ = [
     "bloco_de_json",
     "de_diagramas",
     "menos_confiavel",
+    "procedencia_gravada",
+    "remapear_com_valor",
+    "trechos_de_confianca",
+    "trechos_de_procedencia",
     "sequencia_de_leitura",
 ]
