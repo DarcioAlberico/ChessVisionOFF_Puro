@@ -1227,11 +1227,13 @@ seja escolhido olhando dados em vez de herdado desta linha.
 
 **Indexado em 2026-11-06**, e o que sobra é a decisão de gravar: 1.038 das 3.356 órfãs casam a 0 bits,
 e o resto é um platô de impostores, então o limiar de 6 bits não serve
-([metrics/provenance_match_20261106.json](metrics/provenance_match_20261106.json)).
+([metrics/provenance_match_20261106.json](metrics/provenance_match_20261106.json)). **O padrão
+passou a 0 bit em 2026-11-20** (`provenance.DEFAULT_MAX_DISTANCE`): com os 6 herdados, um
+`--apply` sem argumento gravaria as 795 procedências do platô junto com as 1.038.
 
-**O que falta, e é decisão sua:** indexar os 27 PDFs (~12 mil páginas, horas de CPU). Sem
-isso não há taxa real sobre os 3.195 órfãos — só a garantia de que o mecanismo acerta quando
-tem o que casar.
+**O que falta, e é decisão sua:** gravar (`cvoff-provenance --match --apply`), conferindo uma
+amostra antes. O índice foi feito fora de `data/`, então quem grava refaz o `--build` ou aponta
+o `--index` para ele.
 
 **E o que a recuperação destrava**, quando vier: `splits.groups_by_book` agrupa o split por
 livro, que é o que faz o `test` responder "quão bem o modelo lê um livro que nunca viu" em vez
@@ -1282,6 +1284,12 @@ resolve o mesmo par de leituras com duas ordens e recebe duas respostas.
 (13,7% de cobertura, 48 dos 52 num livro que já lê a 1,000, e zero diagramas do ponto de
 vista das pretas). O que a regra faz é transformar a S-45, quando ela voltar, num problema de
 **produzir o dado** em vez de um problema de mexer na política — por vinte linhas.
+
+*(estado em 2026-11-20: deixou de calar sempre. Desde o passo C10 do ciclo 2 do OCR_UI, em
+2026-09-21, `pdf_text.board_coordinates_for` produz `BoardCoordinates` quando a página imprime as
+coordenadas da borda, e a regra decide por elas o ponto de vista das pretas. A docstring da
+`CoordinateRule` ainda diz "cala em 100%": `orientation.py` está no caminho de medição (S-218), e a
+correção dela fica para a próxima remedição dos relatórios de campo.)*
 
 **A S-49 encontrou um defeito, como a S-51 tinha encontrado três.** `save_all` nunca olhava o
 vínculo do editor: com uma linha da aba Dataset aberta, "Salvar todos" criava uma **amostra
@@ -1915,7 +1923,7 @@ Se houver duas semanas:
 | 10a | **S-51 (`LabelStore`)** | o `labels.csv` passa a ter uma porta, e o campo novo da S-52 tem onde entrar | ✅ |
 | 10b | **S-52, metade: `corrected_by`** | a coluna sai de 0 de 3.313 preenchidas; a outra metade (hash perceptual) precisa de horas de CPU | ✅ metade |
 | 10c | **S-52, metade: procedência por hash perceptual** | `provenance.py` + `cvoff-provenance`; validado contra verdade de referência (12/12 na página certa) | ✅ código |
-| 10d | S-52 — **indexar o acervo e medir** | `cvoff-provenance --build` nos 32 PDFs (~12 mil páginas). Horas de CPU; é a sua decisão de quando | ← **a única pendência que sobrou** *(em 2026-11-06 segue sem rodar: `data/provenance_index.jsonl` não existe. O `labels.csv` declara `source_pdf` em 16.495 de 19.851 linhas, então o índice só serviria às outras 3.356)* |
+| 10d | S-52 — **indexar o acervo e medir** | `cvoff-provenance --build` nos 32 PDFs (~12 mil páginas). Horas de CPU; é a sua decisão de quando | ← **a única pendência que sobrou** *(indexado e medido em 2026-11-06, com o índice fora de `data/`: 1.038 das 3.356 órfãs casam a 0 bit, e o padrão do `--max-distance` passou a 0 em 2026-11-20. Falta só gravar, que é decisão sua)* |
 | 11–14 | **S-47 a S-50** (as extrações) | por último de propósito: refatorar antes de medir é refatorar no escuro | ✅ |
 | 15 | **S-53** (`ttkbootstrap` + gatilhos de Qt) | a única mudança de UI que não fecha porta nenhuma | ✅ |
 | 16 | **S-54** (o Streamlit) | a pior saída era continuar sem escolher. Aposentado | ✅ |
@@ -1966,7 +1974,7 @@ Nenhum foi adiado por preguiça. Os quatro têm número:
 |---|---|
 | **S-38b** `BoardVerifier` | 1 falso positivo a ganhar contra 35 verdadeiros a arriscar |
 | **S-44** glifo `W`/`B` | 0 ocorrências em 380 diagramas com camada de texto |
-| **S-45** coordenadas | 13,7% de cobertura, e 0 diagramas do ponto de vista das pretas |
+| **S-45** coordenadas | 13,7% de cobertura, e 0 diagramas do ponto de vista das pretas. *O dado passou a ser produzido em 2026-09-21 (passo C10 do OCR_UI): a regra responde onde a página imprime as coordenadas* |
 | **S-46** solução como validador | 21,3% dos diagramas têm algo com forma de lance perto, e só **13,7% desses** são legais na posição lida — o texto vizinho é a continuação da partida, não a solução |
 
 ### O que sobrou, e não é código
@@ -1975,7 +1983,7 @@ Nenhum foi adiado por preguiça. Os quatro têm número:
 |---|---|---|
 | **Crescer o conjunto de campo** | a S-41 planejava 60 páginas e entregou 15. **É a pendência que destrava as outras**: quatro itens desta fase foram julgados por uma métrica que hoje não tem resolução para julgá-los | ~2 h suas. *Feito: S-99 em 2026-08-22; hoje são 68 páginas e 115 diagramas (2026-11-06)* |
 | **Anotar os livros hachurados** | os 8 diagramas barrados estão todos abaixo de 0,43 — falha de domínio, não de margem | tempo seu. *Feito: 13 páginas no regime `scan-hachurado`, 21 diagramas, todos com FEN (2026-11-06)* |
-| **S-52** (procedência) | `cvoff-provenance --build` nos 32 PDFs, depois `--match` | horas de CPU. *Segue sem rodar em 2026-11-06* |
+| **S-52** (procedência) | `cvoff-provenance --build` nos 32 PDFs, depois `--match` | horas de CPU. *Indexado e medido em 2026-11-06; padrão em 0 bit desde 2026-11-20; gravar (`--apply`) é decisão sua* |
 | **Retreinar produção com `mhsp`** | `models/s40_mhsp_16ep.pt` domina o controle em tudo que é mensurável hoje. A troca do padrão de `AugmentConfig()` espera o item 1 | decisão sua. *Decidido em 2026-08-16: não (`ROADMAP_FASE14.md`, S-107)* |
 
 ### O que este dia mediu, e que vale mais que os vereditos

@@ -291,7 +291,8 @@ sequenciamento desde o começo.
    de pé.
 2. ~~**S-161** — a barra de menus.~~ Feita: cinco menus, 26 comandos, os dez atalhos visíveis
    como acelerador. "Preferências" continua fora — o `settings.json` da S-32 não tem tela, e
-   inventá-la aqui seria outro item.
+   inventá-la aqui seria outro item. *(estado em 2026-11-20: a tela existe,
+   `qt/dialogo_de_configuracoes.py`, registrada em `ROADMAP_REVISAO_EXTERNA_2.md`.)*
 3. ~~**S-166** — o vocabulário.~~ Feito: 15 termos em `ui/strings.py`, e a varredura achou duas
    cópias que a leitura não tinha achado — uma delas no menu que a S-161 acabara de escrever.
 

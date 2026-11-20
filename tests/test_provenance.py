@@ -25,6 +25,7 @@ from chess_diagram_ocr.atomic_io import write_image
 from chess_diagram_ocr.labels import DatasetEntry, LabelStore
 from chess_diagram_ocr.provenance import (
     AMBIGUITY_MARGIN,
+    DEFAULT_MAX_DISTANCE,
     IndexEntry,
     ProvenanceIndex,
     ProvenanceMatch,
@@ -182,16 +183,32 @@ class MatchTests(unittest.TestCase):
         self.assertEqual(casamento.distance, 0)
         self.assertEqual((casamento.source_pdf, casamento.source_page, casamento.source_diagram), ("Kemeri.pdf", 15, 2))
 
-    def test_enquadramento_diferente_ainda_casa(self) -> None:
-        """O caso real: a amostra é de julho e o índice é do detector de agosto (S-38a)."""
+    def test_enquadramento_diferente_casa_com_o_limiar_aberto(self) -> None:
+        """A amostra de julho contra o índice do detector de agosto (S-38a): o recorte deslocado custa
+        6 bits, e casa quando quem roda abre o limiar -- `--max-distance 6`, olhando o histograma."""
+        imagem = board_image(4)
+        indice = index_of(("Kemeri.pdf", 15, 1, imagem), ("Outro.pdf", 3, 1, board_image(98)))
+        nome = self.save_sample("a.png", recropped(imagem))
+
+        report = match_samples(self.samples, indice, [nome], max_distance=6)
+
+        self.assertEqual(report.matched, 1, f"distâncias vistas: {report.distances}")
+        self.assertEqual(report.matches[0].source_pdf, "Kemeri.pdf")
+
+    def test_o_padrao_so_aceita_a_mesma_imagem(self) -> None:
+        """O padrão é 0 bit desde a medição do acervo de 2026-11-06: 1.038 casamentos a 0 e um platô de
+        impostores de ~125 por bit até 12. Com o limiar herdado de 6, o recorte deslocado -- que no
+        acervo de hoje é indistinguível de um impostor a 6 bits -- entrava; com o padrão, fica órfão e
+        aparece no histograma."""
+        self.assertEqual(DEFAULT_MAX_DISTANCE, 0)
         imagem = board_image(4)
         indice = index_of(("Kemeri.pdf", 15, 1, imagem), ("Outro.pdf", 3, 1, board_image(98)))
         nome = self.save_sample("a.png", recropped(imagem))
 
         report = match_samples(self.samples, indice, [nome])
 
-        self.assertEqual(report.matched, 1, f"distâncias vistas: {report.distances}")
-        self.assertEqual(report.matches[0].source_pdf, "Kemeri.pdf")
+        self.assertEqual(report.matched, 0)
+        self.assertEqual(sum(report.distances.values()), 1, "o histograma mostra a distância que ficou de fora")
 
     def test_imagem_que_nao_esta_no_acervo_nao_casa(self) -> None:
         indice = index_of(("Kemeri.pdf", 15, 1, board_image(1)))

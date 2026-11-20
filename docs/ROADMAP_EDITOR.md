@@ -341,6 +341,9 @@ e o que mudou é que existe um documento para as ferramentas editarem.
 > Fica aberto o itálico **da camada de texto**, para os livros lidos com `motor="camada"`: a máquina
 > já existe em `text/negrito.py`, e generalizá-la é o que falta. Hoje esses livros saem com o campo
 > em `None`, que é a resposta honesta.
+>
+> *(estado em 2026-11-06: fechado. O itálico da camada entrou, é a `LinhaLida.italico_em`; ver a
+> S-237 acima.)*
 
 ## Fase 37 — As ferramentas de edição
 

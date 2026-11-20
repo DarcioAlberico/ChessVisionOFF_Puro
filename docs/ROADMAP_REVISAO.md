@@ -765,7 +765,9 @@ O que a seção [*O que esta revisão deliberadamente NÃO propõe*](#o-que-esta
 listou continua valendo, e um item dela merece o número de hoje: `ui/texto_panel.py` tem **2.574**
 linhas e `ui/study_panel.py` tem **2.227** -- os dois cresceram durante a revisão, porque as Fases
 57 e 63 acrescentaram comportamento a eles. Parti-los continua sendo refatoração de risco alto e
-valor não medido, e continua registrado como observação em vez de item.
+valor não medido, e continua registrado como observação em vez de item. *(estado em 2026-11-20: os
+dois arquivos do Tk saíram no corte, S-506, e os painéis do Qt que os substituíram foram partidos
+pela S-865 e pela S-866 da solidez.)*
 
 **A lição de processo que esta revisão pagou, e que a próxima não deveria pagar de novo:** numere
 pelo bloco que a tabela de fases reserva, e não pelo próximo número livre no disco. A Fase 62 saiu

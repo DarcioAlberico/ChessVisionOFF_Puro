@@ -93,7 +93,9 @@ O que uma revisão de fora não pode ver é o que a bancada de fora não tem: os
    página) não existir aqui, e é o que fazia o `--selftest` dele apagar a sessão e o daqui não. O
    outro lado da moeda é que uma queda do processo perde a sessão inteira aqui. **É decisão de
    desenho, e fica registrada em vez de tomada**: gravar por gesto reabre as três armadilhas, e
-   nenhuma delas tem guarda hoje.
+   nenhuma delas tem guarda hoje. *(estado em 2026-11-20: tomada pela S-800 da solidez. A janela
+   grava o estado 2 s depois de abrir livro ou virar página, `qt/janela.ADIAMENTO_DA_GRAVACAO_MS`,
+   sem esperar o `closeEvent`.)*
 3. **A CI mede o `fusion`.** Sob `QT_QPA_PLATFORM=offscreen` o Qt escolhe um estilo que desenha o
    cromo mesmo com folha aplicada; a fotografia da CI dava 2,02:1 (clássica) e 1,10:1 ("Foco") para
    os mesmos controles que no `windows11` davam 1,14 e 1,02. É a forma da S-325 e da S-506, de
@@ -124,7 +126,7 @@ O que uma revisão de fora não pode ver é o que a bancada de fora não tem: os
   marcada, e a janela está no teto de linhas. O conjunto de peças já tem caminho próprio
   (`qt/janela._aplicar_conjunto`, estado da janela).*
 - **A gravação por gesto** (divergência 2): decisão de desenho, com as três armadilhas de ordem
-  para guardar antes de mudar.
+  para guardar antes de mudar. *(Tomada pela S-800: ver a divergência 2 acima.)*
 - **As folhas de contato e os recortes do acervo dele.** Não vieram; o teste no acervo foi
   refeito com o que existe aqui -- os 5.833 recortes aprovados de `data/samples/` -- e a
   calibração está na S-526.
