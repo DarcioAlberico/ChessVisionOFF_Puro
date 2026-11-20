@@ -8,6 +8,7 @@ repositório guarda -- é ele que os portões G102 a G107 abrem.
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -453,6 +454,65 @@ class AcrescentarTests(unittest.TestCase):
             ouro.acrescentar_ao_teste(_teste_valido(), L(_id(99), ouro.DEV, "eng"), self._seis(), entrou_em=DIA)
 
 
+class AcrescentarAoDevTests(unittest.TestCase):
+    """O livro da reserva passa ao dev para o leiaute novo do plano B (a), sem mexer no teste nem em folha gravada."""
+
+    def _com_reserva(self) -> ouro.Manifesto:
+        m = _teste_valido()
+        reserva = [
+            L(_id(300), ouro.RESERVA, "eng", "ebook"),
+            L(_id(301), ouro.RESERVA, "spa", "ebook"),
+            L(_id(302), ouro.RESERVA, "eng", fora_do_treino=True),
+            L(_id(303), ouro.RESERVA, "eng", fora_do_treino=True, reprovado="auditoria: ligadura"),
+        ]
+        return _manifesto([*m.livros, *reserva], list(m.folhas))
+
+    def _seis(self) -> list[tuple[int, ouro.Estrato]]:
+        return [(40 + k, ouro.PROSA if k < 3 else ouro.MISTO) for k in range(6)]
+
+    def test_o_livro_troca_de_split_no_lugar_e_as_folhas_vao_para_o_fim(self) -> None:
+        m = self._com_reserva()
+        novo = ouro.acrescentar_ao_dev(m, _id(301), self._seis(), entrou_em="2026-11-20")
+        indice = [x.identidade for x in m.livros].index(_id(301))
+        self.assertEqual([x.identidade for x in m.livros], [x.identidade for x in novo.livros], "nenhum livro muda de lugar")
+        self.assertEqual(L(_id(301), ouro.DEV, "spa", "ebook", entrou_em="2026-11-20"), novo.livros[indice])
+        self.assertEqual(m.folhas, novo.folhas[: len(m.folhas)], "nenhuma folha gravada muda")
+        self.assertEqual({ouro.DEV}, {f.split for f in novo.folhas[len(m.folhas):]})
+        self.assertEqual({"spa"}, {f.lingua for f in novo.folhas[len(m.folhas):]})
+        self.assertEqual(m.do_split(ouro.TESTE), novo.do_split(ouro.TESTE), "o teste não muda")
+        self.assertEqual([], ouro.problemas(novo))
+        with TemporaryDirectory() as tmp:
+            ouro.gravar(novo, Path(tmp) / "ouro.json")
+            self.assertEqual(novo, ouro.carregar(Path(tmp) / "ouro.json"))
+
+    def test_fora_do_treino_e_reprovado_nao_entram(self) -> None:
+        """O irmão de série de um livro do teste levaria o leiaute do teste ao dev; o reprovado tem camada que não é a tinta."""
+        for identidade in (_id(302), _id(303)):
+            with self.subTest(identidade=identidade), self.assertRaises(ValueError):
+                ouro.acrescentar_ao_dev(self._com_reserva(), identidade, self._seis(), entrou_em="2026-11-20")
+
+    def test_so_da_reserva(self) -> None:
+        """Livro do teste, do dev ou que o manifesto não lista não passa ao dev por aqui."""
+        for identidade in (_id(0), _id(99), _id(999)):
+            with self.subTest(identidade=identidade), self.assertRaises(ValueError):
+                ouro.acrescentar_ao_dev(self._com_reserva(), identidade, self._seis(), entrou_em="2026-11-20")
+
+    def test_poucas_folhas_e_data_fora_da_regra(self) -> None:
+        with self.assertRaises(ValueError):
+            ouro.acrescentar_ao_dev(self._com_reserva(), _id(300), self._seis()[:5], entrou_em="2026-11-20")
+        for data in ("2026-10-29", "20/11/2026"):
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                ouro.acrescentar_ao_dev(self._com_reserva(), _id(300), self._seis(), entrou_em=data)
+
+    def test_o_dev_nao_registra_leitura_do_teste(self) -> None:
+        """O livro do dev também tem `entrou_em`, e uma leitura dele diria que o teste foi aberto onde não foi."""
+        novo = ouro.acrescentar_ao_dev(self._com_reserva(), _id(300), self._seis(), entrou_em="2026-11-20")
+        with self.assertRaises(ValueError):
+            ouro.registrar_leitura_do_teste(novo, "2026-11-21", [_id(300)])
+        lido = replace(novo, leituras_dos_acrescentados={_id(300): "2026-11-21"})
+        self.assertTrue(any("não é um livro acrescentado ao teste" in erro for erro in ouro.problemas(lido)))
+
+
 class CadaGuardaTests(unittest.TestCase):
     """Cada guarda de `problemas` dispara sozinha, num manifesto que fora dela vale (achado I1)."""
 
@@ -537,7 +597,8 @@ class CadaGuardaTests(unittest.TestCase):
         livros = [L(x.identidade, x.split, x.lingua, grupo=_id(260)) if x.identidade == _id(0) else x for x in m.livros]
         self._so(_manifesto([*livros, L(_id(260), ouro.RESERVA, "eng")], list(m.folhas)), "fora_do_treino")
 
-    def test_entrou_em_so_no_teste_e_depois_do_congelamento(self) -> None:
+    def test_entrou_em_so_no_teste_ou_no_dev_e_depois_do_congelamento(self) -> None:
+        """Na reserva, `entrou_em` não quer dizer nada: o livro entrou a mais no teste ou no dev, ou não entrou."""
         m = _teste_valido()
         self._so(_manifesto([*m.livros, L(_id(75), ouro.RESERVA, "eng", entrou_em="2026-11-05")], list(m.folhas)),
                  "entrou_em")
@@ -635,8 +696,22 @@ class VersionadoTests(unittest.TestCase):
 
     def test_o_dev_sao_os_livros_de_2026_10_30_que_passaram_na_auditoria(self) -> None:
         """Eram sete; a auditoria visual reprovou dois (a ligadura ft que perde o t, figurinas fora da
-        linha da camada), e a referência deles não é a tinta."""
-        self.assertEqual(5, sum(x.split == ouro.DEV for x in self.m.livros))
+        linha da camada), e a referência deles não é a tinta. Os que vieram da reserva depois têm `entrou_em`."""
+        self.assertEqual(5, sum(x.split == ouro.DEV and not x.entrou_em for x in self.m.livros))
+
+    def test_o_dev_novo_e_o_da_regra_gravada(self) -> None:
+        """O leiaute novo do plano B (a): livros da reserva com a regra escrita em `sorteio["dev_novo"]`, seis
+        folhas cada, e nenhum deles com a diagramação de um livro dev nem fora do treino."""
+        novos = [x for x in self.m.livros if x.split == ouro.DEV and x.entrou_em]
+        self.assertTrue(novos)
+        self.assertEqual({self.m.sorteio["dev_novo"]["data"]}, {x.entrou_em for x in novos})
+        self.assertEqual(self.m.sorteio["dev_novo"]["entraram"], len(novos))
+        self.assertLessEqual(len(novos), self.m.sorteio["dev_novo"]["meta"], "a fila que acaba deixa a vaga vazia")
+        self.assertTrue(all(x.diagramacao == "nova" and not x.fora_do_treino for x in novos))
+        por_livro: dict[str, int] = {}
+        for folha in self.m.do_split(ouro.DEV):
+            por_livro[folha.identidade] = por_livro.get(folha.identidade, 0) + 1
+        self.assertEqual({6}, {por_livro[x.identidade] for x in novos})
 
     def test_todo_reprovado_diz_o_motivo_da_auditoria(self) -> None:
         reprovados = [x for x in self.m.livros if x.reprovado]
@@ -653,12 +728,14 @@ class VersionadoTests(unittest.TestCase):
         self.assertEqual({"prosa": list(ouro.ESTRATO_PROSA), "misto": list(ouro.ESTRATO_MISTO)}, self.m.sorteio["estratos"])
 
     def test_os_reprovados_sao_os_do_arquivo_da_auditoria(self) -> None:
-        tsv = ouro.caminho_padrao().parents[2] / "docs" / "metrics" / "texto_ouro_2026-10-30" / "reprovados_auditoria.tsv"
+        """As duas auditorias: a do sorteio de 2026-10-30 e a do dev novo de 2026-11-20."""
+        metricas = ouro.caminho_padrao().parents[2] / "docs" / "metrics"
         do_arquivo = {}
-        for linha in tsv.read_text(encoding="utf-8").splitlines():
-            if linha and not linha.startswith("#"):
-                identidade, motivo = linha.split("\t", 1)
-                do_arquivo[identidade] = motivo
+        for pasta in ("texto_ouro_2026-10-30", "texto_ouro_2026-11-20"):
+            for linha in (metricas / pasta / "reprovados_auditoria.tsv").read_text(encoding="utf-8").splitlines():
+                if linha and not linha.startswith("#"):
+                    identidade, motivo = linha.split("\t", 1)
+                    do_arquivo[identidade] = motivo
         self.assertEqual(do_arquivo, {x.identidade: x.reprovado for x in self.m.livros if x.reprovado})
 
     def test_o_teste_nao_foi_lido(self) -> None:

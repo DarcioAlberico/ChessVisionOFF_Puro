@@ -11,7 +11,8 @@ dono tem não precisa estar nele (decisão do dono, 2026-10-30). A identidade é
 (`caderno.identidade_de`: o resumo do primeiro MiB do arquivo), reaproveitada e não reimplementada;
 o PDF é achado pela identidade numa lista de pastas, e renomear o arquivo não o tira do ouro.
 
-**Splits.** `dev` são os livros de 2026-10-30 que passaram na auditoria visual; `teste` são os
+**Splits.** `dev` são os livros de 2026-10-30 que passaram na auditoria visual, mais os que vieram da
+reserva depois (`acrescentar_ao_dev`, com `entrou_em`: o leiaute novo do plano B (a)); `teste` são os
 sorteados da D6 que deram seis folhas e passaram na auditoria; `reserva` é todo o resto que não ficou
 fora do inventário -- os da D6 não sorteados, os sorteados que cederam a vaga e os reprovados, dev
 ou não. A reserva é material de desenvolvimento e de treino, menos os marcados `fora_do_treino`: os
@@ -112,10 +113,10 @@ class LivroDoOuro:
     """Por que o livro saiu do ouro (`auditoria: ...`). Reprovado fica na reserva, fora do treino: a
     camada dele não é a tinta, e nem a régua nem a linha de treino podem usá-la como verdade."""
     entrou_em: str = ""
-    """A data em que um livro entrou **a mais** no teste (`acrescentar_ao_teste`); vazio para os
-    congelados em `congelado_em`. A guarda de `primeira_leitura_do_teste` cobre os congelados; a
-    primeira leitura de um livro acrescentado é registrada à parte pela S-706, e tem de vir depois
-    desta data."""
+    """A data em que um livro entrou **a mais** no teste (`acrescentar_ao_teste`) ou no dev, vindo da
+    reserva (`acrescentar_ao_dev`); vazio para os congelados em `congelado_em`. A guarda de
+    `primeira_leitura_do_teste` cobre os congelados; a primeira leitura de um livro acrescentado ao
+    teste é registrada à parte pela S-706, e tem de vir depois desta data."""
 
 
 @dataclass(frozen=True)
@@ -305,7 +306,7 @@ def _do_livro(livro: LivroDoOuro, congelado_em: str) -> list[str]:
     erros: list[str] = []
     if not livro.identidade:
         erros.append("livro sem identidade")
-    if livro.entrou_em and (livro.split != TESTE or not _e_data(livro.entrou_em) or livro.entrou_em < congelado_em):
+    if livro.entrou_em and (livro.split == RESERVA or not _e_data(livro.entrou_em) or livro.entrou_em < congelado_em):
         erros.append(f"livro {livro.identidade} com entrou_em {livro.entrou_em!r}")
     if livro.reprovado and (livro.split != RESERVA or not livro.fora_do_treino):
         erros.append(f"livro {livro.identidade} reprovado ({livro.reprovado}) fora da reserva ou dentro do treino")
@@ -424,8 +425,11 @@ def _das_linguas_do_teste(linguas: int, pendencias: Sequence[str]) -> list[str]:
 
 
 def _das_leituras_dos_acrescentados(manifesto: Manifesto) -> list[str]:
-    """A leitura de um livro acrescentado é dele, e não pode ser anterior à entrada dele no teste."""
-    entrou_em = {livro.identidade: livro.entrou_em for livro in manifesto.livros}
+    """A leitura de um livro acrescentado é dele, e não pode ser anterior à entrada dele no teste.
+
+    Só o teste registra leitura: o livro que entrou no dev pela reserva também tem `entrou_em`, e uma leitura
+    dele aqui diria que o teste foi aberto onde não foi."""
+    entrou_em = {livro.identidade: livro.entrou_em for livro in manifesto.livros if livro.split == TESTE}
     erros: list[str] = []
     for identidade, lido_em in manifesto.leituras_dos_acrescentados.items():
         if not entrou_em.get(identidade):
@@ -481,6 +485,43 @@ def acrescentar_ao_teste(
         livros=livros,
         folhas=(*manifesto.folhas, *(FolhaDoOuro(livro.identidade, f, livro.lingua, e, TESTE) for f, e in folhas)),
         pendencias=tuple(x for x in manifesto.pendencias if not (x == PENDENCIA_DE_LINGUA and cumprida)),
+    )
+
+
+def acrescentar_ao_dev(
+    manifesto: Manifesto,
+    identidade: str,
+    folhas: Sequence[tuple[int, Estrato]],
+    *,
+    entrou_em: str,
+    folhas_minimas: int = 6,
+) -> Manifesto:
+    """O livro da reserva passa ao dev, com as folhas sorteadas dele -- o leiaute novo do plano B (a).
+
+    **O motivo é o diagnóstico do teste** (2026-11-06): o erro que sobra é de leiaute, e o dev de cinco
+    livros não o mostra; conserto de leiaute precisa de livro que nenhum ajuste viu. A reserva é esse
+    livro: nunca foi ao teste, e o teste não se relê para decidir.
+
+    Nada do teste muda, e nenhuma folha já gravada muda: o livro troca de split **no lugar** -- ele já
+    está no manifesto, na reserva -- e as folhas dele vão para o fim. O livro `fora_do_treino` não entra:
+    é irmão de série de um livro do teste (e desenvolver sobre ele leva o leiaute do teste ao dev) ou
+    reprovado na auditoria visual, com a camada que não é a tinta. Quem escolhe quais livros entram é o
+    sorteio de quem chama (`sortear_livros`, com semente própria), escrito antes de ler.
+    """
+    livro = next((x for x in manifesto.livros if x.identidade == identidade), None)
+    if livro is None or livro.split != RESERVA:
+        raise ValueError(f"o livro {identidade} não está na reserva")
+    if livro.fora_do_treino or livro.reprovado:
+        raise ValueError(f"o livro {identidade} está fora do treino ({livro.reprovado or 'série de um livro do teste'})")
+    if len(folhas) < folhas_minimas:
+        raise ValueError(f"o livro {identidade} trouxe {len(folhas)} folhas, e o mínimo é {folhas_minimas}")
+    if not _DATA.fullmatch(entrou_em) or entrou_em < manifesto.congelado_em:
+        raise ValueError(f"entrou_em {entrou_em!r} não é data a partir de {manifesto.congelado_em}")
+    novo = replace(livro, split=DEV, entrou_em=entrou_em)
+    return replace(
+        manifesto,
+        livros=tuple(novo if x.identidade == identidade else x for x in manifesto.livros),
+        folhas=(*manifesto.folhas, *(FolhaDoOuro(identidade, f, livro.lingua, e, DEV) for f, e in folhas)),
     )
 
 
@@ -564,7 +605,7 @@ def sortear_livros(
     *,
     linguas_inteiras: Iterable[str] = (),
 ) -> list[str]:
-    """Os livros do teste, na ordem do sorteio.
+    """Os livros do teste -- ou os da reserva que vão ao dev, com outra semente --, na ordem do sorteio.
 
     Os candidatos de `linguas_inteiras` entram todos -- é o que garante as três línguas quando uma
     delas tem um livro só. O resto se divide entre as origens na proporção em que elas aparecem nos
