@@ -260,7 +260,8 @@ que falta nela não é código:** das 123 faixas de referência semeadas, 14 est
 > fonte de diagrama. O `_is_diagram_font_row` só conhece a fonte Merida; estes livros usam a do
 > exportador do Lichess. **O `Polgar` está entre os sete**, e é o livro para o qual o filtro foi
 > escrito. Registrado, não consertado de passagem: mexer nesse filtro muda a legenda de todo o
-> acervo e precisa da medição dele.
+> acervo e precisa da medição dele. *(Consertado depois, com a medição: S-217, em `SPEC_TEXTO.md`.
+> O crivo forte passou a ser o nome da fonte, `pdf_text.is_diagram_font`.)*
 
 O objetivo é um só: **descobrir, com o menor investimento possível, se o classificador de lá
 serve aqui.** Nada de página inteira, nada de coluna, nada de retreino. Só o modelo, o mapa de

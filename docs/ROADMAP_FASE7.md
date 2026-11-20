@@ -1285,6 +1285,12 @@ resolve o mesmo par de leituras com duas ordens e recebe duas respostas.
 vista das pretas). O que a regra faz é transformar a S-45, quando ela voltar, num problema de
 **produzir o dado** em vez de um problema de mexer na política — por vinte linhas.
 
+*(estado em 2026-11-20: deixou de calar sempre. Desde o passo C10 do ciclo 2 do OCR_UI, em
+2026-09-21, `pdf_text.board_coordinates_for` produz `BoardCoordinates` quando a página imprime as
+coordenadas da borda, e a regra decide por elas o ponto de vista das pretas. A docstring da
+`CoordinateRule` ainda diz "cala em 100%": `orientation.py` está no caminho de medição (S-218), e a
+correção dela fica para a próxima remedição dos relatórios de campo.)*
+
 **A S-49 encontrou um defeito, como a S-51 tinha encontrado três.** `save_all` nunca olhava o
 vínculo do editor: com uma linha da aba Dataset aberta, "Salvar todos" criava uma **amostra
 nova** da mesma imagem em vez de regravar o rótulo. É exatamente o defeito que a S-23 fechou
@@ -1968,7 +1974,7 @@ Nenhum foi adiado por preguiça. Os quatro têm número:
 |---|---|
 | **S-38b** `BoardVerifier` | 1 falso positivo a ganhar contra 35 verdadeiros a arriscar |
 | **S-44** glifo `W`/`B` | 0 ocorrências em 380 diagramas com camada de texto |
-| **S-45** coordenadas | 13,7% de cobertura, e 0 diagramas do ponto de vista das pretas |
+| **S-45** coordenadas | 13,7% de cobertura, e 0 diagramas do ponto de vista das pretas. *O dado passou a ser produzido em 2026-09-21 (passo C10 do OCR_UI): a regra responde onde a página imprime as coordenadas* |
 | **S-46** solução como validador | 21,3% dos diagramas têm algo com forma de lance perto, e só **13,7% desses** são legais na posição lida — o texto vizinho é a continuação da partida, não a solução |
 
 ### O que sobrou, e não é código
