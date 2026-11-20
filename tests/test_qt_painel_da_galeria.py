@@ -26,7 +26,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar, esperar_ate
 
 from chess_diagram_ocr.gallery_scan import GalleryIndex
 from chess_diagram_ocr.ui import galeria_declarada
@@ -35,6 +35,17 @@ if TEM_PYQT:
     from PyQt6.QtWidgets import QMessageBox, QScrollArea
 
     from chess_diagram_ocr.qt import painel_da_galeria as qt_galeria
+
+
+def _esperar_o_cache(painel: qt_galeria.PainelDaGaleria) -> None:
+    """Espera a abertura do cache de posições que `load_pdf` sobe ao fundo, no teste que a pediu.
+
+    `PainelDaGaleria.load_pdf` abre o SQLite numa `Tarefa` («cache de posições»), e destruir o painel não a espera:
+    no CI do PR #68 (job `check` da corrida 44795091244) a abertura passou do fim de quatro testes daqui e dos 2 s
+    de `sem_thread_vazada`. É a mesma espera de `test_qt_janela._JanelaComLivro._esperar_o_cache`: a condição é a
+    do painel, que só volta a `None` quando o `pronto` (ou o `falhou`) chega à thread da janela.
+    """
+    esperar_ate(lambda: painel._abrindo_o_cache is None, limite_s=15.0, o_que="a abertura do cache de posições")
 
 
 class _ServicoFalso:
@@ -82,6 +93,7 @@ def montar_painel(caso: unittest.TestCase, pasta: Path, **kwargs: object) -> qt_
         **kwargs,  # type: ignore[arg-type]
     )
     caso.addCleanup(descartar, montado)
+    caso.addCleanup(_esperar_o_cache, montado)  # antes do de cima: as limpezas saem na ordem inversa
     montado.show()
     app.processEvents()
     return montado
@@ -288,6 +300,7 @@ class AnotacaoTests(unittest.TestCase):
             caminho_do_cache=self.pasta / "posicoes.sqlite",
         )
         self.addCleanup(descartar, montado)
+        self.addCleanup(_esperar_o_cache, montado)  # antes do de cima: as limpezas saem na ordem inversa
         montado.show()
         self.app.processEvents()
         montado.load_pdf(self.livro, request_page=False)
@@ -693,6 +706,7 @@ class FimDaVarreduraTests(unittest.TestCase):
             **kwargs,  # type: ignore[arg-type]
         )
         self.addCleanup(descartar, painel)
+        self.addCleanup(_esperar_o_cache, painel)  # antes do de cima: as limpezas saem na ordem inversa
         _ThreadNaHora.antes = staticmethod(antes(painel))
         frases: list[str] = []
         avisos: list[None] = []
