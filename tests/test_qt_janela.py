@@ -464,6 +464,25 @@ class _JanelaComLivro(unittest.TestCase):
     def _esperar_o_detector(self, janela: JanelaPrincipal, ate_ms: int = 3000) -> None:
         esperar_ate(lambda: not janela._detector.ocupado, limite_s=ate_ms / 1000, o_que="o fim do detector")
 
+    def _esperar_o_cache(self, janela: JanelaPrincipal, ate_ms: int = 15_000) -> None:
+        """Espera a abertura do cache de posições que o livro aberto subiu ao fundo.
+
+        **O detector não é a única thread que `abrir_pdf` sobe.** `PainelDaGaleria.load_pdf` abre o
+        SQLite numa `Tarefa` («cache de posições», OCR_UI passo 15), e esperar o detector não a vê.
+        Nesta máquina ela acaba em milissegundos; no job `caminho-com-acento` da corrida 43691977508
+        ela passou do fim de `test_abrir_outro_livro_e_responder_sim_descarta` e dos 2 s que
+        `sem_thread_vazada` concede, e o teste reprovou no teardown sem defeito no produto.
+
+        A condição é a do painel, e não `isRunning`: `_abrindo_o_cache` só volta a `None` quando o
+        `pronto` (ou o `falhou`) chega à thread da janela, e aí a loja já está trocada. A thread
+        termina logo depois de emitir, dentro da folga da guarda.
+        """
+        esperar_ate(
+            lambda: janela.galeria._abrindo_o_cache is None,
+            limite_s=ate_ms / 1000,
+            o_que="a abertura do cache de posições",
+        )
+
     def _candidato(self, indice: int = 0) -> mock.Mock:
         return mock.Mock(bbox_pdf=(10.0 + 60 * indice, 10.0, 60.0 + 60 * indice, 60.0), source="contour")
 
@@ -485,6 +504,7 @@ class _JanelaComLivro(unittest.TestCase):
             montada.abrir_pdf(self.livro)
             self.app.processEvents()
             self._esperar_o_detector(montada)
+            self._esperar_o_cache(montada)
         return montada
 
     def _varrido(self, *paginas: int) -> None:
@@ -2247,6 +2267,7 @@ class CorrecoesNaoGravadasTests(_JanelaComLivro):
             janela.abrir_pdf(outro)
             self.app.processEvents()
             self._esperar_o_detector(janela)
+            self._esperar_o_cache(janela)
         self.assertEqual(pergunta.call_args.args[1], [0])
         self.assertEqual(pergunta.call_args.kwargs["ao_fechar"], False)
         self.assertEqual(janela.painel.paginas.pages_with_hand_edits(str(self.livro)), [0], "a correção sumiu")
@@ -2261,8 +2282,33 @@ class CorrecoesNaoGravadasTests(_JanelaComLivro):
             janela.abrir_pdf(outro)
             self.app.processEvents()
             self._esperar_o_detector(janela)
+            self._esperar_o_cache(janela)
         self.assertEqual(janela.painel.paginas.pages_with_hand_edits(str(self.livro)), [])
         self.assertEqual(janela.painel.modelo.items, [], "o editor ficou com a página do livro descartado")
+
+    def test_a_janela_montada_ja_entregou_o_cache_de_posicoes(self) -> None:
+        """A abertura lenta do cache termina dentro do teste que abriu o livro, e não no teardown.
+
+        É o caso da corrida 43691977508 sob medida: a abertura demora um segundo de propósito, mais
+        que o resto de `janela()`. Sem `_esperar_o_cache` o ajudante voltava com a `Tarefa` ainda
+        no `sleep`, e a guarda `sem_thread_vazada` reprovava este teste e os da troca de livro.
+        """
+        import time
+        from typing import Any
+
+        from chess_diagram_ocr.qt import painel_da_galeria
+
+        original = painel_da_galeria.open_store
+
+        def lenta(*argumentos: Any, **nomeados: Any) -> Any:
+            time.sleep(1.0)
+            return original(*argumentos, **nomeados)
+
+        with mock.patch.object(painel_da_galeria, "open_store", side_effect=lenta) as aberturas:
+            janela = self.janela()
+        self.assertEqual(aberturas.call_count, 1, "o livro aberto não pediu o cache ao fundo")
+        self.assertIsNone(janela.galeria._abrindo_o_cache, "a janela voltou com o cache ainda abrindo")
+        self.assertIsNotNone(janela.galeria._store, "o cache aberto não chegou à galeria")
 
     def test_sem_tela_trocar_de_livro_guarda_as_correcoes(self) -> None:
         from chess_diagram_ocr.qt import dialogos

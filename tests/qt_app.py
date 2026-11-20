@@ -249,6 +249,13 @@ def descartar(widget: Any) -> None:
 
     Use no lugar do par `addCleanup(widget.deleteLater)` sempre que o widget registrar alguma
     coisa fora de si -- seguidor de comando, repintura de tema, ouvinte de sinal global.
+
+    **E a janela que não leva nem o `deleteLater` é pior, porque derruba o processo.** Sem pai ela é
+    do Python, e morre onde a última referência cair: num ciclo, no coletor -- que pode rodar no meio
+    da pintura de outro teste, e o Qt segue pintando memória apagada (`access violation`). Foi o
+    `DialogoDeTreino` de `test_qt_dialogos.TreinoTests` derrubando a linha 106 de
+    `test_qt_dica.py`. A guarda `conftest.sem_janela_do_python_visivel` reprova o teste que deixa
+    uma assim; o conserto é este `descartar` na limpeza dele.
     """
     widget.deleteLater()
     from PyQt6.QtCore import QCoreApplication, QEvent
