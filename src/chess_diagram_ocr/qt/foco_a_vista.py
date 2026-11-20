@@ -54,6 +54,8 @@ contrário).
 from __future__ import annotations
 
 import time
+import weakref
+from typing import cast
 
 from PyQt6 import sip
 from PyQt6.QtCore import QEvent, QObject, QPoint, QRect, Qt, QTimer, pyqtSlot
@@ -105,6 +107,12 @@ def _encaixar(barra: QScrollBar, inicio: int, fim: int, vista: int) -> None:
     barra.setValue(max(barra.minimum(), min(barra.maximum(), alvo)))
 
 
+def _endereco_no_cpp(controle: QWidget) -> int:
+    """O endereço do objeto do C++ por trás de ``controle``. O `cast` porque o stub do sip declara que
+    `unwrapinstance` não devolve nada, e ele devolve o endereço."""
+    return cast(int, sip.unwrapinstance(controle))
+
+
 class _RazaoDoFoco(QObject):
     """A razão do último foco que um controle recebeu na aplicação.
 
@@ -114,12 +122,20 @@ class _RazaoDoFoco(QObject):
     com `OtherFocusReason`. Um filtro só, na aplicação, para todos os seguidores, e ele só anota: o
     controle e a razão (o `FocusIn` vai também ao estilo, que não é um controle), e a hora do último
     soltar de um botão do mouse (:func:`mouse_sossegado`).
+
+    **O controle anotado não fica vivo por causa do anotador.** Ele é um só por processo, e a
+    referência forte de antes segurava o último controle focado até o foco seguinte: a janela sem pai
+    que quem a criou já soltou morria aqui dentro, no meio da entrega do `FocusIn` seguinte (medido em
+    2026-11-15). O anotador guarda uma referência fraca, e o endereço do C++ para o controle que o C++
+    possui: o wrapper que o sip cria para um controle nascido no C++ -- os botões de uma
+    `QDialogButtonBox` -- morre ao fim deste filtro, e o `focusChanged` traz outro (:meth:`recebeu`).
     """
 
     def __init__(self, aplicacao: QApplication) -> None:
         super().__init__(aplicacao)
         self.aplicacao = aplicacao
-        self.controle: QWidget | None = None
+        self._controle: weakref.ref[QWidget] | None = None
+        self._endereco: int | None = None
         self.razao = Qt.FocusReason.OtherFocusReason
         self.soltou_em = float("-inf")
         aplicacao.installEventFilter(self)
@@ -129,11 +145,28 @@ class _RazaoDoFoco(QObject):
             return False
         tipo = evento.type()
         if tipo == QEvent.Type.FocusIn and isinstance(objeto, QWidget):
-            self.controle = objeto
-            self.razao = evento.reason()  # type: ignore[attr-defined]  # o FocusIn é um QFocusEvent
+            self._anotar(objeto, evento.reason())  # type: ignore[attr-defined]  # o FocusIn é um QFocusEvent
         elif tipo == QEvent.Type.MouseButtonRelease:
             self.soltou_em = time.monotonic()
         return False
+
+    def _anotar(self, controle: QWidget, razao: Qt.FocusReason) -> None:
+        """Anota o controle do `FocusIn` sem segurá-lo. O endereço só para o que o C++ possui: o
+        wrapper do controle de posse do Python morre com ele, e um controle novo que nasça no mesmo
+        endereço não é tomado pelo morto."""
+        self._controle = weakref.ref(controle)
+        self._endereco = None if sip.ispyowned(controle) else _endereco_no_cpp(controle)
+        self.razao = razao
+
+    def recebeu(self, controle: QWidget) -> bool:
+        """``controle`` é o que recebeu o último `FocusIn`: o mesmo wrapper enquanto o anotado vive, e
+        o mesmo endereço do C++ quando o wrapper anotado morreu e o controle não era do Python."""
+        if self._controle is None or sip.isdeleted(controle):
+            return False
+        anotado = self._controle()
+        if anotado is not None:
+            return anotado is controle
+        return self._endereco is not None and _endereco_no_cpp(controle) == self._endereco
 
 
 _RAZAO: list[_RazaoDoFoco] = []
@@ -180,7 +213,7 @@ def veio_do_mouse(controle: QWidget) -> bool:
     `OtherFocusReason`), e é mostrado quando o mouse sossega; o Tab e o Shift+Tab rolam até o controle,
     também quando ele está sob o ponteiro parado."""
     razao = _razao_do_foco()
-    return razao is not None and razao.controle is controle and razao.razao == Qt.FocusReason.MouseFocusReason
+    return razao is not None and razao.recebeu(controle) and razao.razao == Qt.FocusReason.MouseFocusReason
 
 
 def voltou_com_a_janela(controle: QWidget) -> bool:
@@ -188,14 +221,14 @@ def voltou_com_a_janela(controle: QWidget) -> bool:
     (`ActiveWindowFocusReason`): o controle que tinha o foco quando ela deixou de ser. O pressionar do
     clique que a reativou chega depois dele."""
     razao = _razao_do_foco()
-    return (razao is not None and razao.controle is controle
+    return (razao is not None and razao.recebeu(controle)
             and razao.razao == Qt.FocusReason.ActiveWindowFocusReason)
 
 
 def veio_do_teclado(controle: QWidget) -> bool:
     """O foco que ``controle`` acaba de receber é o do Tab ou do Shift+Tab: a rolagem vai na hora."""
     razao = _razao_do_foco()
-    return (razao is not None and razao.controle is controle
+    return (razao is not None and razao.recebeu(controle)
             and razao.razao in (Qt.FocusReason.TabFocusReason, Qt.FocusReason.BacktabFocusReason))
 
 
