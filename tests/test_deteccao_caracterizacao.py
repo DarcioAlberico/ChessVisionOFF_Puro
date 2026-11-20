@@ -6,6 +6,11 @@ de `tests/fixtures/` mais sintéticas desenhadas para que cada motivo de `MOTIVO
 `detect_diagrams` apareça ao menos uma vez -- o conjunto de campo não tem `fora-da-pagina`,
 `prior-de-tamanho` nem `faixa-da-pagina`.
 
+Regravada em 2026-11-20 só por acréscimo: a página `caricatura` (a figura desenhada na frente de
+um quadriculado, com os motivos `liso-maior-que-casa` e `figura-embutida`), e a variante `cru`
+passou a desligar também a guarda de figura -- sem isso a faixa sintética, com a guarda de faixa
+desligada, saía como figura antes do teto. Nenhuma chave gravada antes mudou.
+
 Para regravar (só quando uma caixa muda **de propósito**):
 `python tests/test_deteccao_caracterizacao.py --gravar`.
 """
@@ -29,7 +34,15 @@ from test_board_detection import (
     _synthetic_grid,
     _tabuleiro_sintetico,
 )
-from test_detection import board_image, board_with_caption, pdf_with_images, photo_like, render, tiled_board
+from test_detection import (
+    board_image,
+    board_with_caption,
+    caricature_like,
+    pdf_with_images,
+    photo_like,
+    render,
+    tiled_board,
+)
 
 from chess_diagram_ocr import board_detection as bd
 from chess_diagram_ocr import detector_de_marcas as dm
@@ -110,6 +123,9 @@ def _paginas_hibridas() -> dict[str, tuple[fitz.Page, np.ndarray]]:
         "com_legenda": [(board_with_caption(), fitz.Rect(100, 100, 300, 337))],
         "faixa": [(_faixa(), fitz.Rect(60, 60, 400, 360)), (board_image(320, frame=True), fitz.Rect(100, 450, 300, 650))],
         "prior": [(board_image(320, frame=True), fitz.Rect(72, 72, 272, 272))],
+        # A caricatura do `Para ensinar e aprender xadrez` (2026-11-20): a imagem sai como figura e
+        # o achado de contorno sobre o quadriculado de fundo dela sai junto.
+        "caricatura": [(caricature_like(), fitz.Rect(72, 72, 272, 272))],
     }
     paginas = {}
     for nome, colocacoes in pdfs.items():
@@ -128,7 +144,8 @@ def _hibrido() -> dict[str, object]:
             "padrao": {},
             "cru": {
                 "max_boards": 2, "reading_order": "row", "refine_embedded": False,
-                "size_prior_tolerance": None, "band_board_fill": None, "recall": None,
+                "size_prior_tolerance": None, "band_board_fill": None, "featureless_disk_limit": None,
+                "recall": None,
             },
             "sem_piso": {"checker_contrast_floor": None, "max_boards": 3},
             "faixa": {"recall": RecallOptions(embedded_floor=None), "reading_order": "row"},
@@ -236,6 +253,7 @@ class CaracterizacaoDaDeteccaoTests(unittest.TestCase):
         }
         dos_filtros = set(bd.MOTIVOS_DE_RECUSA) | {
             "perdeu-para-embutido", "prior-de-tamanho", "faixa-da-pagina", "teto-da-pagina",
+            "liso-maior-que-casa", "figura-embutida",
         }
         self.assertEqual(motivos, dos_filtros)
         self.assertEqual(set("".join(esperado["marcas"])), set(_LETRA.values()))
