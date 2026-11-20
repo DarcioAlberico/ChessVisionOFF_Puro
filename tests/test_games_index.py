@@ -748,18 +748,28 @@ class CancelamentoDoIndiceTests(unittest.TestCase):
         self.indice = self.raiz / "indice.sqlite"
 
     def test_cancelar_para_em_menos_de_um_segundo_e_a_consulta_recusa_o_indice(self) -> None:
+        """O pedido chega com a grande **em leitura**, e é o próprio índice que diz quando é isso.
+
+        **Era um `threading.Timer(0.3, ...)` contado do começo do `build_index`**, e reprovou no
+        `caminho-com-acento` da corrida 44761976311 com `0 not greater than or equal to 3`: antes da
+        primeira linha a rodada abre o SQLite e planeja as duas bases, e num runner carregado isso
+        passou de 0,3 s -- o pedido chegou antes de a pequena começar, e o laço desistiu com nada
+        lido. O prazo media a máquina, não o índice. Agora o pedido sai no primeiro aviso de
+        progresso **da grande**: a pequena já fechou (o aviso final dela vem antes) e a grande está
+        no meio, que é o caso que as duas asserções de baixo descrevem.
+        """
         cancelar = threading.Event()
         pedido: list[float] = []
 
-        def pedir() -> None:
-            pedido.append(time.perf_counter())
-            cancelar.set()
+        def progresso(base: Path, lidos: int, total: int, _partidas: int) -> None:
+            if base == self.grande and lidos < total and not cancelar.is_set():
+                pedido.append(time.perf_counter())
+                cancelar.set()
 
-        relogio = threading.Timer(0.3, pedir)
-        relogio.start()
-        self.addCleanup(relogio.cancel)
-        rodada = build_index([self.pequena, self.grande], self.indice, cancel=cancelar)
+        rodada = build_index([self.pequena, self.grande], self.indice, progress=progresso, cancel=cancelar)
         honrado = time.perf_counter()
+
+        self.assertEqual(len(pedido), 1, "o pedido saiu com a grande em leitura")
 
         self.assertTrue(rodada.cancelado)
         # Do pedido, e não do começo (S-872): o atraso do `Timer` numa máquina carregada não é do índice.

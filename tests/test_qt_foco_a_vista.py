@@ -14,6 +14,8 @@ volta a cair fora da vista.
 from __future__ import annotations
 
 import contextlib
+import gc
+import time
 import unittest
 from collections.abc import Iterator
 from unittest import mock
@@ -27,6 +29,8 @@ if TEM_PYQT:
     from PyQt6.QtTest import QTest
     from PyQt6.QtWidgets import (
         QCheckBox,
+        QDialog,
+        QDialogButtonBox,
         QLineEdit,
         QListWidget,
         QPushButton,
@@ -821,6 +825,110 @@ class SeguidorTests(unittest.TestCase):
         self.assertTrue(_inteiro(self.rolagem, self.caixa), "sossegado o mouse, a caixa aparece inteira")
         with mock.patch.object(foco_a_vista, "intervalo_do_duplo_clique", lambda: 0):
             self.assertIsNot(clique_no_botao(), proxima, "sabotado, a rolagem na hora tira o botão dali")
+
+
+    def test_o_tab_logo_depois_de_um_soltar_rola_ate_o_botao_que_o_cpp_criou(self) -> None:
+        """O anotador da razão do foco não segura o controle que anota (:class:`AnotadorDoFocoTests`):
+        guarda uma referência fraca, e o wrapper que o sip cria para um controle nascido no C++ -- os
+        botões de uma `QDialogButtonBox` -- morre ao fim do filtro do `FocusIn`; o `focusChanged`
+        traz outro (medido em 2026-11-20). O Tab que entra na rolagem vindo do «Aceitar» -- os botões
+        nasceram depois dele, e vêm depois dele na cadeia do foco -- logo depois de um soltar, com o
+        mouse ainda sem sossegar, chega a um botão da caixa e rola na hora: o anotador o reconhece pelo
+        endereço do C++. A sabotagem: só a referência fraca -- o foco do Tab espera o sossego, como o
+        do programa, e o botão fica fora da vista."""
+        botoes = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self.conteudo)
+        layout = self.conteudo.layout()
+        assert layout is not None
+        layout.addWidget(botoes)
+        for _vez in range(2):  # o layout cresce o conteúdo, depois a rolagem o toma
+            self.app.processEvents()
+        razao = foco_a_vista._razao_do_foco()
+        assert razao is not None
+
+        def tab_logo_depois_de_um_soltar() -> bool:
+            # nenhum wrapper dos botões fica vivo no teste entre uma vez e a outra
+            _no_topo(self.rolagem, self.app)
+            self.botao.setFocus(Qt.FocusReason.OtherFocusReason)
+            self.app.processEvents()
+            razao.soltou_em = time.monotonic()  # o soltar de agora: o mouse ainda não sossegou
+            QTest.keyClick(self.botao, Qt.Key.Key_Tab)
+            self.app.processEvents()
+            atual = self.app.focusWidget()
+            self.assertIn(atual, botoes.buttons(), "o Tab chega a um botão da caixa")
+            return _inteiro(self.rolagem, atual)
+
+        def so_a_referencia_fraca(anotador: foco_a_vista._RazaoDoFoco, controle: QWidget) -> bool:
+            return anotador._controle is not None and anotador._controle() is controle
+
+        self.assertTrue(tab_logo_depois_de_um_soltar(), "o Tab rola na hora até o botão")
+        with mock.patch.object(foco_a_vista._RazaoDoFoco, "recebeu", so_a_referencia_fraca):
+            self.assertFalse(tab_logo_depois_de_um_soltar(), "sabotado, o botão fica fora da vista")
+        _sossegar(self.app)
+
+
+@unittest.skipUnless(TEM_PYQT, MOTIVO)
+class AnotadorDoFocoTests(unittest.TestCase):
+    """O anotador da razão do foco é um só por processo, posto na aplicação: ele não segura vivo o
+    controle que anota."""
+
+    def setUp(self) -> None:
+        self.app = aplicacao()
+        _mouse_sossegado_desde_ja()
+
+    def test_a_janela_solta_por_quem_a_criou_nao_fica_viva_no_anotador(self) -> None:
+        """Achado de passagem no PR #65 (a queda da linha 106 de `test_qt_dica`): o anotador guardava
+        uma referência forte ao último controle que recebeu o `FocusIn`, e segurava assim, até o foco
+        seguinte, a janela sem pai -- de posse do Python -- que quem a criou já tinha soltado; ela
+        morria dentro do filtro, no meio da entrega do `FocusIn` seguinte. Aqui um `QDialog` sem pai
+        recebe o foco -- o anotador o vê --, e quem o criou o solta: depois da coleta ele não está
+        entre as janelas de topo, e um diálogo novo não passa pelo que recebeu o foco. A sabotagem: a
+        referência forte de antes -- o diálogo solto continua vivo."""
+        from PyQt6.QtWidgets import QApplication
+
+        nome = "janela solta do anotador"
+        razao = foco_a_vista._razao_do_foco()
+        assert razao is not None
+
+        def vivas() -> list[str]:
+            gc.collect()
+            return [w.objectName() for w in QApplication.topLevelWidgets() if w.objectName() == nome]
+
+        def focar_e_soltar() -> None:
+            dialogo = QDialog()  # sem pai: de posse do Python
+            dialogo.setObjectName(nome)
+            dialogo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            dialogo.show()
+            dialogo.activateWindow()
+            self.app.processEvents()
+            dialogo.setFocus(Qt.FocusReason.TabFocusReason)
+            self.app.processEvents()
+            self.assertIs(self.app.focusWidget(), dialogo)
+            self.assertTrue(razao.recebeu(dialogo), "o anotador viu o foco")
+            # quem o criou o solta: a função acaba
+
+        focar_e_soltar()
+        self.assertEqual(vivas(), [], "a janela solta morre quando quem a criou a solta")
+        novo = QDialog()
+        self.addCleanup(descartar, novo)
+        self.assertFalse(razao.recebeu(novo), "um diálogo novo não passa pelo que recebeu o foco")
+
+        anotar = foco_a_vista._RazaoDoFoco._anotar
+
+        def com_a_referencia_forte(anotador: foco_a_vista._RazaoDoFoco, controle: QWidget,
+                                   motivo: Qt.FocusReason) -> None:
+            anotar(anotador, controle, motivo)
+            vars(anotador)["controle"] = controle  # a referência forte de antes
+
+        def soltar_a_forte() -> None:
+            segura = vars(razao).pop("controle", None)
+            if segura is not None:
+                descartar(segura)
+
+        self.addCleanup(soltar_a_forte)
+        with mock.patch.object(foco_a_vista._RazaoDoFoco, "_anotar", com_a_referencia_forte):
+            focar_e_soltar()
+        self.assertEqual(vivas(), [nome], "sabotado, o anotador segura a janela solta")
 
 
 @unittest.skipUnless(TEM_PYQT, MOTIVO)

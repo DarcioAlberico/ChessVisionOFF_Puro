@@ -640,6 +640,76 @@ class TarefaVazadaTests(unittest.TestCase):
         self.assertIn("tarefa esquecida", saida)
 
 
+# ------------------------------------- a janela do Python que morre na pintura do vizinho (TreinoTests)
+
+TESTE_QUE_DEIXA_A_JANELA = '''
+from qt_app import aplicacao, descartar
+
+SEGURADAS = []
+
+
+def test_a_deixa_a_janela_mostrada():
+    """Uma janela sem pai, mostrada, que o teste não destrói -- o `DialogoDeTreino` de `TreinoTests`.
+
+    Segura por uma lista do módulo, e não por um ciclo: o ciclo do caso real dependeria de o coletor
+    não rodar antes da guarda, e a prova de vida não pode depender de sorte."""
+    from PyQt6.QtWidgets import QDialog
+
+    aplicacao()
+    janela = QDialog()
+    janela.setObjectName("janela esquecida")
+    janela.show()
+    SEGURADAS.append(janela)
+
+
+def test_b_destroi_a_que_mostrou():
+    """A mesma janela destruída na limpeza não reprova: é este que diz que a falha foi da guarda."""
+    from PyQt6.QtWidgets import QDialog
+
+    aplicacao()
+    janela = QDialog()
+    janela.show()
+    descartar(janela)
+'''
+
+
+class JanelaDoPythonVisivelTests(unittest.TestCase):
+    """A janela mostrada e não destruída reprova **o teste que a deixou**, e não o vizinho que caiu.
+
+    **O modo de falha é o pior que a suíte tem**: a janela sem pai é do Python e morre onde a última
+    referência cair -- no coletor de ciclos, no meio da pintura de outro teste --, e o processo inteiro
+    morre com `access violation` sem nomear ninguém. Foi a queda da linha 106 de `tests/test_qt_dica.py`
+    em metade das corridas do CI de 2026-11-11 a 2026-11-15. Ver `conftest.sem_janela_do_python_visivel`.
+    """
+
+    def test_a_guarda_acusa_a_janela_deixada_mostrada(self) -> None:
+        """**A prova de vida**, no molde de `TarefaVazadaTests`: o primeiro teste reprova nomeando a
+        classe da janela, e o segundo -- que destrói a sua -- passa."""
+        copia = pasta_temporaria(self, prefixo="cvoff-sabotagem-")
+        (copia / "tests").mkdir()
+        for ajudante in AJUDANTES_DA_GUARDA:
+            shutil.copy2(TESTES / ajudante, copia / "tests" / ajudante)
+        (copia / "tests" / "test_deixa_a_janela.py").write_text(TESTE_QUE_DEIXA_A_JANELA, encoding="utf-8", newline="\n")
+        (copia / "pytest.ini").write_text("[pytest]\n", encoding="utf-8", newline="\n")
+
+        filho = rodar_python(
+            textwrap.dedent(
+                f"""
+                import os, sys
+                os.environ["QT_QPA_PLATFORM"] = "offscreen"
+                os.chdir({str(copia)!r})
+                import pytest
+                sys.exit(pytest.main(["-q", "-p", "no:cacheprovider", "tests"]))
+                """
+            ),
+            check=False,
+        )
+        saida = filho.stdout + filho.stderr
+        self.assertNotEqual(0, filho.returncode, saida)
+        self.assertIn("2 passed, 1 error", saida)
+        self.assertIn("test_a_deixa_a_janela_mostrada deixou janela visível do Python viva: QDialog", saida)
+
+
 class DadosDoCheckoutPrincipalTests(unittest.TestCase):
     """As guardas de dados vigiam o `data/` do checkout principal, e não só o desta árvore (S-805).
 
