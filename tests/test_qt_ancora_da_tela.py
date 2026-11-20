@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 from ambiente_de_teste import pasta_temporaria
-from qt_app import MOTIVO, TEM_PYQT, TarefaAdiada, aplicacao, esperar
+from qt_app import MOTIVO, TEM_PYQT, TarefaAdiada, aplicacao, descartar, esperar
 from test_app_pyqt import ServicoComLeituraFixa, diagrama_lido, pdf_de_teste
 
 from chess_diagram_ocr.service import RecognitionCanceled, RecognizedDiagram
@@ -69,7 +69,10 @@ class ChegadaDepoisDaTrocaTests(unittest.TestCase):
             caminho_do_cache=self.pasta / "posicoes.sqlite",
             caminho_do_estado=self.pasta / "janela.json",
         )
-        self.addCleanup(janela.deleteLater)
+        # `descartar`, e não `deleteLater`: a janela liga a guarda de atalhos **na aplicação**
+        # (`qt_atalhos.ligar`), e com `deleteLater` a guarda dela seguia filtrando todo evento do
+        # processo até alguém esvaziar o `DeferredDelete` -- o que `processEvents` não faz.
+        self.addCleanup(descartar, janela)
         self.addCleanup(janela.close)
         janela.resize(1000, 700)
         return janela

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import unittest
 
-from qt_app import MOTIVO, TEM_PYQT, aplicacao
+from qt_app import MOTIVO, TEM_PYQT, aplicacao, descartar
 
 from chess_diagram_ocr.ui import tokens
 
@@ -104,7 +104,16 @@ class DesabilitadoTests(unittest.TestCase):
         # mediria a ausência de botão em vez do comportamento da dica.
         self.painel.show()
         self.app.processEvents()
-        self.addCleanup(self.painel.deleteLater)
+        # `descartar`, e não `deleteLater`: o painel é janela visível com filtro instalado, e a dica
+        # que ele mostra (`QToolTip`) aponta para ele. Com `deleteLater` ele seguia mostrado --
+        # recebendo evento pelo filtro no teste seguinte -- até alguém esvaziar o `DeferredDelete`,
+        # o que `processEvents` não faz.
+        #
+        # **Não era isto que derrubava a linha 106** (corridas 43022629106, 43022629439,
+        # 43031000150 e 43692002880): a queda vinha no `setUp` do *primeiro* teste da classe, antes
+        # de painel nenhum daqui existir. Era o `DialogoDeTreino` que `test_qt_dialogos.TreinoTests`
+        # deixava visível e preso num ciclo -- ver `TreinoTests._descartar_o_modal` lá.
+        self.addCleanup(descartar, self.painel)
         self.filtro = dica.DicaEmDesabilitado(self.painel)
 
     def evento(self, x: int = 50, y: int = 25) -> QHelpEvent:
