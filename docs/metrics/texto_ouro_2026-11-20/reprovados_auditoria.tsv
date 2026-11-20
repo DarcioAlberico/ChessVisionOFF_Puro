@@ -1,0 +1,9 @@
+# identidade<TAB>motivo -- a auditoria visual do dev novo (2026-11-20): 20 linhas por livro, a tinta contra a camada,
+# conferidas por um agente que não sorteou, com a regra de divergência da S-702. Uma divergência reprova o livro.
+08ec0ff03513bf7a	auditoria: símbolo de avaliação impresso como imagem, sem caractere na camada (⩱ depois de 0-0-0; 1 de 20 linhas, na borda do recorte)
+13cefee6aae89c6f	auditoria: símbolos de avaliação em código de fonte na camada, ² ³ no lugar de ⩲ ⩱ (4 de 20 linhas)
+6f8e45b4fa5e729e	auditoria: símbolos de avaliação impressos como imagem, sem caractere na camada (⩲ e a compensação; 3 de 20 linhas)
+a502015c9da82d28	auditoria: símbolo de avaliação em código de fonte na camada, ² no lugar de ⩲ (1 de 20 linhas)
+1bd7a26560b23a03	auditoria: símbolos de avaliação em código de fonte na camada, ² ³ no lugar de ⩲ ⩱ (2 de 20 linhas)
+b0dba8d50d9d7fdb	auditoria: símbolo de avaliação em código de fonte na camada, ² no lugar de ⩲ (2 de 20 linhas)
+7a2c3cccd5299c1d	auditoria: símbolo de avaliação impresso como imagem, sem caractere na camada (⩲; 7 de 20 linhas)

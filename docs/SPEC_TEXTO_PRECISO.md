@@ -206,6 +206,14 @@ leitor que lê a tinta lê `Ê`. Estas observações e o achado do (c) vêm em p
 antes de virarem regra na S-701 ou na S-716, confirmam-se no dev ou na reserva — regra desenhada
 olhando o teste anula o portão.
 
+**A segunda auditoria, do dev novo (2026-11-20).** Os livros que a reserva cedeu ao dev
+(`docs/metrics/texto_ouro_2026-11-20/dev_novo.py`) passaram pela mesma auditoria, com a mesma regra, conferida por um
+agente que não sorteou: 13 livros, 6 aprovados, 7 reprovados (`texto_ouro_2026-11-20/reprovados_auditoria.tsv`). Os sete
+caem num defeito só, o símbolo de avaliação: em código de fonte na camada (`²` `³` no lugar de ⩲ ⩱, 5 livros) ou
+impresso como imagem, sem caractere na camada (2 livros). Num deles o símbolo pertencia ao trecho vizinho, na borda do
+recorte; contou como divergência, porque a camada daquela folha não diz o que a tinta diz. Nenhum erro de letra, palavra
+ou figurina apareceu nas 260 linhas.
+
 **Achado: a linha de base de 2026-10-30 mediu dois livros dev contra uma referência com defeito.** No
 *Chess Evolution 2013*, toda palavra com `ft` lida certo conta como erro, para qualquer motor; no
 *Capablanca*, a figurina que falta na referência conta como inserção na notação. Os números

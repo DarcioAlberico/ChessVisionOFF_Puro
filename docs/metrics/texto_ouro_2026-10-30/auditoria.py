@@ -19,7 +19,6 @@ import sys
 from concurrent.futures import ProcessPoolExecutor
 
 import fitz
-import matplotlib
 from PIL import Image, ImageDraw, ImageFont
 
 from chess_diagram_ocr.text import ouro
@@ -33,7 +32,12 @@ import banco  # noqa: E402
 RAIZ = os.environ.get("CVOFF_RAIZ") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 LINHAS = 20
 POR_FOLHA_DE_CONFERENCIA = 10
-FONTE = os.path.join(os.path.dirname(matplotlib.__file__), "mpl-data", "fonts", "ttf", "DejaVuSans.ttf")
+try:
+    import matplotlib
+
+    FONTE = os.path.join(os.path.dirname(matplotlib.__file__), "mpl-data", "fonts", "ttf", "DejaVuSans.ttf")
+except ImportError:  # o .venv do projeto não tem matplotlib; a mesma DejaVu Sans vem instalada no Windows
+    FONTE = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", "DejaVuSans.ttf")
 DPI = 200
 LARGURA = 1500
 

@@ -452,6 +452,24 @@ teste, fora os marcados `fora_do_treino` e os reprovados (29 em inglês, 1 em es
 portão. O livro da terceira língua chegou no mesmo dia e entrou no teste a mais: a pendência `terceira_lingua` caiu.
 A Fase 105 fica adiada, e não cancelada: volta se o scan mostrar que lá o gargalo é o reconhecimento.
 
+**O dev novo, em 2026-11-20, e o que ele mostrou.** Seis livros da reserva passaram ao dev pela regra de
+`docs/metrics/texto_ouro_2026-11-20/dev_novo.py`, escrita antes de ler: candidatos de diagramação nova, nem
+`fora_do_treino` nem reprovados; `ouro.sortear_livros` com semente `20261120` e meta de 8, o espanhol inteiro e o resto
+por origem; folhas pela regra do sorteio de 2026-10-30; quem não dá seis folhas ou é reprovado cede a vaga ao seguinte da
+mesma origem (`ouro.acrescentar_ao_dev`). A auditoria visual da S-702, por um agente que não sorteou, conferiu 13 livros
+e reprovou 7, todos por símbolo de avaliação: em código de fonte na camada (`²` `³` no lugar de ⩲ ⩱) ou impresso como
+imagem, sem caractere na camada. As duas filas acabaram, e entraram 6 de 8, com 36 folhas
+(`docs/metrics/texto_ouro_2026-11-20/reprovados_auditoria.tsv`). Medidos com o `cvoff-texto-prosa`
+([texto_prosa_dev_novo_20261120.json](metrics/texto_prosa_dev_novo_20261120.json)): glifo 3,50%, fusão **0,13%**
+[0,00; 0,28], Tesseract nas caixas do glifo 0,04% e nas linhas certas 0,02%, perda de leiaute **+0,02 p.p.**
+[+0,00; +0,08]. No dev de 2026-10-30, medido junto: fusão 0,23%, perda de leiaute +0,15 p.p.
+
+**O dev novo tem leiaute limpo, e não reproduz a família de erro do ouro-teste** (+1,79 p.p., fusão 2,11%): a reserva,
+como está, não serve de dev para o leiaute. Ela é a sobra de um inventário que o sorteio da D6 já varreu, e os livros
+de leiaute difícil, que são os que importam aqui, não estão nela. O que destrava o trabalho de leiaute é livro de leiaute
+difícil que nenhum ajuste viu, trazido pelo dono como os da D6, e a decisão é dele. Até lá, a fusão no dev inteiro já fica
+abaixo da meta da M1, e o que o dev ainda pode medir é a G5 e a G6.
+
 ---
 
 ## 4. As decisões que organizam o plano
