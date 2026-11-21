@@ -155,7 +155,9 @@ class RejectionRow:
     Era só para o caminho de **contorno** até a S-176. A fonte embutida tem a declaração do PDF
     a favor dela e guardas próprias, e as recusas dela apareciam em `logger.debug` com o número
     ao lado desde a S-78 -- mas `"faixa-da-pagina"` apaga um candidato embutido inteiro, e uma
-    guarda dessas precisa do mesmo instrumento que as outras. Ver `hybrid.BAND_BOARD_FILL`.
+    guarda dessas precisa do mesmo instrumento que as outras. Ver `hybrid.BAND_BOARD_FILL`. Desde
+    2026-11-20 são duas: `"liso-maior-que-casa"` recusa a figura desenhada na frente de um
+    quadriculado (`hybrid.FEATURELESS_DISK_LIMIT`).
     """
 
     pdf: str

@@ -30,18 +30,22 @@ from .embedded import (
 from .hybrid import (
     BAND_BOARD_CHECKER,
     BAND_BOARD_FILL,
+    FEATURELESS_DISK_LIMIT,
     ContourInside,
     contour_inside_candidate,
     detect_diagrams,
     detect_diagrams_in_pdf_page,
     detect_diagrams_rendering_page,
+    featureless_disk,
     is_page_band,
+    is_picture_over_board,
     refine_candidate_with_contour,
 )
 
 __all__ = [
     "BAND_BOARD_CHECKER",
     "BAND_BOARD_FILL",
+    "FEATURELESS_DISK_LIMIT",
     "ContourInside",
     "DiagramCandidate",
     "candidates_from_embedded_images",
@@ -49,7 +53,9 @@ __all__ = [
     "detect_diagrams",
     "detect_diagrams_in_pdf_page",
     "detect_diagrams_rendering_page",
+    "featureless_disk",
     "is_page_band",
+    "is_picture_over_board",
     "largest_image_coverage",
     "refine_candidate_with_contour",
     "trim_to_frame",

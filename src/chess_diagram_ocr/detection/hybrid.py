@@ -32,7 +32,7 @@ vetoriais (ver o docstring do pacote).
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
@@ -361,6 +361,93 @@ def is_page_band(
     return board_checker_contrast(found.board_rgb) >= checker_floor
 
 
+FEATURELESS_SIDE = 192
+"""Lado, em pixels, em que `featureless_disk` mede: 24 px por casa.
+
+É a resolução do censo que calibrou os números abaixo, e a medida depende dela -- a janela e o
+desfoque são em pixels. O recorte vai a este lado por `INTER_AREA`, em cinza, como `_small_gray`
+faz com os 160 px das duas parcelas de textura."""
+
+
+FEATURELESS_FLATNESS = 0.30
+"""Quanto o tom pode variar, numa janela de 1/4 de casa, para o ponto contar como **liso** -- em
+fração do contraste de casa do próprio recorte.
+
+Relativo, e não um número de tinta, pela lição da S-80 e da S-143: piso fotométrico absoluto
+não sobrevive a um acervo que vai de gravura de 1870 a PDF vetorial. A régua é o salto que o
+próprio recorte dá entre as casas das duas paridades: num diagrama, sair de uma casa para a
+vizinha custa esse salto inteiro, e 0,30 dele fica bem abaixo.
+
+Medido no acervo inteiro com 0,20 a 0,40 (`docs/ANALISE_DETECCAO.md`): nenhum legítimo passa do
+círculo inscrito numa casa, e a caricatura mais fraca vai de 1,02 a 1,28 casa conforme a régua
+afrouxa. O que reprova é desfocar mais que 1 px: com 2 px o `Melhores Finais` p. 382 -- scan de
+253 px com duas casas escuras desbotadas -- junta casas vizinhas pela mancha clara e passa da p. 148."""
+
+
+FEATURELESS_DISK_LIMIT = 1.125
+"""Diâmetro, em casas, do maior disco liso que um diagrama pode ter.
+
+**O relato.** As quatro caricaturas de campeão do `Para ensinar e aprender xadrez` (p. 125, 129,
+148 e 151) são imagens embutidas desenhadas **na frente** de um tabuleiro quadriculado, e entram
+como diagrama: o fundo dá contraste de casa de 0,02 a 0,32, dentro da faixa dos legítimos; o
+tabuleiro de dentro preenche 85% delas, acima da faixa da S-176. Na p. 148 a leitura dá
+`8/3k4/8/8/2r5/8/8/8` com confiança mínima de 0,38, e a caricatura chegou a fazer o gabarito de
+tamanho da página (ver `SIZE_PRIOR_BOARD_MARGIN`).
+
+**O sinal é uma propriedade do tabuleiro, e não uma nota.** Casas vizinhas têm cores opostas,
+então toda região lisa de um diagrama cabe numa casa só -- a casa vazia, o miolo de uma peça --,
+e o maior disco que cabe numa casa tem o diâmetro dela: **1,0**. Uma figura não tem essa
+amarra: a testa, o papel em volta do desenho, o fundo de uma foto atravessam casas sem borda.
+
+**Medido no acervo inteiro** (58 PDFs, 24.814 páginas, 16.850 candidatos embutidos que passam
+no piso e na faixa):
+
+| população | diâmetro |
+|---|---|
+| os 16.846 legítimos | **até 0,917** |
+| as quatro caricaturas | **1,25** a 2,80 |
+
+Qualquer corte em (0,917; 1,25) se comporta igual no acervo; abaixo de 1,0 ele contradiria o
+argumento geométrico. 1,125 é o meio entre o círculo inscrito e a caricatura mais fraca.
+
+**Não é a S-80 de volta.** A S-80 comparava notas de recortes diferentes e a nota media também
+densidade de peças -- o `Polgar` de abertura perdia. Aqui o tom de cada ponto é comparado com o
+contraste do próprio recorte, e peça nenhuma faz casa vazia crescer: tabuleiro cheio só encolhe
+o disco."""
+
+
+def featureless_disk(board_rgb: np.ndarray) -> float:
+    """O diâmetro, em casas, do maior disco **liso** do recorte. Ver `FEATURELESS_DISK_LIMIT`.
+
+    Liso é onde o tom varia menos que `FEATURELESS_FLATNESS` do contraste de casa numa janela de
+    1/4 de casa. O contraste sai das medianas das 32 casas de cada paridade, que a peça não
+    desloca. Abaixo de um nível de cinza de contraste não há régua, e a função devolve 0,0: a
+    guarda não julga o recorte cuja grade ela não enxerga -- é o mesmo erro conservador da S-176.
+    """
+    gray = cv2.cvtColor(board_rgb, cv2.COLOR_RGB2GRAY) if board_rgb.ndim == 3 else board_rgb
+    small = cv2.resize(gray, (FEATURELESS_SIDE, FEATURELESS_SIDE), interpolation=cv2.INTER_AREA).astype(np.float32)
+    casa = FEATURELESS_SIDE // 8
+    medias = small.reshape(8, casa, 8, casa).mean(axis=(1, 3))
+    paridade = (np.indices((8, 8)).sum(axis=0) % 2) == 0
+    contraste = abs(float(np.median(medias[paridade])) - float(np.median(medias[~paridade])))
+    if contraste <= 1.0:
+        return 0.0
+    suave = cv2.GaussianBlur(small, (0, 0), casa / 24.0)
+    janela = np.ones((casa // 4 + 1, casa // 4 + 1), np.uint8)
+    amplitude = cv2.dilate(suave, janela) - cv2.erode(suave, janela)
+    liso = (amplitude < FEATURELESS_FLATNESS * contraste).astype(np.uint8)
+    # A borda do recorte conta como borda: senão a casa do canto ganharia o disco que transborda.
+    liso[0, :] = liso[-1, :] = 0
+    liso[:, 0] = liso[:, -1] = 0
+    raio = float(cv2.distanceTransform(liso, cv2.DIST_L2, 5).max())
+    return 2.0 * raio / casa
+
+
+def is_picture_over_board(board_rgb: np.ndarray, *, limit: float = FEATURELESS_DISK_LIMIT) -> bool:
+    """Este recorte embutido é uma **figura** -- tem região lisa maior que uma casa?"""
+    return featureless_disk(board_rgb) > limit
+
+
 def refine_candidate_with_contour(
     page: fitz.Page,
     candidate: DiagramCandidate,
@@ -627,16 +714,50 @@ def _estagio_embutido(
     *,
     refine_embedded: bool,
     band_board_fill: float | None,
+    featureless_disk_limit: float | None,
     rejected: list[RejectedQuad] | None,
-) -> list[DiagramCandidate]:
-    """Os candidatos das imagens embutidas: o piso de contraste, a guarda de faixa e o refino.
+) -> tuple[list[DiagramCandidate], list[tuple[int, int, int, int]]]:
+    """Os candidatos das imagens embutidas -- o piso de contraste, a guarda de faixa, o refino e a
+    guarda de figura --, e as caixas, em pixels, das imagens recusadas como figura.
 
     O piso é `RecallOptions.embedded_floor` -- ver o docstring de `detect_diagrams` sobre o
-    `recall`. A guarda de faixa (S-176) e o refino (S-38) leem a mesma passada de contorno.
+    `recall`. A guarda de faixa (S-176) e o refino (S-38) leem a mesma passada de contorno. A de
+    figura (`FEATURELESS_DISK_LIMIT`) vem por último porque julga o recorte que o modelo vai ler:
+    o refinado, quando o refino foi aceito, que é o que tem a grade no lugar.
+
+    As caixas das figuras saem daqui porque a recusa não acaba no embutido: o contorno da página
+    acha o mesmo quadriculado de fundo, e sem a imagem para perder ele entrava no lugar dela --
+    ver `_filtro_de_figura`.
     """
     embedded = _acima_do_piso(candidates_from_embedded_images(page), recall)
-    if not refine_embedded and band_board_fill is None:
-        return embedded
+    if refine_embedded or band_board_fill is not None:
+        embedded = _faixa_e_refino(
+            page, embedded, scale, refine_embedded=refine_embedded, band_board_fill=band_board_fill, rejected=rejected
+        )
+    if featureless_disk_limit is None:
+        return embedded, []
+    sobreviventes: list[DiagramCandidate] = []
+    figuras: list[tuple[int, int, int, int]] = []
+    for candidate in embedded:
+        diametro = featureless_disk(candidate.board_rgb)
+        if diametro > featureless_disk_limit:
+            _registrar(rejected, _recusa_de_figura(candidate, diametro, featureless_disk_limit, scale))
+            figuras.append(_pixel_bbox(candidate.bbox_pdf, scale))
+            continue
+        sobreviventes.append(candidate)
+    return sobreviventes, figuras
+
+
+def _faixa_e_refino(
+    page: fitz.Page,
+    embedded: list[DiagramCandidate],
+    scale: float,
+    *,
+    refine_embedded: bool,
+    band_board_fill: float | None,
+    rejected: list[RejectedQuad] | None,
+) -> list[DiagramCandidate]:
+    """A guarda de faixa (S-176) e o refino (S-38), sobre uma passada de contorno por candidato."""
     # Uma passada de contorno por candidato, dois consumidores dela (S-176): a guarda de
     # faixa pergunta *o que a imagem e* e o refino pergunta *onde a grade esta*. Medir duas
     # vezes custaria um `get_pixmap` e um `detect_boards` a mais por candidato, em toda
@@ -652,6 +773,24 @@ def _estagio_embutido(
             continue
         sobreviventes.append(_apply_refinement(candidate, achado) if refine_embedded else candidate)
     return sobreviventes
+
+
+def _recusa_de_figura(candidate: DiagramCandidate, diametro: float, limite: float, scale: float) -> RejectedQuad:
+    """A recusa da imagem embutida que é figura, e não tabuleiro, com a linha de log dela."""
+    # `info`, como a faixa: esta linha apaga um candidato embutido inteiro.
+    logger.info(
+        "Imagem embutida %s descartada como figura: tem regiao lisa de %.2f casas de diametro "
+        "(um tabuleiro nao passa de %.2f).",
+        tuple(round(valor) for valor in candidate.bbox_pdf),
+        diametro,
+        limite,
+    )
+    return RejectedQuad(
+        _pixel_bbox(candidate.bbox_pdf, scale),
+        round(candidate.detector_score, 4),
+        round(board_checker_contrast(candidate.board_rgb), 4),
+        "liso-maior-que-casa",
+    )
 
 
 def _recusa_de_faixa(
@@ -692,6 +831,48 @@ class _PaginaHibrida:
     caixas_embutidas: list[tuple[int, int, int, int] | None]
     lado_esperado: float | None
     tolerancia_de_tamanho: float | None
+    fontes_do_gabarito: list[DiagramCandidate] = field(default_factory=list)
+    """Os embutidos cujo lado cai na janela do gabarito: as declarações que o prior defende.
+
+    É contra **estas** que `_melhor_que_o_gabarito` compara, e não contra todos os embutidos: um
+    embutido de outro tamanho não fez o gabarito, e não tem nada a dizer sobre ele."""
+    figuras: list[tuple[int, int, int, int]] = field(default_factory=list)
+    """As caixas, em pixels, das imagens embutidas recusadas como figura. Ver `_filtro_de_figura`."""
+
+
+SIZE_PRIOR_BOARD_MARGIN = 0.10
+"""Quanto o achado de contorno precisa ser tabuleiro **melhor** que a imagem que fez o gabarito de
+tamanho para o prior não o recusar.
+
+**O relato.** A p. 148 do `Para ensinar e aprender xadrez` tem dois diagramas **vetoriais** de 136
+pt e uma única imagem embutida: a caricatura do Petrosian, de 80 pt, desenhada na frente de um
+tabuleiro. A caricatura passa nas guardas do embutido -- contraste de casa 0,18, e o piso
+(`RecallOptions.embedded_floor`) é o zero da foto; o tabuleiro de dentro preenche 85% dela, e a
+faixa da S-176 é abaixo de 50% --, vira sozinha o gabarito da página (244 px), e os dois diagramas
+(415 e 407 px) morriam em `prior-de-tamanho`. A tela mostrava uma caixa, sobre o retrato.
+
+**Por que a guarda é aqui, e não na entrada do embutido.** Subir o piso de contraste do embutido
+apagaria diagrama de verdade: o docstring de `BAND_BOARD_FILL` registra 10 diagramas impecáveis do
+`Schiller` com contraste **zero**, por legenda no recorte. A caricatura continua sendo uma
+declaração do PDF que passa em tudo (S-12). O que estava errado era ela poder, sozinha, vetar dois
+tabuleiros muito melhores que ela.
+
+**A comparação, e por que a S-80 não a alcança.** A S-80 reprovou a nota de textura relativa
+porque ela mede também densidade de peças, e decidir *o que é diagrama* por ela perdia o `Polgar`.
+Aqui a nota não cria nem apaga candidato: ela só decide se uma heurística que infere "figura" **do
+tamanho** pode recusar um achado que já passou por todas as guardas de `detect_boards`. E o
+alcance é medido: no acervo inteiro (24.077 páginas de 57 livros, sem as cópias `_hq`) o prior de
+tamanho recusa achado em **uma** página -- esta. Os dois achados dela vencem a caricatura por
+0,245 e 0,277, medidos do mesmo lado (`texture_scores_side_by_side`).
+
+**O número.** Com um caso só no acervo, qualquer margem em (0; 0,245) se comporta igual nele. 0,10
+é a de `MERGED_TILES_MARGIN`, pela mesma razão: ruído de reamostragem, e o **empate** é o que ela
+decide. Dois tabuleiros limpos de tamanhos diferentes dão a mesma nota (1,0 contra 1,0 no caso
+`faixa` da caracterização), e ali a declaração do PDF segue valendo -- o prior recusa como antes.
+
+**A caricatura em si** era defeito de outra guarda, a de entrada do embutido, e esta margem não o
+alcança de propósito. Desde 2026-11-20 ela sai antes de chegar aqui (`FEATURELESS_DISK_LIMIT`);
+a margem fica, porque defende o diagrama de qualquer outra figura que passe na entrada."""
 
 
 def _pagina_hibrida(
@@ -710,14 +891,34 @@ def _pagina_hibrida(
     """
     caixas: list[tuple[int, int, int, int] | None] = [_pixel_bbox(c.bbox_pdf, scale) for c in embedded]
     lado: float | None = None
+    fontes: list[DiagramCandidate] = []
     if embedded and size_prior_tolerance is not None:
-        sides = [
-            float(max(box[2], box[3]))
+        declarados = [
+            (float(max(box[2], box[3])), candidate)
             for box, candidate in zip(caixas, embedded, strict=True)
             if box is not None and not candidate.merged_tiles
         ]
-        lado = _typical_side(sides, size_prior_tolerance)
-    return _PaginaHibrida(list(embedded), embedded, caixas, lado, size_prior_tolerance)
+        lado = _typical_side([lado_declarado for lado_declarado, _ in declarados], size_prior_tolerance)
+        if lado is not None:
+            fontes = [c for lado_c, c in declarados if abs(lado_c - lado) <= lado * size_prior_tolerance]
+    return _PaginaHibrida(list(embedded), embedded, caixas, lado, size_prior_tolerance, fontes)
+
+
+def _filtro_de_figura(pagina: _PaginaHibrida, caixa: tuple[int, int, int, int], board_rgb: np.ndarray) -> str | None:
+    """`figura-embutida` quando o achado cai sobre uma imagem embutida recusada como figura.
+
+    O quadriculado de fundo da caricatura é um tabuleiro para o contorno da página: com contraste
+    de casa (0,02 a 0,32 nas quatro do relato), ele passa no piso da S-143. Enquanto a imagem era
+    candidata, o achado perdia para ela em `_filtro_de_sobreposicao`; recusada a imagem, ele entrava
+    no lugar -- medido nas quatro páginas do relato, as quatro voltavam pela porta do contorno.
+
+    A região é a da S-12 (`_same_region`, IoU acima de `OVERLAP_IOU`), e é ela que impede a regra
+    de apagar o que a S-176 recupera: o tabuleiro **menor** dentro de uma imagem maior não tem IoU
+    com ela. Aqui a imagem é a figura inteira, e o achado do mesmo tamanho é o fundo dela.
+    """
+    if any(_same_region(caixa, figura, merged=False) for figura in pagina.figuras):
+        return "figura-embutida"
+    return None
 
 
 def _filtro_de_sobreposicao(
@@ -749,12 +950,18 @@ def _filtro_de_sobreposicao(
 
 
 def _filtro_de_tamanho(pagina: _PaginaHibrida, caixa: tuple[int, int, int, int], board_rgb: np.ndarray) -> str | None:
-    """`prior-de-tamanho` quando o lado do achado foge do gabarito da página (S-12, S-79)."""
+    """`prior-de-tamanho` quando o lado do achado foge do gabarito da página (S-12, S-79).
+
+    Menos quando o achado é tabuleiro claramente melhor que as imagens que fizeram o gabarito: aí
+    quem está em dúvida é o gabarito, e não o achado. Ver `SIZE_PRIOR_BOARD_MARGIN`.
+    """
     esperado, tolerancia = pagina.lado_esperado, pagina.tolerancia_de_tamanho
     if esperado is None or tolerancia is None:
         return None
     side = max(caixa[2], caixa[3])
     if abs(side - esperado) <= esperado * tolerancia:
+        return None
+    if _melhor_que_o_gabarito(pagina, board_rgb, side):
         return None
     # `info` e nao `debug` (S-79): esta linha apaga um diagrama em potencial, e a
     # unica evidencia de que ela agiu. Quando o gabarito estava envenenado, o
@@ -769,7 +976,33 @@ def _filtro_de_tamanho(pagina: _PaginaHibrida, caixa: tuple[int, int, int, int],
     return "prior-de-tamanho"
 
 
-_FILTROS_DE_CONTORNO = (_filtro_de_sobreposicao, _filtro_de_tamanho)
+def _melhor_que_o_gabarito(
+    pagina: _PaginaHibrida, board_rgb: np.ndarray, side: int, *, margin: float = SIZE_PRIOR_BOARD_MARGIN
+) -> bool:
+    """O achado é tabuleiro melhor que **cada** imagem que fez o gabarito? Ver `SIZE_PRIOR_BOARD_MARGIN`.
+
+    Cada uma, e não a mediana nem a melhor delas: basta uma declaração do tamanho do gabarito que
+    seja tabuleiro tão bom quanto o achado para o prior seguir decidindo como antes. A nota é
+    tomada do mesmo lado (S-130), porque o recorte embutido e o de contorno chegam em resoluções
+    diferentes.
+    """
+    if not pagina.fontes_do_gabarito:
+        return False
+    notas = [texture_scores_side_by_side(fonte.board_rgb, board_rgb) for fonte in pagina.fontes_do_gabarito]
+    if any(nota_achado <= nota_fonte + margin for nota_fonte, nota_achado in notas):
+        return False
+    logger.info(
+        "Contorno de %d px mantido apesar do gabarito de %.0f px: textura %.4f contra %.4f da "
+        "melhor imagem que fez o gabarito.",
+        side,
+        pagina.lado_esperado or 0.0,
+        min(nota_achado for _, nota_achado in notas),
+        max(nota_fonte for nota_fonte, _ in notas),
+    )
+    return True
+
+
+_FILTROS_DE_CONTORNO = (_filtro_de_figura, _filtro_de_sobreposicao, _filtro_de_tamanho)
 """A cadeia do estágio de contorno, na ordem em que roda: cada filtro devolve o motivo ou `None`."""
 
 
@@ -874,6 +1107,7 @@ def detect_diagrams(
     size_prior_tolerance: float | None = EMBEDDED_SIZE_TOLERANCE,
     checker_contrast_floor: float | None = MIN_CHECKER_CONTRAST,
     band_board_fill: float | None = BAND_BOARD_FILL,
+    featureless_disk_limit: float | None = FEATURELESS_DISK_LIMIT,
     rejected: list[RejectedQuad] | None = None,
     recall: RecallOptions | None = DEFAULT_RECALL,
 ) -> list[DiagramCandidate]:
@@ -908,10 +1142,16 @@ def detect_diagrams(
     embutida por conteúdo, e não contradiz a regra da S-12: o PDF declarou uma *imagem* ali, e
     nunca declarou que ela é um diagrama. Ver `BAND_BOARD_FILL` e `is_page_band`.
 
+    `featureless_disk_limit` recusa imagem embutida que é uma **figura** -- tem região lisa maior
+    que uma casa, o que casas vizinhas de cores opostas não deixam um tabuleiro ter. São as
+    caricaturas desenhadas na frente de um quadriculado, que passam no piso e na faixa. `None`
+    desliga. Ver `FEATURELESS_DISK_LIMIT`.
+
     `rejected`, quando dado, recebe um `RejectedQuad` por achado de contorno **barrado** --
     tanto os do `detect_boards` (geometria, contraste de casa, score, IoU, teto) quanto os
     daqui: prior de tamanho (S-79), disputa perdida com uma união de ladrilhos (S-81), faixa
-    de página (S-176) e o corte final por `max_boards`. É o instrumento da S-131, e as guardas
+    de página (S-176), figura sobre tabuleiro e o achado de contorno sobre ela
+    (`FEATURELESS_DISK_LIMIT`, `_filtro_de_figura`) e o corte final por `max_boards`. É o instrumento da S-131, e as guardas
     deste laço só deixavam rastro em `logger.info`, que ninguém agrega.
 
     `recall` são as recuperações de recall do OCR_UI ciclo 2 (passo A1): as duas de contorno
@@ -923,16 +1163,23 @@ def detect_diagrams(
     verdade da mesma página. Não contradiz a S-12: o PDF declarou uma *imagem* ali, e nunca
     declarou que ela é um diagrama (o argumento da S-176). `None` é o detector cru.
 
-    Desde a S-859 são três estágios, nesta ordem: o embutido (`_estagio_embutido`: piso, faixa e
-    refino), o de contorno (`_estagio_de_contorno`, a cadeia `_FILTROS_DE_CONTORNO`) e a seleção
-    (`_selecionar`: teto por score e ordem de leitura).
+    Desde a S-859 são três estágios, nesta ordem: o embutido (`_estagio_embutido`: piso, faixa,
+    refino e figura), o de contorno (`_estagio_de_contorno`, a cadeia `_FILTROS_DE_CONTORNO`, que
+    começa por `_filtro_de_figura`) e a seleção (`_selecionar`: teto por score e ordem de leitura).
     """
     scale = _escala(page, page_rgb)
     recall = recall_em_vigor(recall)
-    embedded = _estagio_embutido(
-        page, scale, recall, refine_embedded=refine_embedded, band_board_fill=band_board_fill, rejected=rejected
+    embedded, figuras = _estagio_embutido(
+        page,
+        scale,
+        recall,
+        refine_embedded=refine_embedded,
+        band_board_fill=band_board_fill,
+        featureless_disk_limit=featureless_disk_limit,
+        rejected=rejected,
     )
     pagina = _pagina_hibrida(embedded, scale, size_prior_tolerance)
+    pagina.figuras = figuras
     _estagio_de_contorno(
         pagina,
         page_rgb,

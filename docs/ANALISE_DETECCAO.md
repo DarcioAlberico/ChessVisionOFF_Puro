@@ -311,6 +311,74 @@ buraco, e nenhuma dessas some com um piso.
 um achado de contorno do tamanho do diagrama tem de continuar dentro da janela numa página que
 também tem glifo.
 
+#### 2026-11-15 · O gabarito feito por uma imagem que não é diagrama
+
+**O relato.** A p. 148 do `Para ensinar e aprender xadrez (Adriano Caldeira)` tem dois diagramas
+**vetoriais** (Diagramas 329 e 330, 136 pt) e uma única imagem embutida: a caricatura do Petrosian,
+de 80 pt, desenhada na frente de um tabuleiro. A tela mostrava uma caixa, sobre o retrato, e
+nenhuma sobre os diagramas.
+
+| achado | fonte | lado | contraste de casa | textura (do mesmo lado) | destino |
+|---|---|---|---|---|---|
+| caricatura | embutida | 244 px | 0,18 | 0,51 | aceita: vira o gabarito |
+| Diagrama 329 | contorno | 415 px | 0,59 | 0,76 | `prior-de-tamanho` |
+| Diagrama 330 | contorno | 407 px | 0,64 | 0,79 | `prior-de-tamanho` |
+
+A caricatura passa nas guardas do embutido: o piso de contraste é o zero da foto, e o fundo
+quadriculado dá 0,18; o tabuleiro que o contorno acha dentro dela preenche 85% do lado, e a faixa
+da S-176 é abaixo de 50%. Sozinha, ela é o gabarito da página, e os dois diagramas ficam 70% fora
+da janela de ±30%. Lidos fora do filtro, os dois saem com a FEN certa e confiança 1,000.
+
+**A guarda não vai na entrada do embutido.** Subir o piso de contraste da imagem embutida apaga
+diagrama de verdade -- os 10 do `Schiller` com contraste zero da S-176. A caricatura continua
+sendo uma declaração que passa em tudo (S-12); o defeito era ela poder, **sozinha**, vetar dois
+tabuleiros muito melhores que ela.
+
+**A regra.** `_filtro_de_tamanho` não recusa um achado de contorno que seja tabuleiro melhor que
+**cada** imagem embutida que fez o gabarito por mais de `SIZE_PRIOR_BOARD_MARGIN` (0,10), com a
+nota de textura tomada do mesmo lado (S-130). Basta uma declaração do tamanho do gabarito tão boa
+quanto o achado para o prior decidir como antes.
+
+**E a S-80?** Ela reprovou a nota relativa porque a textura mede também densidade de peças. Aqui a
+nota não cria nem apaga candidato: só decide se uma heurística de **tamanho** pode vetar um achado
+que já passou por todas as guardas de `detect_boards`. O alcance foi medido antes de escrever a
+regra.
+
+**Medido no acervo inteiro**, e não na amostra do censo, porque o prior só age onde há imagem
+embutida: 24.077 páginas de 57 livros (sem as três cópias `_hq`), `detect_diagrams` completo em
+toda página com embutido que sobrevive ao piso, registrando cada recusa por `prior-de-tamanho`
+com os recortes dos dois lados.
+
+| | páginas |
+|---|---|
+| sem imagem | 3.791 |
+| com imagem, sem embutido que sobreviva | 11.450 |
+| com embutido, sem recusa por tamanho | 8.835 |
+| **com recusa por tamanho** | **1** -- a p. 148 do relato |
+
+O prior de tamanho, hoje, só recusa achado naquela página. Os dois achados dela vencem a
+caricatura por 0,245 e 0,277 de textura; com um caso só, qualquer margem em (0; 0,245) se comporta
+igual no acervo, e 0,10 é a de `MERGED_TILES_MARGIN` -- ela existe para o **empate**: dois
+tabuleiros limpos de tamanhos diferentes dão 1,0 contra 1,0, e o prior recusa como antes (caso
+`faixa` de `test_deteccao_caracterizacao`, intacto).
+
+**Depois**, rodando o detector novo nas páginas do censo com recusa: uma página muda, 1 → 3
+candidatos, os dois diagramas entram e nada sai. O conjunto de campo não tem página com recusa
+por tamanho, e o relatório de produção sai idêntico chave a chave (2.078 chaves; só tempo e
+impressão da medição mudam).
+
+**O que continua aberto.** A caricatura segue entrando como diagrama. As quatro do livro (p. 125,
+129, 148 e 151) são candidatos falsos, todas sobre fundo quadriculado, com contraste de 0,02 a
+0,32 -- dentro da faixa dos diagramas legítimos que o piso do embutido não pode recusar. É defeito
+da guarda de entrada, e fica sem instrumento.
+
+> Fechado em 2026-11-20 pela [guarda de figura](#2026-11-20--a-figura-desenhada-na-frente-de-um-quadriculado--implementada-2026-11-20):
+> região lisa maior que uma casa, que casas vizinhas de cores opostas não deixam um tabuleiro ter.
+
+**Testes.** `tests/test_detection.py::GabaritoContraTabuleiroMelhorTests`: a página do relato
+reconstruída (caricatura sintética com as notas medidas, dois diagramas vetoriais), e o empate --
+diagrama limpo de 100 pt contra declaração limpa de 200 pt -- que segue recusado.
+
 ---
 
 ### S-80 · A nota de textura relativa à página ❌ **não implementada — a medição reprovou**
@@ -1431,6 +1499,156 @@ curto, com razão entre `SQUARE_FORCE_TOLERANCE` e 1,40, aplicadas onde a guarda
 
 ---
 
+### 2026-11-20 · A figura desenhada na frente de um quadriculado ✅ implementada (2026-11-20)
+
+> Item deixado em aberto pela [subseção de 2026-11-15 da S-79](#2026-11-15--o-gabarito-feito-por-uma-imagem-que-não-é-diagrama):
+> *"a caricatura segue entrando como diagrama. [...] É defeito da guarda de entrada, e fica sem
+> instrumento."*
+
+**O relato.** O `Para ensinar e aprender xadrez (Adriano Caldeira)` tem quatro caricaturas de
+campeão (p. 125, 129, 148 e 151) desenhadas **na frente** de um tabuleiro quadriculado. As quatro
+são imagens embutidas, e as quatro entravam como diagrama (`source == "embedded"`). Na p. 148 a
+leitura dava `8/3k4/8/8/2r5/8/8/8`, ilegal, com confiança mínima de 0,38.
+
+**O que já se sabia que não serve**, e por quê:
+
+| guarda | as quatro caricaturas | por que não alcança |
+|---|---|---|
+| piso do embutido (`embedded_floor`, 0,0) | contraste de casa 0,02 a 0,32 | subir o piso apaga os 10 do `Schiller` com contraste zero (S-176 §4) |
+| faixa da S-176 | o tabuleiro de dentro preenche ~85% | a faixa é abaixo de 50% |
+| nota de textura, absoluta ou relativa | — | reprovada pela S-80: mede também densidade de peças |
+
+#### 1. Quatro sinais que não separam
+
+Medidos sobre o censo descrito em §3, recorte a recorte:
+
+| sinal | as quatro | os 16.846 legítimos | onde morre |
+|---|---|---|---|
+| **cantos de casa** pela paridade (as quinas da casa não têm peça) | 0,59 a 0,72 | até **0,516** | 29 legítimos abaixo da caricatura mais alta: recorte embutido fora de fase (`Pachman` p. 106, `GALLAGHER` p. 128 e 145), em que a quina amostrada cai dentro da casa vizinha |
+| **casas repetidas** (casa vazia é cópia de casa vazia) | 0,23 a 0,50 | até **0,094** | 2.070 legítimos abaixo da mais alta |
+| **meio-tom** (lápis contra traço) | 0,28 a 0,44 | mediana **0,33** | as caricaturas ficam *abaixo* da mediana: a casa escura cinza é meio-tom |
+| disco liso com borda **relativa ao gradiente** (p99) | 1,08 a 2,83 (corte 0,10) | até 1,12 | um legítimo acima da p. 148; com o corte em 0,25, **1.885** -- a casa cinza clara do `Hertan` deixa de ser borda |
+
+Os dois primeiros dependem de a grade 8×8 cair nas casas, e o recorte embutido nem sempre cai --
+é a mesma razão por que o contraste de casa dá zero no `Schiller`. O terceiro é o piso fotométrico
+que a S-143 já tinha reprovado. O quarto é o certo, com a régua errada.
+
+#### 2. O sinal: região lisa maior que uma casa
+
+**Casas vizinhas têm cores opostas.** Então toda região lisa de um diagrama -- a casa vazia, o
+miolo de uma peça, a casa escura chapada -- cabe numa casa só, e o maior disco que cabe numa casa
+tem o diâmetro dela: **1,0 casa**. Peça nenhuma faz isso crescer; tabuleiro cheio só encolhe o
+disco. Uma figura não tem essa amarra: a testa do retrato, o papel em volta do desenho e o fundo
+de uma foto atravessam casas sem borda nenhuma.
+
+**A régua é o contraste do próprio recorte, e não o gradiente.** "Liso" é onde o tom varia, numa
+janela de 1/4 de casa, menos que `FEATURELESS_FLATNESS` (0,30) do salto entre as casas das duas
+paridades -- medido pelas medianas das 32 casas de cada uma, que a peça não desloca. Num diagrama,
+sair de uma casa para a vizinha custa o salto inteiro. É o que faltava ao quarto sinal de §1: com o
+gradiente como régua, a casa cinza clara do `Hertan` (salto pequeno perto da tinta da peça) e o
+desbotado do `Melhores Finais` viravam liso; com o salto do próprio recorte, não. E abaixo de um
+nível de cinza de salto não há régua: a função devolve zero, e o recorte fora de fase do `Schiller`
+fica de pé -- o mesmo erro conservador da S-176.
+
+`featureless_disk` mede o maior disco liso, em casas, com o recorte levado a 192 px
+(`FEATURELESS_SIDE`, 24 px por casa) e desfoque de 1 px; `FEATURELESS_DISK_LIMIT` é **1,125**.
+
+#### 3. O censo, e por que não o `cvoff-census`
+
+O que a guarda julga é a imagem embutida que sobrevive ao piso e à faixa, e caso raro não cai na
+amostra de 24 páginas por livro. Então o censo é do **estágio embutido inteiro, em toda página**:
+os 58 PDFs de `PDF/` menos as três cópias `_hq` (fica a tradução `1001_Sacrificios..._hq`, que não
+é cópia de nenhum), **24.814 páginas** em 6 processos, ~30 min:
+
+| | páginas |
+|---|---|
+| sem imagem | 3.805 |
+| com imagem, sem embutido que passe no piso | 12.096 |
+| com embutido candidato | 8.913 |
+
+**16.850 candidatos** de 27 livros, mais 2 recusados como faixa. Por candidato, o recorte que o
+modelo lê -- o refinado, quando o refino foi aceito -- reduzido a 192 px em cinza, que é exatamente
+a entrada de `featureless_disk` (conferido: produto e censo diferem em 2·10⁻⁸ em 400 recortes).
+
+| população | diâmetro do disco liso |
+|---|---|
+| os 16.846 legítimos | **até 0,917** -- mediana 0,75 |
+| as quatro caricaturas | **1,25** (p. 148), 1,27 (p. 151), 1,78 (p. 125), 2,80 (p. 129) |
+
+Qualquer corte em (0,917; 1,25) se comporta igual no acervo, e abaixo de 1,0 ele contradiria o
+argumento de §2. **1,125** é o meio entre o círculo inscrito e a caricatura mais fraca.
+
+**A vizinhança dos parâmetros também separa**, e é isso que diz que o número não foi ajustado a
+quatro pontos. Com desfoque de 1 px e janela de 1/4 de casa, a régua de 0,20 a 0,40 deixa todo
+legítimo em até 1,0 -- e a caricatura mais fraca sobe de 1,02 a 1,28 conforme a régua afrouxa. O
+que reprova é desfocar mais: com 2 px, o `Melhores Finais` p. 382 -- scan de 253 px com duas casas
+escuras desbotadas, o legítimo mais alto em quase toda variante -- passa da p. 148 em toda régua
+de 0,25 a 0,40. Uma casa escura apagada **inteira** dá 1,05 na régua escolhida: a cruz de cinco casas
+claras ainda cabe abaixo do corte, e é essa a folga entre 1,0 e 1,125.
+
+**Conferido a olho num mosaico**: as quatro recusadas, com o disco desenhado (na testa ou no papel
+em volta do desenho), e o legítimo mais alto de cada um dos 26 outros livros com candidato. Os 26
+são diagramas, e em todos o disco cabe numa casa clara, quase sempre a do canto. **A guarda recusa as quatro
+caricaturas e mais nada** no acervo.
+
+#### 4. A caricatura voltava pela porta do contorno
+
+Recusar a imagem não bastou, e só o livro real mostrou. O contorno da página acha o quadriculado
+de fundo da caricatura -- ele tem contraste de casa, e passa no piso da S-143 --, e até aqui esse
+achado perdia para a imagem embutida em `perdeu-para-embutido`. Sem a imagem, ele entrava no lugar
+dela: **as quatro voltavam como candidato de contorno**.
+
+`_filtro_de_figura` fecha isso: o achado de contorno que cai na **mesma região** de uma imagem
+recusada como figura (`_same_region`, o IoU da S-12) é a figura, e sai com `figura-embutida`. É a
+imagem embutida continuando a valer como declaração do PDF sobre **onde** está a coisa, depois de
+deixar de valer sobre **o que** ela é. O IoU é o que impede a regra de apagar o que a S-176
+recupera: o tabuleiro menor dentro de uma imagem maior não tem IoU com ela.
+
+O alcance é o da guarda: o filtro só tem o que comparar nas páginas em que uma figura foi
+recusada, e no acervo são as quatro.
+
+#### 5. O resultado
+
+Nas quatro páginas, `detect_diagrams` completo antes e depois:
+
+| página | antes | depois |
+|---|---|---|
+| 125 | a caricatura | nada |
+| 129 | a caricatura e o diagrama vetorial | **o diagrama vetorial** |
+| 148 | a caricatura e os dois diagramas vetoriais (depois da margem de 2026-11-15) | **os dois diagramas** |
+| 151 | a caricatura | nada |
+
+**No conjunto de campo, nada muda.** O relatório de produção sai idêntico chave a chave (2.078
+chaves; só tempo e impressão da medição), e os quatro de `RELATORIOS_CORRENTES` foram remedidos
+porque `detection/hybrid.py` está no fecho da S-218.
+
+**A margem de 2026-11-15 fica.** Com a caricatura recusada na entrada ela não age mais na p. 148,
+mas defende o diagrama de qualquer outra figura que passe pela guarda nova;
+`GabaritoContraTabuleiroMelhorTests` a prende com a guarda de figura desligada.
+
+**A caracterização da detecção foi regravada só por acréscimo**: a página `caricatura` (os dois
+motivos novos), e a variante `cru` passou a desligar também esta guarda -- sem isso a faixa
+sintética, com a guarda de faixa desligada, saía como figura antes do teto. Nenhuma chave gravada
+antes mudou.
+
+#### 6. O que ela não alcança
+
+- **Legenda que o recorte não aparou.** Uma faixa de legenda em branco mais alta que ~1,1 casa é
+  região lisa maior que uma casa: o `board_with_caption` dos testes, cru, dá 1,15. No acervo não há
+  nenhuma -- o `trim_to_grid` e o refino da S-38 tiram a legenda antes --, mas o erro, se vier,
+  apaga diagrama. É o lado ruim, e fica escrito.
+- **Figura sem região lisa.** Foto de textura cheia de ponta a ponta não dá disco grande. Ela
+  costuma morrer no piso de contraste; se não morrer, passa aqui.
+- **O caminho de contorno.** A guarda julga só imagem embutida. Uma caricatura vetorial, ou num
+  scan de página inteira, segue com a S-143 como única guarda. Não há caso medido.
+
+**Testes.** `tests/test_detection.py::FiguraSobreTabuleiroTests`, 8 casos. Os que carregam a
+medição são `test_uma_casa_escura_apagada_inteira_fica_abaixo_do_corte` (a classe do `Melhores
+Finais`, e a razão da folga) e `test_o_quadriculado_de_fundo_nao_volta_pela_porta_do_contorno`
+(§4).
+
+---
+
 ## 7. Sequenciamento sugerido
 
 | ordem | entrega | fecha | estado |
@@ -1443,6 +1661,7 @@ curto, com razão entre `SQUARE_FORCE_TOLERANCE` e 1,40, aplicadas onde a guarda
 | 6 | **S-143** contraste de casa | a foto quadrada, que era o alvo da S-80 | ✅ 2026-08-17 |
 | 7 | **S-175** reparo de quina | os 3 por página do `Reinfeld`, que a S-143 deixou em aberto | ✅ 2026-08-20 |
 | 8 | **S-176** faixa de página | a caixa de 460 pt do `Yusupov`, que a forma não separava | ✅ 2026-08-22 |
+| 9 | **figura sobre quadriculado** | as quatro caricaturas do `Caldeira`, que o contraste não separava | ✅ 2026-11-20 |
 
 A ordem se pagou quatro vezes, e todas antes de alguém abrir um PDF a olho:
 
@@ -1568,3 +1787,36 @@ reajustadas de ruído.
 **A coluna `page` do censo é 1-based** (`page_index + 1` em `detection_census.py`), e o índice de
 folha do A/B é 0-based. A folha 65 do CSV é a de índice 64 — conferir isso é o que separa "o
 defeito sumiu" de "olhei a página errada".
+
+### Os números do gabarito feito por caricatura (2026-11-15)
+
+| número | como |
+|---|---|
+| a tabela da p. 148 | `detect_diagrams(doc[147], render_pdf_page(pdf, 147, dpi=220), rejected=[...])`; contraste por `board_checker_contrast`, textura por `texture_scores_side_by_side` contra o recorte da caricatura |
+| a FEN e a confiança dos dois diagramas | `detect_diagrams(..., size_prior_tolerance=None)` e `predict_with_orientation` com `models/piece_classifier.pt` |
+| o censo de 24.077 páginas | todo `PDF/*.pdf` menos as três cópias `_hq`, em 8 processos; página sem `get_images()` ou sem embutido acima do piso (`_acima_do_piso(candidates_from_embedded_images(page), DEFAULT_RECALL)`) é contada e pulada; nas outras, `detect_diagrams` completo com `_FILTROS_DE_CONTORNO` trocado em memória por um espião que grava cada `prior-de-tamanho` com o recorte do achado e os das imagens do gabarito. ~86 min |
+| o depois | o detector novo, só nas páginas com recusa, comparando `bbox_pdf` e `source` dos aceitos |
+| o conjunto de campo | `python -m chess_diagram_ocr.cli.field` com o `src` do `HEAD` (`git archive`) e com o da árvore, e os dois JSON achatados chave a chave contra `field_20260822_s99.json` |
+| as quatro caricaturas do livro | `detect_diagrams` nas p. 125, 129, 148 e 151, recortes `source == "embedded"` conferidos a olho |
+
+**O espião, e não um `RejectedQuad`.** A recusa grava caixa, score e contraste, mas não o recorte,
+e a pergunta era *quem é melhor tabuleiro, o achado ou o gabarito* -- que precisa dos dois
+recortes na mão. Trocar a tupla de filtros só observa: o espião chama o filtro de verdade e
+devolve o motivo dele.
+
+### Os números da guarda de figura (2026-11-20)
+
+| número | como |
+|---|---|
+| o censo de 24.814 páginas e os 16.850 candidatos | todo `PDF/*.pdf` menos `1001_Winning..._hq`, `400 Quebra-cabeças..._hq` e `Melhores Finais..._hq`, em blocos de 150 páginas e 6 processos; por página, `_acima_do_piso(candidates_from_embedded_images(page), DEFAULT_RECALL)` e, por candidato, a mesma sequência de `_faixa_e_refino` (`contour_inside_candidate`, `is_page_band`, `_apply_refinement`), guardando o recorte final em cinza a 192 px. ~30 min |
+| a tabela de §1 | os quatro sinais sobre as miniaturas do censo: cantos a 2 px da borda da casa, 3×3 px, mediana dos quatro; casas repetidas com miolo de 20 px e distância média abaixo de 8% da faixa de tons; meio-tom entre 20% e 80% da faixa p2–p98; disco liso com borda em `corte × p99` do Sobel depois de desfoque de 2 px |
+| a tabela de §3 e a vizinhança | `featureless_disk` (ou a mesma conta com régua, desfoque e janela variando: 0,20 a 0,40 × 1 a 2 px × 1/6 a 1/3 de casa, 45 combinações) em cada miniatura, separando as quatro páginas do relato |
+| produto igual ao censo | `featureless_disk` sobre 400 miniaturas sorteadas contra a conta do script do censo: diferença máxima 2·10⁻⁸ |
+| o mosaico | as quatro recusadas e o legítimo de maior disco de cada livro, com o disco desenhado sobre a miniatura |
+| as quatro páginas, antes e depois | `detect_diagrams(doc[p], render_pdf_page(pdf, p, dpi=220), rejected=[...])`; o antes é o mesmo com `featureless_disk_limit=None` |
+| o conjunto de campo | `python -m chess_diagram_ocr.cli.field` com o `src` da árvore, achatado chave a chave contra `field_20260822_s99.json` |
+
+**A miniatura é a entrada da guarda, e não uma aproximação dela.** `featureless_disk` leva o recorte
+a 192 px em cinza por `INTER_AREA` antes de medir, que é o que o censo guardou -- por isso o censo
+mede o produto, e não um parente dele. Os scripts e o mosaico ficaram fora do repositório, como os
+das outras medições desta seção.

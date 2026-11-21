@@ -18,12 +18,15 @@ from chess_diagram_ocr.board_detection import (
 from chess_diagram_ocr.detection import (
     BAND_BOARD_CHECKER,
     BAND_BOARD_FILL,
+    FEATURELESS_DISK_LIMIT,
     ContourInside,
     DiagramCandidate,
     candidates_from_embedded_images,
     contour_inside_candidate,
     detect_diagrams,
+    featureless_disk,
     is_page_band,
+    is_picture_over_board,
     largest_image_coverage,
     trim_to_frame,
     trim_to_grid,
@@ -33,6 +36,8 @@ from chess_diagram_ocr.detection.hybrid import (
     OVERLAP_IOU,
     REFINE_TOLERANCE,
     _contour_wins_over_merged,
+    _filtro_de_figura,
+    _PaginaHibrida,
     _same_region,
     _typical_side,
     board_checker_contrast,
@@ -1515,3 +1520,190 @@ class CoberturaDaMaiorImagemTests(unittest.TestCase):
                 self.assertEqual(largest_image_coverage(doc[0]), 0.0)
         finally:
             doc.close()
+
+
+def caricature_like(side: int = 320) -> np.ndarray:
+    """Um retrato desenhado **na frente** de um tabuleiro: o quadriculado só aparece em volta.
+
+    É a forma das quatro caricaturas de campeão do `Para ensinar e aprender xadrez` (p. 125,
+    129, 148 e 151): o fundo é um tabuleiro de verdade, então a imagem passa no piso de contraste
+    do embutido e na guarda de faixa, mas o rosto cobre o meio. Calibrada para dar as notas da
+    p. 148 -- contraste de casa ~0,20 e textura ~0,52, contra 0,18 e 0,51 medidos lá.
+    """
+    cell = side // 8
+    imagem = np.full((side, side, 3), 245, dtype=np.uint8)
+    for row in range(8):
+        for column in range(8):
+            if (row + column) % 2:
+                imagem[row * cell : (row + 1) * cell, column * cell : (column + 1) * cell] = 120
+    centro = (side // 2, side // 2 + side // 6)
+    eixos = (int(side * 0.42), int(side * 0.6))
+    cv2.ellipse(imagem, centro, eixos, 0, 0, 360, (215, 215, 215), -1)
+    cv2.ellipse(imagem, centro, eixos, 0, 0, 360, (40, 40, 40), 4)
+    cv2.ellipse(imagem, (side // 2, side // 3), (side // 4, side // 7), 0, 0, 360, (35, 35, 35), -1)
+    return imagem
+
+
+def draw_vector_board(page: fitz.Page, x: float, y: float, side: float) -> None:
+    """Um diagrama desenhado com vetores, como os do `Para ensinar e aprender xadrez`."""
+    cell = side / 8
+    for row in range(8):
+        for column in range(8):
+            if (row + column) % 2:
+                rect = fitz.Rect(x + column * cell, y + row * cell, x + (column + 1) * cell, y + (row + 1) * cell)
+                page.draw_rect(rect, color=None, fill=(0.18, 0.18, 0.18))
+    page.draw_rect(fitz.Rect(x, y, x + side, y + side), color=(0, 0, 0), width=1)
+
+
+class GabaritoContraTabuleiroMelhorTests(unittest.TestCase):
+    """O gabarito de tamanho não recusa um tabuleiro melhor que a imagem que o definiu.
+
+    A p. 148 do `Para ensinar e aprender xadrez` tem dois diagramas vetoriais de 136 pt e uma
+    única imagem embutida: a caricatura do Petrosian, de 80 pt, desenhada sobre um tabuleiro. A
+    caricatura passa nas guardas do embutido (contraste 0,18 > 0; o tabuleiro de dentro preenche
+    85% dela), vira o gabarito de tamanho da página, e os dois diagramas morriam em
+    `prior-de-tamanho` -- 415 e 407 px contra 244. A página mostrava uma caixa, sobre o retrato.
+    """
+
+    def test_a_caricatura_nao_apaga_os_diagramas_da_pagina(self) -> None:
+        """Com a guarda de figura desligada: desde 2026-11-20 a caricatura sai antes de fazer o
+        gabarito (`FiguraSobreTabuleiroTests`), e é a margem que este teste prende -- ela continua
+        valendo para a figura que passe na entrada."""
+        doc = pdf_with_images([(caricature_like(), fitz.Rect(340, 600, 420, 680))])
+        try:
+            page = doc[0]
+            draw_vector_board(page, 60, 300, 136)
+            draw_vector_board(page, 330, 80, 136)
+            recusas: list[RejectedQuad] = []
+
+            achados = detect_diagrams(page, render(page), rejected=recusas, featureless_disk_limit=None)
+
+            contornos = [c for c in achados if c.source == "contour"]
+            self.assertEqual(len(contornos), 2, "os dois diagramas vetoriais tinham de sair")
+            self.assertNotIn("prior-de-tamanho", [r.reason for r in recusas])
+        finally:
+            doc.close()
+
+    def test_tabuleiro_tao_bom_quanto_o_declarado_continua_recusado(self) -> None:
+        """Empate não derruba a declaração do PDF (S-12): a isenção pede margem.
+
+        É o caso `faixa` de `test_deteccao_caracterizacao` pela outra porta -- um diagrama
+        limpo de 100 pt só nos vetores, numa página que declara um limpo de 200 pt. Os dois
+        recortes têm a mesma nota, e o prior segue decidindo como antes.
+        """
+        doc = pdf_with_images([(board_image(320, frame=True), fitz.Rect(72, 72, 272, 272))])
+        try:
+            page = doc[0]
+            draw_vector_board(page, 300, 450, 100)
+            recusas: list[RejectedQuad] = []
+
+            achados = detect_diagrams(page, render(page), rejected=recusas)
+
+            self.assertEqual([c.source for c in achados], ["embedded"])
+            self.assertIn("prior-de-tamanho", [r.reason for r in recusas])
+        finally:
+            doc.close()
+
+
+class FiguraSobreTabuleiroTests(unittest.TestCase):
+    """A imagem embutida que é **figura** desenhada na frente de um quadriculado (2026-11-20).
+
+    As quatro caricaturas de campeão do `Para ensinar e aprender xadrez` (p. 125, 129, 148 e 151)
+    passavam no piso de contraste do embutido (o fundo dá 0,02 a 0,32) e na guarda de faixa (o
+    tabuleiro de dentro preenche 85% delas). O sinal que as separa é uma propriedade do tabuleiro:
+    casas vizinhas têm cores opostas, então nenhuma região lisa de um diagrama passa de uma casa.
+    No acervo inteiro, 16.846 legítimos dão até 0,917 casa e as quatro, 1,25 a 2,80.
+    """
+
+    def test_tabuleiro_nao_tem_regiao_lisa_maior_que_uma_casa(self) -> None:
+        """Vazio, cheio de peças (o `Polgar` da S-80) e hachurado: o círculo inscrito numa casa."""
+        for nome, imagem in (
+            ("limpo", board_image(320, frame=True)),
+            ("cheio", crowded_board()),
+            ("hachurado", hatched_board()),
+        ):
+            with self.subTest(nome):
+                self.assertLessEqual(featureless_disk(imagem), 1.0)
+                self.assertFalse(is_picture_over_board(imagem))
+
+    def test_uma_casa_escura_apagada_inteira_fica_abaixo_do_corte(self) -> None:
+        """A classe do `Melhores Finais` p. 382 -- scan com casas escuras desbotadas, o legítimo
+        mais alto do acervo antes de afinar a régua. Uma casa escura sumida junta cinco casas
+        claras em cruz, e a cruz ainda cabe abaixo de `FEATURELESS_DISK_LIMIT`."""
+        imagem = board_image(320, frame=True)
+        imagem[120:160, 160:200] = 245  # a casa (3, 4), escura, apagada
+
+        diametro = featureless_disk(imagem)
+
+        self.assertGreater(diametro, 1.0, "a cruz é maior que uma casa: é o caso que a folga cobre")
+        self.assertLess(diametro, FEATURELESS_DISK_LIMIT)
+
+    def test_a_caricatura_tem_regiao_lisa_maior_que_uma_casa(self) -> None:
+        imagem = caricature_like()
+        self.assertGreater(board_checker_contrast(imagem), 0.0, "passa no piso do embutido")
+        self.assertGreater(featureless_disk(imagem), FEATURELESS_DISK_LIMIT)
+        self.assertTrue(is_picture_over_board(imagem))
+
+    def test_sem_contraste_de_casa_nao_ha_regua(self) -> None:
+        """Recorte liso de ponta a ponta e sem grade: a guarda não julga o que não enxerga."""
+        self.assertEqual(featureless_disk(np.full((320, 320, 3), 200, np.uint8)), 0.0)
+
+    def _pagina_do_relato(self) -> fitz.Document:
+        """A p. 148 reconstruída: a caricatura embutida e dois diagramas vetoriais."""
+        doc = pdf_with_images([(caricature_like(), fitz.Rect(340, 600, 420, 680))])
+        draw_vector_board(doc[0], 60, 300, 136)
+        draw_vector_board(doc[0], 330, 80, 136)
+        return doc
+
+    def test_a_caricatura_sai_e_os_diagramas_da_pagina_ficam(self) -> None:
+        doc = self._pagina_do_relato()
+        try:
+            page = doc[0]
+            recusas: list[RejectedQuad] = []
+
+            achados = detect_diagrams(page, render(page), rejected=recusas)
+
+            self.assertEqual([c.source for c in achados], ["contour", "contour"])
+            for achado in achados:
+                self.assertLess(achado.bbox_pdf[0], 340, "nenhuma caixa sobre a caricatura")
+            motivos = [r.reason for r in recusas]
+            self.assertIn("liso-maior-que-casa", motivos)
+        finally:
+            doc.close()
+
+    def test_o_quadriculado_de_fundo_nao_volta_pela_porta_do_contorno(self) -> None:
+        """Medido nas quatro páginas do relato: recusada a imagem, o contorno da página achava o
+        fundo dela -- que antes perdia para a imagem em `perdeu-para-embutido` -- e a caricatura
+        voltava como candidato de contorno."""
+        doc = pdf_with_images([(caricature_like(), fitz.Rect(72, 72, 272, 272))])
+        try:
+            page = doc[0]
+            recusas: list[RejectedQuad] = []
+
+            achados = detect_diagrams(page, render(page), rejected=recusas)
+
+            self.assertEqual(achados, [])
+            self.assertIn("figura-embutida", [r.reason for r in recusas])
+        finally:
+            doc.close()
+
+    def test_desligada_a_caricatura_volta_como_diagrama(self) -> None:
+        """`featureless_disk_limit=None` é o detector de antes: a imagem entra, e o contorno perde."""
+        doc = pdf_with_images([(caricature_like(), fitz.Rect(72, 72, 272, 272))])
+        try:
+            page = doc[0]
+            achados = detect_diagrams(page, render(page), featureless_disk_limit=None)
+            self.assertEqual([c.source for c in achados], ["embedded"])
+        finally:
+            doc.close()
+
+    def test_so_o_achado_do_tamanho_da_figura_e_a_figura(self) -> None:
+        """A região é a da S-12 (IoU): o tabuleiro menor dentro de uma imagem recusada não é ela,
+        que é a distinção que deixa a S-176 recuperar o diagrama de dentro de uma faixa."""
+        figura = (100, 100, 400, 400)
+        pagina = _PaginaHibrida([], [], [], None, None, figuras=[figura])
+        tabuleiro = board_image(320)
+
+        self.assertEqual(_filtro_de_figura(pagina, (110, 105, 390, 395), tabuleiro), "figura-embutida")
+        self.assertIsNone(_filtro_de_figura(pagina, (120, 120, 150, 150), tabuleiro))
+        self.assertIsNone(_filtro_de_figura(pagina, (600, 600, 300, 300), tabuleiro))

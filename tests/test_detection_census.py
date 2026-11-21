@@ -350,6 +350,8 @@ class RecusasTests(unittest.TestCase):
         "perdeu-para-embutido",
         "faixa-da-pagina",
         "teto-da-pagina",
+        "liso-maior-que-casa",
+        "figura-embutida",
     )
     """As guardas que moram no `detection/hybrid`, e não no `board_detection`.
 
@@ -357,8 +359,10 @@ class RecusasTests(unittest.TestCase):
     `MOTIVOS_DE_RECUSA`. Ele precisava correr **antes** da ordenação por score e da supressão
     por IoU do `detect_boards`, e aqui só alcançava o que aquela função já tinha devolvido.
 
-    `"faixa-da-pagina"` entrou na S-176, e é a **única** que barra candidato da fonte embutida
-    -- as outras três julgam achado de contorno. Ver `hybrid.BAND_BOARD_FILL`.
+    `"faixa-da-pagina"` entrou na S-176, e foi a primeira a barrar candidato da fonte embutida.
+    `"liso-maior-que-casa"` é a segunda (2026-11-20): a figura desenhada na frente de um
+    quadriculado; `"figura-embutida"` barra o achado de contorno sobre o fundo dela. Ver
+    `hybrid.BAND_BOARD_FILL` e `hybrid.FEATURELESS_DISK_LIMIT`.
     """
 
     def setUp(self) -> None:
