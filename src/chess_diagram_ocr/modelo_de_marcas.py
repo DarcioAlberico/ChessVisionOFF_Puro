@@ -76,6 +76,7 @@ __all__ = [
     "ResultadoDoTreino",
     "SorteioDeMarca",
     "carregar",
+    "leitor_de_marcas",
     "desenhar_letra",
     "desenhar_quebra",
     "treinar",
@@ -645,6 +646,12 @@ class ModeloDeMarcas:
             if classe != SEM_MARCA and float(linha[classe]) >= limiar:
                 casas[square_name(indice)] = CLASSES_DE_MARCA[classe]
         return mc.MarcasDoDiagrama(casas=casas)
+
+
+def leitor_de_marcas(caminho: Path, device: str = "cpu") -> Callable[[np.ndarray], dict[str, str]]:
+    """O modelo de `caminho` como a conferência o chama: recorte RGB -> `{"c6": "bolinha-branca"}`."""
+    modelo = carregar(caminho, device)
+    return lambda tabuleiro: dict(modelo.ler(tabuleiro).casas)
 
 
 def carregar(caminho: Path, device: str = "cpu") -> ModeloDeMarcas:

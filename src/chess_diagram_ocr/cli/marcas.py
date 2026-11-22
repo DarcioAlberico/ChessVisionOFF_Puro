@@ -32,8 +32,9 @@ import numpy as np
 from .. import marcas_de_casa as mc
 from .. import teste_de_marcas as tm
 from ..atomic_io import atomic_write_json, read_image, write_image
-from ..config import DATA_DIR, PROJECT_ROOT
+from ..config import DATA_DIR
 from ..logging_setup import configure_logging, default_log_file
+from ..opiniao_das_marcas import MODELO_DE_MARCAS
 from ..splits import load_splits
 from . import (
     EXIT_BAD_INPUT,
@@ -52,7 +53,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 TESTE_PADRAO = DATA_DIR / "marcas" / "teste_congelado.json"
-MODELO_PADRAO = PROJECT_ROOT / "models" / "marcas.pt"
+MODELO_PADRAO = MODELO_DE_MARCAS
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

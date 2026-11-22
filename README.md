@@ -1194,6 +1194,7 @@ src/chess_diagram_ocr/
   ocr.py                os motores de OCR de faixa, atras de uma interface so
   ocr_caption.py        a legenda impressa lida da faixa abaixo do diagrama
   onnx_export.py        exportacao ONNX e conferencia de paridade com o torch
+  opiniao_das_marcas.py  a sugestao de marcas da conferencia quando detector e modelo olham o mesmo recorte
   orientation.py        a cascata de regras que decide a orientacao do diagrama
   origem_do_texto.py    de onde veio um texto lido (camada, OCR de terceiros, glifo) e o escopo de pagina do lado a jogar
   pdf_io.py             render de paginas de PDF (PyMuPDF)
