@@ -46,6 +46,7 @@ from PyQt6.QtWidgets import (
 from chess_diagram_ocr import detector_de_marcas
 from chess_diagram_ocr import importacao_de_imagens as imp
 from chess_diagram_ocr import marcas_de_casa as mc
+from chess_diagram_ocr import opiniao_das_marcas as om
 from chess_diagram_ocr.arquivo_do_dono import GravacaoRecusada, Leitura, gravavel, ler_texto
 from chess_diagram_ocr.fen_utils import is_syntactically_valid_fen
 from chess_diagram_ocr.qt import desenho_de_marcas, tema
@@ -113,6 +114,19 @@ def _emitir(dono: QWidget, sinal: str, *argumentos: object) -> None:
         logger.debug("Janela de importação fechada antes da resposta da thread.")
 
 
+def _marcas_do_modelo(
+    leitor: Callable[[np.ndarray], dict[str, str]] | None, tabuleiro: np.ndarray
+) -> dict[str, str] | None:
+    """O que o modelo de marcas viu, ou `None` sem ele. A falha dele não derruba a leitura nem o detector."""
+    if leitor is None:
+        return None
+    try:
+        return leitor(tabuleiro)
+    except (RuntimeError, ValueError) as exc:
+        logger.warning("Modelo de marcas falhou neste recorte: %s", exc)
+        return None
+
+
 class JanelaDeImportacao(QDialog):
     """Escolher a pasta, importar os confirmados e conferir o resto, uma imagem por vez."""
 
@@ -136,6 +150,8 @@ class JanelaDeImportacao(QDialog):
         caminhos: Callable[[], tuple[Path, Path, Path]],
         modelo: Callable[[], Path],
         leitor: Callable[[np.ndarray], str] | None = None,
+        modelo_de_marcas: Callable[[], Path] | None = None,
+        leitor_de_marcas: Callable[[np.ndarray], dict[str, str]] | None = None,
         diretorio_dos_lotes: Path | None = None,
         arquivo_de_marcas: Path | None = None,
         busy: BusyRegistry | None = None,
@@ -148,6 +164,11 @@ class JanelaDeImportacao(QDialog):
         self._modelo = modelo
         self._leitor = leitor
         self._servico: OcrService | None = None
+        self._modelo_de_marcas = modelo_de_marcas
+        self._leitor_de_marcas = leitor_de_marcas
+        """A segunda opinião das marcas (`opiniao_das_marcas`). Sem ela, a sugestão é só a do detector."""
+        self._marcas_tentadas = leitor_de_marcas is not None
+        self._opiniao = om.Opiniao()
         self._diretorio = diretorio_dos_lotes if diretorio_dos_lotes is not None else imp.DIRETORIO_DOS_LOTES
 
         self.lote: imp.Lote | None = None
@@ -506,6 +527,7 @@ class JanelaDeImportacao(QDialog):
         self._recorte_usado = ""
         self._pixmap_recorte = None
         self._chave_atual = ""
+        self._opiniao = om.Opiniao()
         self.tabuleiro.definir_sugestao({})
         item = self.item_atual()
         self._atualizar_resumo()
@@ -583,7 +605,11 @@ class JanelaDeImportacao(QDialog):
         self.lbl_marcas.setText(f"Marcas: {frase}" if frase else "")
         pendente = self.tabuleiro.sugestao_pendente()
         sugerida = mc.descrever(mc.MarcasDoDiagrama(casas=pendente))
-        self.lbl_sugestao.setText(f"Sugestão, ainda não anotada: {sugerida}" if sugerida else "")
+        texto = f"Sugestão, ainda não anotada: {sugerida}" if sugerida else ""
+        discordancia = om.descrever_discordancias(self._opiniao, pendente)
+        if discordancia:
+            texto += f"\nO modelo e o detector discordam; confira: {discordancia}"
+        self.lbl_sugestao.setText(texto)
         self.btn_sugestao.setVisible(bool(pendente))
 
     def _pintar_recorte(self) -> None:
@@ -620,11 +646,12 @@ class JanelaDeImportacao(QDialog):
             logger.warning("Marcas não gravadas: %s", exc)
             self.lbl_aviso.setText(f"As marcas não foram gravadas: {exc}")
 
-    def _chegou_sugestao(self, posicao: int, casas: dict[str, str]) -> None:
-        """A sugestão do detector, se a imagem ainda for a da tela."""
+    def _chegou_sugestao(self, posicao: int, opiniao: om.Opiniao) -> None:
+        """A sugestão do detector e do modelo de marcas, se a imagem ainda for a da tela."""
         if posicao != self.posicao_atual():
             return
-        self.tabuleiro.definir_sugestao(casas)
+        self._opiniao = opiniao
+        self.tabuleiro.definir_sugestao(opiniao.casas)
         self._descrever_marcas()
 
     def aceitar_sugestao(self) -> None:
@@ -684,11 +711,13 @@ class JanelaDeImportacao(QDialog):
             return
         caminho = self.lote.caminho_da_imagem(self.lote.itens[posicao])
         leitor = self._leitor_efetivo()
+        marcas = self._leitor_de_marcas_efetivo()
 
         def trabalho() -> None:
             try:
                 tabuleiro, usado = imp.recortar(imp.ler_imagem(caminho), recorte)
-                _emitir(self, "_sugestao_pronta", posicao, detector_de_marcas.sugerir_marcas(tabuleiro).casas)
+                do_detector = detector_de_marcas.sugerir_marcas(tabuleiro).casas
+                _emitir(self, "_sugestao_pronta", posicao, om.juntar(do_detector, _marcas_do_modelo(marcas, tabuleiro)))
                 lida = leitor(tabuleiro)
             except Exception as exc:  # noqa: BLE001 - qualquer falha vira aviso na tela, não queda
                 logger.exception("Leitura da importação falhou em %s", caminho)
@@ -698,6 +727,22 @@ class JanelaDeImportacao(QDialog):
 
         self._leitura = threading.Thread(target=trabalho, name="importacao-leitura", daemon=True)
         self._leitura.start()
+
+    def _leitor_de_marcas_efetivo(self) -> Callable[[np.ndarray], dict[str, str]] | None:
+        """O modelo de marcas, carregado na primeira imagem. Ausente ou estragado, fica o detector sozinho."""
+        if self._marcas_tentadas or self._modelo_de_marcas is None:
+            return self._leitor_de_marcas
+        self._marcas_tentadas = True
+        caminho = Path(self._modelo_de_marcas())
+        if not caminho.exists():
+            return None
+        try:
+            from chess_diagram_ocr.modelo_de_marcas import leitor_de_marcas
+
+            self._leitor_de_marcas = leitor_de_marcas(caminho)
+        except (OSError, RuntimeError, ValueError) as exc:
+            logger.warning("Modelo de marcas não carregado (%s): %s", caminho, exc)
+        return self._leitor_de_marcas
 
     def _leitor_efetivo(self) -> Callable[[np.ndarray], str]:
         if self._leitor is None:
@@ -757,6 +802,7 @@ class JanelaDeImportacao(QDialog):
         self._recorte_atual = None
         self._recorte_usado = ""
         self._pixmap_recorte = None
+        self._opiniao = om.Opiniao()
         self.tabuleiro.definir_sugestao({})
         self._descrever_marcas()
         self.img_recorte.setText("Recortando…")

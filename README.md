@@ -191,7 +191,7 @@ remoto que ninguem pediu ainda.
 
 ## Comandos de linha
 
-Depois da instalacao, **48 comandos** ficam disponiveis no ambiente -- a contagem sai de
+Depois da instalacao, **49 comandos** ficam disponiveis no ambiente -- a contagem sai de
 `[project.scripts]` e e conferida por `tests/test_docs.py` (S-135). Todos aceitam `-v` para
 log em nivel DEBUG, e todos falham em pt-BR com codigo de saida por classe (S-126). Os mais
 usados estao no bloco abaixo, com exemplos; a lista inteira vem logo depois dele.
@@ -510,6 +510,7 @@ aqui reprova a suite, e a falha imprime o bloco certo.
 - `cvoff-experiment` -- `chess_diagram_ocr.cli.experiment`
 - `cvoff-gallery` -- `chess_diagram_ocr.cli.gallery`
 - `cvoff-scan` -- `chess_diagram_ocr.cli.scan`
+- `cvoff-marcas` -- `chess_diagram_ocr.cli.marcas`
 - `cvoff-export-onnx` -- `chess_diagram_ocr.cli.export_onnx`
 - `cvoff-texto-status` -- `chess_diagram_ocr.cli.text_status`
 - `cvoff-texto-placar` -- `chess_diagram_ocr.cli.texto_placar`
@@ -1188,10 +1189,12 @@ src/chess_diagram_ocr/
   logging_setup.py      configuracao de logging
   marcas_de_casa.py     as marcas impressas no diagrama (bolinha, estrela, seta...) e o arquivo delas, fora da FEN
   model.py              arquitetura do classificador, configuravel por ArchConfig
+  modelo_de_marcas.py   o modelo que diz qual marca a casa vazia tem, treinado so com marca sintetica
   net_correction.py     cliente da correcao remota de FEN (opcional, opt-in)
   ocr.py                os motores de OCR de faixa, atras de uma interface so
   ocr_caption.py        a legenda impressa lida da faixa abaixo do diagrama
   onnx_export.py        exportacao ONNX e conferencia de paridade com o torch
+  opiniao_das_marcas.py  a sugestao de marcas da conferencia quando detector e modelo olham o mesmo recorte
   orientation.py        a cascata de regras que decide a orientacao do diagrama
   origem_do_texto.py    de onde veio um texto lido (camada, OCR de terceiros, glifo) e o escopo de pagina do lado a jogar
   pdf_io.py             render de paginas de PDF (PyMuPDF)
@@ -1214,6 +1217,7 @@ src/chess_diagram_ocr/
   tablebase.py          tablebases Syzygy opcionais: resultado exato nos finais (S-538)
   taticas.py            o exercicio montado do acervo: FEN lida + solucao impressa (S-539)
   taticas_arquivo.py    os exercicios de tatica no disco, um arquivo por livro (S-539)
+  teste_de_marcas.py    o teste congelado das marcas: diagramas reais anotados e a regua que pontua um leitor
   text_status.py        o que do plano de texto ja existe no disco, medido por sonda
   training.py           loop de treino (Trainer, TrainingPlan, BestEpochPolicy)
   tsoj_reader.py        o leitor do formato TSOJ, de onde veio o classificador de caractere

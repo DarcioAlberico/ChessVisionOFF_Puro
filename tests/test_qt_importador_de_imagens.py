@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import csv
 import unittest
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -22,6 +23,7 @@ from test_importacao_de_imagens import FINAL, INICIAL, diagrama, gravar_png, pas
 
 from chess_diagram_ocr import importacao_de_imagens as imp
 from chess_diagram_ocr import marcas_de_casa as mc
+from chess_diagram_ocr import opiniao_das_marcas as om
 from chess_diagram_ocr.importacao_de_imagens import IMPORTADO_COM_FEN
 from chess_diagram_ocr.labels import OCR_ACEITO, OCR_CORRIGIDO
 from chess_diagram_ocr.ui.busy import BusyRegistry
@@ -59,13 +61,20 @@ class MarcasNaConferenciaTests(unittest.TestCase):
         gravar_png(self.raiz / "1.png", diagrama(margem=0))
         gravar_png(self.raiz / "2.png", diagrama(margem=0, casa=31))  # outro conteúdo: outra chave
 
-    def nova_janela(self) -> qt_imp.JanelaDeImportacao:
+    def nova_janela(
+        self,
+        *,
+        leitor_de_marcas: Callable[[np.ndarray], dict[str, str]] | None = None,
+        modelo_de_marcas: Callable[[], Path] | None = None,
+    ) -> qt_imp.JanelaDeImportacao:
         janela = qt_imp.JanelaDeImportacao(
             caminhos=lambda: (self.csv, self.dados / "samples", self.dados / "splits.csv"),
             modelo=lambda: Path("nao-existe.pt"),
             leitor=lambda _tabuleiro: FINAL,
             diretorio_dos_lotes=self.dados / "importacao",
             arquivo_de_marcas=self.arquivo,
+            leitor_de_marcas=leitor_de_marcas,
+            modelo_de_marcas=modelo_de_marcas,
         )
         self.addCleanup(descartar, janela)
         return janela
@@ -249,8 +258,42 @@ class MarcasNaConferenciaTests(unittest.TestCase):
 
     def test_sugestao_de_outra_imagem_e_ignorada(self) -> None:
         self.abrir(self.janela, self.raiz)
-        self.janela._chegou_sugestao(1, {"a1": mc.X})
+        self.janela._chegou_sugestao(1, om.Opiniao(casas={"a1": mc.X}))
         self.assertEqual(self.janela.tabuleiro.sugestao_pendente(), {})
+
+    def test_o_modelo_de_marcas_entra_e_a_discordancia_aparece(self) -> None:
+        raiz = self.com_estrela()
+        janela = self.nova_janela(leitor_de_marcas=lambda _t: {"c5": mc.ESTRELA_PRETA, "f3": mc.BOLINHA_BRANCA})
+        self.abrir(janela, raiz)
+
+        self.assertEqual(janela.tabuleiro.sugestao_pendente(), {"c5": mc.ESTRELA_PRETA, "f3": mc.BOLINHA_BRANCA})
+        self.assertIn("discordam", janela.lbl_sugestao.text())
+        self.assertIn("f3: modelo bolinha branca, detector nada", janela.lbl_sugestao.text())
+        self.assertNotIn("c5:", janela.lbl_sugestao.text(), "onde os dois concordam não há o que conferir")
+        self.assertTrue(janela.tabuleiro.marcas().vazia, "a segunda opinião também é só sugestão")
+
+        janela.aceitar_sugestao()
+
+        self.assertEqual(janela.tabuleiro.marcas().casas, {"c5": mc.ESTRELA_PRETA, "f3": mc.BOLINHA_BRANCA})
+        self.assertEqual(janela.lbl_sugestao.text(), "")
+
+    def test_modelo_de_marcas_que_falha_deixa_o_detector(self) -> None:
+        def quebrado(_tabuleiro: np.ndarray) -> dict[str, str]:
+            raise RuntimeError("pesos estragados")
+
+        raiz = self.com_estrela()
+        janela = self.nova_janela(leitor_de_marcas=quebrado)
+        self.abrir(janela, raiz)
+        self.assertEqual(janela.tabuleiro.sugestao_pendente(), {"c5": mc.ESTRELA_PRETA})
+        self.assertNotIn("discordam", janela.lbl_sugestao.text())
+        self.assertNotEqual(janela.tabuleiro.modelo.squares(), [""] * 64, "a leitura das peças seguiu")
+
+    def test_sem_o_arquivo_do_modelo_fica_o_detector(self) -> None:
+        raiz = self.com_estrela()
+        janela = self.nova_janela(modelo_de_marcas=lambda: self.dados / "nao-existe.pt")
+        self.abrir(janela, raiz)
+        self.assertEqual(janela.tabuleiro.sugestao_pendente(), {"c5": mc.ESTRELA_PRETA})
+        self.assertIsNone(janela._leitor_de_marcas)
 
     def test_anotacao_a_mao_tem_precedencia_sobre_a_sugestao(self) -> None:
         self.abrir(self.janela, self.com_estrela())
