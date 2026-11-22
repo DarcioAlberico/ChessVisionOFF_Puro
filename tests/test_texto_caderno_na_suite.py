@@ -13,7 +13,7 @@ from pathlib import Path
 from ambiente_de_teste import pasta_temporaria
 
 from chess_diagram_ocr.text import caderno, caderno_na_suite, rico
-from chess_diagram_ocr.text.pagina import BlocoDeTexto, Coluna, LinhaLida, PaginaLida
+from chess_diagram_ocr.text.pagina import BlocoDeDiagrama, BlocoDeTexto, Coluna, LinhaLida, PaginaInvalida, PaginaLida
 
 
 def _pagina(livro: str, folha: int, texto: str) -> PaginaLida:
@@ -53,6 +53,17 @@ class ParagrafosTests(unittest.TestCase):
         paragrafos = caderno_na_suite.paragrafos_da_folha(_doc(_c("antes\n"), marca, _c("depois")))
         self.assertEqual([p["kind"] for p in paragrafos], ["text", "diagram", "text"])
         self.assertEqual(paragrafos[1], {"kind": "diagram", "fen": "", "alignment": "center"})
+
+    def test_as_marcas_do_diagrama_vao_com_ele_e_so_quando_ha(self) -> None:
+        pagina = PaginaLida(
+            documento="livro.pdf",
+            pagina=0,
+            colunas=(Coluna(indice=0, blocos=(BlocoDeDiagrama(indice=0), BlocoDeDiagrama(indice=1))),),
+        ).com_marcas([{"d4": "x", "c6": "bolinha-branca"}, {}])
+        doc = rico.de_pagina(pagina)
+        primeiro, segundo = (p for p in caderno_na_suite.paragrafos_da_folha(doc) if p["kind"] == "diagram")
+        self.assertEqual(primeiro["marks"], {"c6": "bolinha-branca", "d4": "x"})
+        self.assertNotIn("marks", segundo, "diagrama sem marca sai como saía antes delas")
 
     def test_o_branco_das_pontas_do_paragrafo_sai(self) -> None:
         (paragrafo,) = caderno_na_suite.paragrafos_da_folha(_doc(_c("  meio  ")))
@@ -239,6 +250,32 @@ class TrazerDaSuiteTests(_ComCaderno):
             "no menu da folha (3).",
         )
         self.assertEqual(caderno_na_suite.Volta().frase(), "Nenhuma folha foi editada na Revisão de texto da suíte.")
+
+
+class MarcasNoBlocoTests(unittest.TestCase):
+    """As marcas no `BlocoDeDiagrama`: leitura como a posição, e o arquivo que as guarda."""
+
+    def _pagina(self) -> PaginaLida:
+        return PaginaLida(documento="livro.pdf", pagina=0, colunas=(Coluna(indice=0, blocos=(BlocoDeDiagrama(indice=0),)),))
+
+    def test_none_nao_apaga_e_vazio_apaga(self) -> None:
+        com = self._pagina().com_marcas([{"c6": "x"}])
+        self.assertEqual(com.diagramas[0].marcas, (("c6", "x"),))
+        self.assertIs(com.com_marcas([None]), com, "não lido não muda nada")
+        self.assertEqual(com.com_marcas([{}]).diagramas[0].marcas, (), "lido sem marca apaga")
+        self.assertIs(com.com_marcas([{"c6": "x"}]), com, "a mesma leitura devolve a própria página")
+
+    def test_sobrevive_ao_arquivo_e_sem_marca_o_json_nao_muda(self) -> None:
+        sem = self._pagina()
+        self.assertNotIn("marcas", str(sem.para_json()))
+        com = sem.com_marcas([{"c6": "x", "a1": "estrela-preta"}])
+        self.assertEqual(PaginaLida.de_json(com.para_json()).diagramas[0].marcas, (("a1", "estrela-preta"), ("c6", "x")))
+
+    def test_marca_em_casa_invalida_recusa(self) -> None:
+        dados = self._pagina().com_marcas([{"c6": "x"}]).para_json()
+        dados["colunas"][0]["blocos"][0]["marcas"] = {"z9": "x"}
+        with self.assertRaises(PaginaInvalida):
+            PaginaLida.de_json(dados)
 
 
 if __name__ == "__main__":

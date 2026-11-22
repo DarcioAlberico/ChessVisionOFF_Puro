@@ -71,6 +71,8 @@ a suíte pode ser justamente a pasta de dados de verdade. As duas começam ausen
 sem uso: o programa cria `data/` quando precisa, e sem `pgn_database/` não há base a perguntar."""
 
 os.environ.update({variavel: str(pasta) for variavel, pasta in DESVIOS.items()})
+# O modelo de marcas mora em `models/`, fora do `data/`: aponta para um que não existe, e quem testa o modelo o injeta.
+os.environ["CVOFF_MODELO_DE_MARCAS"] = str(Path(DADOS_DA_SUITE.name) / "models" / "marcas.pt")
 
 
 def caminhos_pth_inexistentes() -> list[tuple[Path, str]]:

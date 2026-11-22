@@ -261,6 +261,12 @@ FORA_DO_REGISTRO: dict[tuple[str, str], str] = {
         "120 partidas. Só lê -- a associação já foi gravada antes, na thread da janela --, então "
         "fechar no meio não perde nada; a resposta que chega depois é descartada."
     ),
+    ("marcas_da_leitura.py", "ler"): (
+        "Ler as marcas impressas nos diagramas da página com o detector e o modelo de marcas, quando a "
+        "leitura dos diagramas chega à aba Texto: ~50 ms por diagrama. Só lê -- a marca entra na folha "
+        "como leitura, sem virar alteração por gravar --, então fechar no meio não perde nada; a resposta "
+        "de outro livro é descartada."
+    ),
     ("importador_de_imagens.py", "_ler"): (
         "Recortar e ler com o modelo a imagem que está na tela da conferência (importação de "
         "imagens): meio segundo por imagem, e a resposta só vale se ainda for o item na tela. "

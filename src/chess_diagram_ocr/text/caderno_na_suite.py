@@ -21,8 +21,14 @@ O formato, por folha::
      "paragraphs": [
         {"kind": "text", "style": "heading", "alignment": "center",
          "runs": [{"text": "Capítulo 3", "bold": true}]},
-        {"kind": "diagram", "fen": "8/8/8/8/8/8/8/8", "alignment": "center"},
+        {"kind": "diagram", "fen": "8/8/8/8/8/8/8/8", "alignment": "center",
+         "marks": {"c6": "bolinha-branca", "d4": "x"}},
      ]}
+
+`marks` só vem quando o diagrama tem marca impressa: as marcas de casa que o detector clássico e o
+modelo de marcas leram juntos no recorte, nos nomes de `marcas_de_casa` (`bolinha-branca`,
+`bolinha-preta`, `estrela-branca`, `estrela-preta`, `x`, `cruz`). A suíte as traduz para as marcas
+do IR dela, e uma suíte de antes delas ignora a chave: o formato continua o 1.
 
 `style` é `"heading"`, `"notation"`, `"caption"` ou `""` (prosa); `alignment` é `"left"`,
 `"center"`, `"right"`, `"justify"` ou `""` (o da folha). A cor de autor, o realce e o corpo não
@@ -139,14 +145,17 @@ def paragrafos_da_folha(doc: DocumentoRico) -> list[dict[str, Any]]:
     for corrida in doc.corridas:
         if corrida.e_diagrama:
             fechar()
-            placement = str(getattr(doc.bloco_de(corrida), "placement", "") or "")
-            saida.append(
-                {
-                    "kind": "diagram",
-                    "fen": placement,
-                    "alignment": _ALINHAMENTO.get(alinhamento_efetivo(corrida), ""),
-                }
-            )
+            bloco = doc.bloco_de(corrida)
+            placement = str(getattr(bloco, "placement", "") or "")
+            diagrama: dict[str, object] = {
+                "kind": "diagram",
+                "fen": placement,
+                "alignment": _ALINHAMENTO.get(alinhamento_efetivo(corrida), ""),
+            }
+            marcas = dict(getattr(bloco, "marcas", ()) or ())
+            if marcas:
+                diagrama["marks"] = marcas
+            saida.append(diagrama)
             continue
         linhas = corrida.texto.split("\n")
         for i, linha in enumerate(linhas):

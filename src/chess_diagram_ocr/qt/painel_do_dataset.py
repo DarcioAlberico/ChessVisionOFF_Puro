@@ -67,7 +67,7 @@ from chess_diagram_ocr.dataset_browser import (
     page_after_change,
     quarantine_rows,
 )
-from chess_diagram_ocr.opiniao_das_marcas import MODELO_DE_MARCAS
+from chess_diagram_ocr.opiniao_das_marcas import caminho_do_modelo_de_marcas
 from chess_diagram_ocr.processo_de_trabalho import processo_de_trabalho
 from chess_diagram_ocr.qt import icones as qt_icones
 from chess_diagram_ocr.qt import tema
@@ -799,7 +799,7 @@ class PainelDoDataset(QWidget):
                 self,
                 caminhos=self._caminhos,
                 modelo=lambda: DEFAULT_MODEL_PATH,
-                modelo_de_marcas=lambda: MODELO_DE_MARCAS,
+                modelo_de_marcas=caminho_do_modelo_de_marcas,
                 diretorio_dos_lotes=Path(csv_path).parent / "importacao",
                 busy=self._busy_registry,
             )

@@ -18,18 +18,37 @@ O módulo não importa Qt nem torch.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from . import marcas_de_casa as mc
 from .config import PROJECT_ROOT
 
-__all__ = ["MODELO_DE_MARCAS", "Opiniao", "descrever_discordancias", "juntar"]
+__all__ = [
+    "ENV_MODELO_DE_MARCAS",
+    "MODELO_DE_MARCAS",
+    "Opiniao",
+    "caminho_do_modelo_de_marcas",
+    "concordancia",
+    "descrever_discordancias",
+    "juntar",
+]
 
 MODELO_DE_MARCAS = PROJECT_ROOT / "models" / "marcas.pt"
 """O modelo de marcas que a conferência usa. Mora aqui, e não em `config.py`, que está no fecho de medição
 (S-218): mudar `config.py` venceria os relatórios de campo por uma constante que nenhuma medição lê. Sem o
 arquivo, a conferência sugere só pelo detector, como antes do modelo."""
+
+ENV_MODELO_DE_MARCAS = "CVOFF_MODELO_DE_MARCAS"
+"""Desvia o modelo de marcas. A suíte de testes a aponta para um arquivo que não existe: sem ela, a janela
+montada num teste carregaria o `.pt` de verdade do checkout numa thread, e o teste mediria a máquina."""
+
+
+def caminho_do_modelo_de_marcas() -> Path:
+    """O modelo de marcas que a janela usa: o da variável, ou `MODELO_DE_MARCAS`. Lido a cada chamada."""
+    return Path(os.environ.get(ENV_MODELO_DE_MARCAS) or MODELO_DE_MARCAS)
 
 NADA = "nada"
 """Como a frase da discordância diz que um leitor não viu marca na casa."""
@@ -59,6 +78,19 @@ def juntar(detector: Mapping[str, str], modelo: Mapping[str, str] | None) -> Opi
         if do_detector != do_modelo:
             discordancias[casa] = (do_detector, do_modelo)
     return Opiniao(casas=casas, discordancias=discordancias, com_modelo=True)
+
+
+def concordancia(opiniao: Opiniao) -> dict[str, str] | None:
+    """As marcas que os dois leitores disseram iguais: o que vai para uma saída **sem conferência**.
+
+    A conferência mostra a união e escreve a discordância, porque ali há quem decida. Na leitura que
+    vai direto para a folha e dela para o livro, não há: entra só o que os dois viram, e um leitor
+    não põe sozinho uma marca no livro publicado. Sem o modelo (`com_modelo` falso), não há segunda
+    opinião, e a resposta é `None` -- "não lido" --, e não o detector sozinho.
+    """
+    if not opiniao.com_modelo:
+        return None
+    return {casa: tipo for casa, tipo in opiniao.casas.items() if casa not in opiniao.discordancias}
 
 
 def _nome(tipo: str | None) -> str:
