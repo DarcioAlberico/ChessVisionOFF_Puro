@@ -589,6 +589,18 @@ class MarcaEmVazia(_Sometimes):
         if not self._should():
             return x
         tipo = TIPOS_DE_MARCA[int(torch.randint(len(TIPOS_DE_MARCA), ()).item())]
+        return self.desenhar(x, tipo)
+
+    def desenhar(self, x: torch.Tensor, tipo: str) -> torch.Tensor:
+        """A marca `tipo`, com tamanho, traço, posição e tinta sorteados nas faixas dos censos.
+
+        É o `forward` sem os dois sorteios de antes -- se a marca entra e qual --, e existe para o
+        modelo de marcas (`modelo_de_marcas.py`), que precisa saber o tipo para usá-lo de rótulo. O
+        `forward` chama isto depois dos mesmos dois sorteios de sempre: a sequência do RNG, e com
+        ela o treino do modelo de peças, sai idêntica à de antes da separação.
+        """
+        if tipo not in TIPOS_DE_MARCA:
+            raise ValueError(f"Marca desconhecida: {tipo!r} (válidas: {', '.join(TIPOS_DE_MARCA)})")
 
         def faixa(baixo: float, alto: float) -> float:
             return float(baixo + (alto - baixo) * torch.rand(()))

@@ -117,6 +117,7 @@ cvoff-sides = "chess_diagram_ocr.cli.sides:main"
 cvoff-experiment = "chess_diagram_ocr.cli.experiment:main"
 cvoff-gallery = "chess_diagram_ocr.cli.gallery:main"
 cvoff-scan = "chess_diagram_ocr.cli.scan:main"
+cvoff-marcas = "chess_diagram_ocr.cli.marcas:main"
 cvoff-export-onnx = "chess_diagram_ocr.cli.export_onnx:main"
 # Diz quais itens do plano de reconhecimento de texto (S-178 a S-217) ja existem no disco.
 # Olha o disco, nao o documento: `tests/test_text_status.py` e quem compara os dois.
