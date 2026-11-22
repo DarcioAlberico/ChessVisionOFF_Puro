@@ -45,10 +45,10 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
@@ -59,6 +59,7 @@ from chess_diagram_ocr.config import DEFAULT_DPI
 from chess_diagram_ocr.qt import atalhos as qt_atalhos
 from chess_diagram_ocr.qt import texto_correcao, texto_leitura
 from chess_diagram_ocr.qt.fita_do_texto import FitaDoTexto
+from chess_diagram_ocr.qt.marcas_da_leitura import LeitorDeMarcas
 from chess_diagram_ocr.qt.painel_de_navegacao import PainelDeNavegacao
 from chess_diagram_ocr.qt.texto_caderno import CadernoDaAba, FolhasDaSuite
 from chess_diagram_ocr.qt.texto_correcao import CorrecaoDoTexto, JanelaDeBusca
@@ -88,6 +89,19 @@ campo tem o desfazer dele -- e este não tem: ele está desligado de propósito 
 pegar a tecla aqui, `Ctrl+Z` no meio da folha chegaria a um desfazer desligado e não faria nada.
 A tecla sai da tabela (`ui/atalhos.por_acao`), e não daqui."""
 
+
+
+class DiagramaLido(Protocol):
+    """O que a aba lê de um diagrama da leitura do produto (`service.RecognizedDiagram`)."""
+
+    placement: str
+    board_rgb: np.ndarray
+
+
+def _modelo_de_marcas() -> Path:
+    from chess_diagram_ocr.opiniao_das_marcas import caminho_do_modelo_de_marcas
+
+    return caminho_do_modelo_de_marcas()
 
 class PainelDeTexto(QWidget):
     """O editor da página lida: desenha o documento e devolve cada gesto a `text/rico.py`."""
@@ -140,6 +154,8 @@ class PainelDeTexto(QWidget):
         self.leitura = ExecutorDaAba(self, busy=busy, dpi_fixo=dpi)
         self.espelho = EspelhoDaFolha(self)
         self.miniaturas = MiniaturasDoTexto(self)
+        self.leitor_de_marcas = LeitorDeMarcas(self, modelo=_modelo_de_marcas)
+        self.leitor_de_marcas.prontas.connect(self._chegaram_marcas)
         self.correcao = CorrecaoDoTexto(self)
         self.vista = VistaDaFolha(self)
         self.ferramentas = FerramentasDeFormato(self)
@@ -168,6 +184,8 @@ class PainelDeTexto(QWidget):
         self._correcoes = 0
         """Quantas correções a mão fez sobre o que o motor leu, contadas na pausa e na gravação
         (item 24). Não a cada tecla: `correcao.correcoes` compara bloco a bloco por `difflib`."""
+        self._marcas: dict[tuple[ChaveDoLivro | None, int], tuple[dict[str, str] | None, ...]] = {}
+        """As marcas de casa de cada diagrama, por `(livro, folha)`, como `_posicoes` e pelas mesmas razões."""
         self._posicoes: dict[tuple[ChaveDoLivro | None, int], tuple[str, ...]] = {}
         """O campo de peças de cada diagrama, por `(livro, folha)`, como o OCR de diagramas do
         produto leu. Por folha porque a leitura dos diagramas e a do texto chegam em qualquer
@@ -443,6 +461,7 @@ class PainelDeTexto(QWidget):
         novo = None if pdf is None else Path(pdf)
         if chave_do_livro(novo) != chave_do_livro(self._pdf):
             self._posicoes.clear()  # as posições são do livro que saiu (item 11)
+            self._marcas.clear()
             self.caderno.abrir_caderno(novo)
             self.leitura.carregar_lingua_do_livro()
             if self.caderno.aberto is None:
@@ -759,6 +778,20 @@ class PainelDeTexto(QWidget):
 
     def definir_posicoes(self, pagina: int, posicoes: Sequence[str]) -> None:
         self.miniaturas.definir_posicoes(pagina, posicoes)
+
+    def definir_marcas(self, pagina: int, marcas: Sequence[Mapping[str, str] | None]) -> None:
+        self.miniaturas.definir_marcas(pagina, marcas)
+
+    def definir_leitura_dos_diagramas(self, pagina: int, diagramas: Sequence[DiagramaLido]) -> None:
+        """A leitura dos diagramas da folha: a posição de cada um agora, e as marcas quando a thread as ler."""
+        self.definir_posicoes(pagina, [d.placement for d in diagramas])
+        self.leitor_de_marcas.ler(chave_do_livro(self._pdf), pagina, [d.board_rgb for d in diagramas])
+
+    def _chegaram_marcas(self, livro: object, pagina: int, marcas: object) -> None:
+        """As marcas lidas na thread, se o livro ainda for o da aba. Slot: não levanta (qFatal no PyQt6)."""
+        if livro != chave_do_livro(self._pdf) or not isinstance(marcas, list):
+            return
+        self.definir_marcas(pagina, marcas)
 
     def inserir_diagramas_do_livro(self, pagina: int, faltam: Sequence[tuple[str, str]]) -> int:
         return self.miniaturas.inserir_diagramas_do_livro(pagina, faltam)

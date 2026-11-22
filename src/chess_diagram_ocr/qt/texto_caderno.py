@@ -123,6 +123,9 @@ class CadernoDaAba(QObject):
         guardadas = self._aba._posicoes.get((chave_do_livro(pagina.documento), int(pagina.pagina)))
         if guardadas:
             pagina = pagina.com_posicoes(guardadas)
+        marcas = self._aba._marcas.get((chave_do_livro(pagina.documento), int(pagina.pagina)))
+        if marcas:
+            pagina = pagina.com_marcas(marcas)
         self._aba._pagina = pagina
         self._aba._pagina_rgb = folha_rgb
         self._aba._folha_por_ler = None

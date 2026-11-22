@@ -236,6 +236,7 @@ divisão, não o toolkit, que este documento descreve.
 | `livro_com_pgn.py` | *Carregar PGN do livro…*: o `.pgn` que vem com o PDF digital, ligado à janela (S-590 a S-595). |
 | `lote_de_diagramas.py` | O diálogo do lote de diagramas: as escolhas, a prévia, a pasta e a thread (S-544). |
 | `marcas.py` | Quais diagramas de um livro já têm amostra gravada, lido fora da thread da janela (F9-C2). |
+| `marcas_da_leitura.py` | As marcas impressas nos diagramas da página, lidas do recorte numa thread pelo detector e pelo modelo de marcas; a folha da aba Texto guarda o que os dois disseram juntos. |
 | `mesa_destacada.py` | A mesa numa janela própria, o editor e uma vista da folha, para quem tem dois monitores (S-646). |
 | `motor.py` | O painel do motor: a barra vertical ao lado do tabuleiro e as linhas candidatas (S-529). |
 | `painel_de_navegacao.py` | O painel de navegação da aba Texto: títulos, folhas, resultados e correções (S-654). |
@@ -448,12 +449,17 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**38** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**39** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Vinte e duas são operações longas e estão no `BusyRegistry`; as outras dezesseis são declaradas
+exceção. Vinte e duas são operações longas e estão no `BusyRegistry`; as outras dezessete são declaradas
 em `ui/busy.py::FORA_DO_REGISTRO`, com o motivo de cada uma (S-112).
 
-**A última é a volta do R7 (2026-10-29, `qt/texto_leitura.py` desde a S-865).** *Trazer as correções da
+**A última é a das marcas dos diagramas (2026-11-22, `qt/marcas_da_leitura.py`).** Quando a leitura dos
+diagramas da página chega à aba Texto, cada recorte passa pelo detector clássico e pelo modelo de marcas, e
+a folha guarda o que os dois disseram juntos, que vai com ela ao livro da suíte. São ~50 ms por diagrama e
+nada é gravado: fica declarada.
+
+**A anterior é a volta do R7 (2026-10-29, `qt/texto_leitura.py` desde a S-865).** *Trazer as correções da
 Revisão de texto* pergunta à suíte que folhas o revisor editou, e quando a importação do livro em
 mãos não serve a suíte importa de novo essas páginas, com OCR: registra-se, com «Cancelar» e sem
 `loses_work`, porque nada é gravado no caderno antes de a resposta chegar.

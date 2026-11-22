@@ -381,6 +381,25 @@ def _confianca_de(valor: object, onde: str) -> float:
     return numero
 
 
+_CASA = re.compile(r"^[a-h][1-8]$")
+
+
+def _marcas_de(valor: object, onde: str) -> tuple[tuple[str, str], ...]:
+    """As marcas de casa do diagrama: `{"c6": "x"}`, e ausente é nenhuma. Casa inválida recusa.
+
+    O tipo da marca não é conferido aqui: a lista dos tipos mora em `marcas_de_casa`, fora do pacote
+    de texto, e um tipo que este programa ainda não conhece é dado da folha, não defeito dela.
+    """
+    if valor is None:
+        return ()
+    if not isinstance(valor, dict):
+        raise PaginaInvalida(f"{onde}: marcas precisam ser um objeto casa -> marca, veio {valor!r}")
+    for casa, tipo in valor.items():
+        if not isinstance(casa, str) or not _CASA.match(casa) or not isinstance(tipo, str) or not tipo:
+            raise PaginaInvalida(f"{onde}: marca inválida {casa!r}: {tipo!r}")
+    return tuple(sorted(valor.items()))
+
+
 def _procedencia_de(valor: Any, onde: str) -> Procedencia:
     if valor not in PROCEDENCIAS:
         raise PaginaInvalida(f"{onde}: procedência {valor!r} não é uma de {PROCEDENCIAS}")
@@ -765,6 +784,11 @@ class BlocoDeDiagrama:
     placement: str = ""
     """Só o campo de peças da FEN, quando já houve leitura. Vazio é "não lido" -- e é diferente de
     um tabuleiro vazio, que tem placement `8/8/8/8/8/8/8/8`."""
+    marcas: tuple[tuple[str, str], ...] = ()
+    """As marcas impressas nas casas, `(("c6", "bolinha-branca"), ...)`, ordenadas pela casa: o que o
+    detector clássico e o modelo de marcas leram **juntos** no recorte (`opiniao_das_marcas`). São
+    leitura, como `placement`, e vão com a folha ao livro da suíte. Tupla, e não dicionário, para o
+    bloco continuar imutável e comparável."""
 
     @property
     def texto(self) -> str:
@@ -784,6 +808,8 @@ class BlocoDeDiagrama:
             "confianca": self.confianca,
             "procedencia": procedencia_gravada(self.procedencia),
             "placement": self.placement,
+            # Só quando há: a folha sem marca grava byte a byte o que gravava antes delas.
+            **({"marcas": dict(self.marcas)} if self.marcas else {}),
         }
 
     @classmethod
@@ -794,6 +820,7 @@ class BlocoDeDiagrama:
             confianca=_confianca_de(dados.get("confianca"), onde),
             procedencia=_procedencia_de(dados.get("procedencia"), onde),
             placement=str(dados.get("placement", "")),
+            marcas=_marcas_de(dados.get("marcas"), onde),
         )
 
 
@@ -1208,6 +1235,25 @@ class PaginaLida:
             modelo=str(dados.get("modelo", "") or ""),
             marca_por_palavra=dados.get("marca_por_palavra") is True,
         )
+
+    def com_marcas(self, marcas: Sequence[Mapping[str, str] | None]) -> PaginaLida:
+        """A mesma página com as marcas de casa de cada diagrama, por `indice`, como `com_posicoes`.
+
+        `None` é "não lido" e não apaga o que o bloco tinha; um mapa vazio é "lido, sem marca", e
+        apaga. Devolve **a própria página** quando nada muda.
+        """
+
+        def com(bloco: Bloco) -> Bloco:
+            if not isinstance(bloco, BlocoDeDiagrama) or bloco.indice >= len(marcas):
+                return bloco
+            lidas = marcas[bloco.indice]
+            if lidas is None:
+                return bloco
+            novas = tuple(sorted((str(casa), str(tipo)) for casa, tipo in lidas.items()))
+            return replace(bloco, marcas=novas) if novas != bloco.marcas else bloco
+
+        colunas = tuple(replace(c, blocos=tuple(com(b) for b in c.blocos)) for c in self.colunas)
+        return self if colunas == self.colunas else replace(self, colunas=colunas)
 
     def com_posicoes(self, posicoes: Sequence[str]) -> PaginaLida:
         """A mesma página com o campo de peças de cada diagrama preenchido, por `indice`.

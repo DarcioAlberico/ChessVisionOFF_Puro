@@ -1370,7 +1370,7 @@ class JanelaPrincipal(QMainWindow):
         )
         if (pagina := resposta.pagina) is not None:
             self._itens, self._estudar_ao_ler = list(itens), None  # o duplo clique pendente é atendido ou morre
-            self.texto.definir_posicoes(pagina, [d.placement for d in self._itens])  # a FEN de cada diagrama vai à aba Texto
+            self.texto.definir_leitura_dos_diagramas(pagina, self._itens)  # a FEN e as marcas de cada diagrama vão à aba Texto
             # **O ponto único de troca de vínculo** (S-49), dentro do painel: o vínculo é `PAGE` e a
             # âncora é o par (documento, página), e é ela que faz `Ctrl+S` gravar amostra nova em vez
             # de regravar a linha de um dataset que não está aberto.

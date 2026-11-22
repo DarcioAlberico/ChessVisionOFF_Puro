@@ -12,7 +12,7 @@ partir da FEN são os mesmos para a miniatura na tela e para o PNG da exportaç�
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -48,6 +48,7 @@ from chess_diagram_ocr.ui.texto_declarado import (
 
 if TYPE_CHECKING:
     from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
+    from chess_diagram_ocr.text.pagina import PaginaLida
 
 logger = logging.getLogger(__name__)
 
@@ -386,13 +387,30 @@ class MiniaturasDoTexto(QObject):
         """
         chave = (chave_do_livro(self._aba._pdf), int(pagina))
         self._aba._posicoes[chave] = tuple(str(p or "") for p in posicoes)
+        guardadas = self._aba._posicoes[chave]
+        self._aplicar_leitura(pagina, lambda folha: folha.com_posicoes(guardadas))
+
+    def definir_marcas(self, pagina: int, marcas: Sequence[Mapping[str, str] | None]) -> None:
+        """As marcas de casa de cada diagrama da folha, lidas do recorte (`opiniao_das_marcas`).
+
+        O mesmo caminho de `definir_posicoes`, pela mesma razão: a marca é leitura, não edição, e
+        chega em qualquer ordem em relação ao texto. No bloco, ela vai com a folha ao livro da suíte
+        (`caderno_na_suite`). `None` é o diagrama cujas marcas não foram lidas.
+        """
+        chave = (chave_do_livro(self._aba._pdf), int(pagina))
+        self._aba._marcas[chave] = tuple(None if m is None else dict(m) for m in marcas)
+        guardadas = self._aba._marcas[chave]
+        self._aplicar_leitura(pagina, lambda folha: folha.com_marcas(guardadas))
+
+    def _aplicar_leitura(self, pagina: int, aplicar: Callable[[PaginaLida], PaginaLida]) -> None:
+        """Põe na folha da tela o que a leitura dos diagramas trouxe, sem virar alteração por gravar."""
         if (
             self._aba._pagina is None
             or int(self._aba._pagina.pagina) != int(pagina)
-            or chave_do_livro(self._aba._pagina.documento) != chave[0]
+            or chave_do_livro(self._aba._pagina.documento) != chave_do_livro(self._aba._pdf)
         ):
             return
-        nova = self._aba._pagina.com_posicoes(self._aba._posicoes[chave])
+        nova = aplicar(self._aba._pagina)
         if nova is self._aba._pagina:
             return
         self._aba._pagina = nova

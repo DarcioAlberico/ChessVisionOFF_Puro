@@ -38,5 +38,27 @@ class JuntarTests(unittest.TestCase):
         self.assertEqual(om.descrever_discordancias(opiniao, {}), "")
 
 
+class ConcordanciaTests(unittest.TestCase):
+    def test_so_o_que_os_dois_dizem_igual(self) -> None:
+        opiniao = om.juntar({"c5": mc.X, "d3": mc.X, "e4": mc.BOLINHA_PRETA}, {"c5": mc.X, "f6": mc.ESTRELA_PRETA, "e4": mc.CRUZ})
+        self.assertEqual(om.concordancia(opiniao), {"c5": mc.X})
+
+    def test_sem_modelo_nao_ha_concordancia(self) -> None:
+        self.assertIsNone(om.concordancia(om.juntar({"c5": mc.X}, None)), "o detector sozinho não põe marca no livro")
+
+    def test_os_dois_sem_marca_e_lido_sem_marca(self) -> None:
+        self.assertEqual(om.concordancia(om.juntar({}, {})), {})
+
+    def test_a_variavel_desvia_o_modelo(self) -> None:
+        import os
+        from pathlib import Path
+        from unittest import mock
+
+        with mock.patch.dict(os.environ, {om.ENV_MODELO_DE_MARCAS: "outro.pt"}):
+            self.assertEqual(om.caminho_do_modelo_de_marcas(), Path("outro.pt"))
+        with mock.patch.dict(os.environ, {om.ENV_MODELO_DE_MARCAS: ""}):
+            self.assertEqual(om.caminho_do_modelo_de_marcas(), om.MODELO_DE_MARCAS)
+
+
 if __name__ == "__main__":
     unittest.main()
