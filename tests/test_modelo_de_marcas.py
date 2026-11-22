@@ -65,6 +65,24 @@ class QuebrasTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mm.desenhar_quebra(casa, "circulo", vertice=(0.0, 0.0), angulos=(0.0, 0.0), espessura=0.1)
 
+    def test_letra_imprime_tinta_e_as_que_parecem_marca_ficam_de_fora(self) -> None:
+        import cv2
+
+        casa = torch.full((1, 64, 64), 0.95)
+        letra = mm.desenhar_letra(casa, "D", altura=0.5, centro=(0.0, 0.0), fonte=cv2.FONT_HERSHEY_SIMPLEX, tinta=0.0)
+        self.assertLess(float(letra.min()), 0.2)
+        self.assertGreater(float(letra[0, :8].mean()), 0.94)  # a letra fica no meio, longe da borda
+        for parecida in "Oo0QxX+*":
+            self.assertNotIn(parecida, mm.LETRAS_DA_CASA)
+
+    def test_pingo_de_sujeira_e_menor_que_a_menor_bolinha(self) -> None:
+        self.assertLess(mm.PINGO_MAXIMO, mm.BOLINHA_MINIMA)
+        torch.manual_seed(3)
+        for _ in range(30):
+            saida = mm._sujeira_sorteada(torch.full((1, 64, 64), 0.95))
+            # Cada pingo cobre no máximo um disco de 7% da casa: três deles somam bem menos que uma bolinha.
+            self.assertLess(int((saida < 0.6).sum()), 3 * 25)
+
     def test_o_sorteio_pode_dar_as_quebras_com_rotulo_sem_marca(self) -> None:
         torch.manual_seed(1)
         so_traco = mm.SorteioDeMarca(0.0, 1.0)

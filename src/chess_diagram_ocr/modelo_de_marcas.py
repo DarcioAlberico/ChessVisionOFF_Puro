@@ -26,6 +26,14 @@ saídas: o mesmo recorte de casa e o mesmo pré-processamento, sem uma segunda f
 **O checkpoint diz o que é.** `metadata["modelo"] == "marcas"` e a lista de classes vão gravados, e
 `carregar` recusa qualquer `.pt` sem isso: o modelo de peças tem a mesma arquitetura, e trocá-los por engano
 daria peças lidas como marca sem erro nenhum.
+
+**Medido em 2026-11-22** (3 épocas, limiar 0,5; `cvoff-marcas medir`): no teste congelado, 180 das 181 marcas,
+contra 179 do detector clássico; a que falta é o pingo cinza e borrado de uma revista de 1929. Nas 4.127
+amostras de validação e teste que ninguém anotou, nenhum alarme falso (o detector dá 2: uma peça em ampulheta
+lida como X e um cavalo lido como estrela branca), e os dois acham um diagrama de três estrelas que ninguém
+tinha anotado. O modelo acha também um X riscando uma peça, que o rótulo não cobre. Cada distração saiu de um
+erro visto nas casas apontadas, em seis treinos: ver `QUEBRAS_DE_TRACO`, `SUJEIRAS`, `BOLINHA_MINIMA` e
+`SorteioDeMarca`.
 """
 
 from __future__ import annotations
@@ -45,7 +53,7 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
 from . import marcas_de_casa as mc
-from .augment import AugmentConfig, MarcaEmVazia, from_letters
+from .augment import AugmentConfig, MarcaEmVazia, desenhar_marca, from_letters
 from .checkpoint import load_checkpoint, save_checkpoint
 from .config import BOARD_SIZE
 from .dataset import EMPTY_LABEL, BoardFenDataset, BoardGroupedSampler, board_groups
@@ -61,12 +69,14 @@ __all__ = [
     "DO_AUMENTO",
     "LIMIAR_PADRAO",
     "QUEBRAS_DE_TRACO",
+    "SUJEIRAS",
     "TRACOS_DE_DISTRACAO",
     "CasasComMarca",
     "ModeloDeMarcas",
     "ResultadoDoTreino",
     "SorteioDeMarca",
     "carregar",
+    "desenhar_letra",
     "desenhar_quebra",
     "treinar",
 ]
@@ -96,6 +106,31 @@ dentro da casa, contínua ou tracejada, lida como bolinha preta depois que a mar
 por traço -- a reta do aumento sempre atravessa a casa inteira, e a de um livro começa e acaba no meio
 dela. Moram aqui, e não em `augment.TIPOS_DE_MARCA`, porque um tipo novo lá mudaria o sorteio do treino do
 modelo de peças."""
+
+SUJEIRAS: tuple[str, ...] = ("sujeira", "letra")
+"""O que não é traço nem marca e o modelo v5 leu como marca (2026-11-22, alarmes em amostras sem anotação):
+pingos de sujeira na hachura, lidos como bolinha preta, e as letras C e D impressas dentro da casa, lidas como
+bolinha branca. Entram como distração com rótulo "sem marca"."""
+
+PINGO_MAXIMO = 0.07
+"""O maior pingo de `sujeira`, em fração do lado da casa."""
+
+BOLINHA_MINIMA = 0.14
+"""A menor bolinha preta que o treino desenha. O aumento herdado desenha "ponto" desde 8% da casa, que é o
+tamanho de um pingo de sujeira: as reais do teste congelado vão de 29% a 38%, e o detector clássico não
+aceita forma abaixo de 14% (`detector_de_marcas.LADO_MINIMO`). O vão entre 7% e 14% separa os dois rótulos."""
+
+LETRAS_DA_CASA = "abcdefghABCDEFGHKRNB12345678=!?#"
+"""As letras que a distração `letra` imprime. Ficam de fora as que **são** marca ou se confundem com uma:
+O, o, 0 e Q (bolinha branca), x, X, + e * (X e cruz)."""
+
+_FONTES = (
+    cv2.FONT_HERSHEY_SIMPLEX,
+    cv2.FONT_HERSHEY_DUPLEX,
+    cv2.FONT_HERSHEY_COMPLEX,
+    cv2.FONT_HERSHEY_TRIPLEX,
+    cv2.FONT_HERSHEY_PLAIN,
+)
 
 _SUPERAMOSTRA = 4
 """A mesma suavização de borda de `augment._cobertura_de_marca`: grade 4x mais fina, reduzida por média."""
@@ -221,6 +256,64 @@ def _quebra_sorteada(x: torch.Tensor, tipo: str) -> torch.Tensor:
     )
 
 
+def _sujeira_sorteada(x: torch.Tensor) -> torch.Tensor:
+    """De um a três pingos de até `PINGO_MAXIMO`, em qualquer lugar da casa: a sujeira da impressão."""
+    for _ in range(int(torch.randint(1, 4, ()).item())):
+        x = desenhar_marca(
+            x,
+            "ponto",
+            largura=_faixa(0.02, PINGO_MAXIMO),
+            centro=(_faixa(-0.4, 0.4), _faixa(-0.4, 0.4)),
+            tinta=_faixa(0.0, 0.45),
+        )
+    return x
+
+
+def desenhar_letra(
+    x: torch.Tensor, letra: str, *, altura: float, centro: tuple[float, float], fonte: int, tinta: float
+) -> torch.Tensor:
+    """A `letra` impressa na casa, com `altura` em fração do lado e o centro deslocado de `centro`."""
+    lado = x.shape[-1] * _SUPERAMOSTRA
+    escala = 1.0
+    (largura_px, altura_px), _ = cv2.getTextSize(letra, fonte, escala, 1)
+    escala = altura * lado / max(altura_px, 1)
+    espessura = max(1, round(escala * 1.6))
+    (largura_px, altura_px), _ = cv2.getTextSize(letra, fonte, escala, espessura)
+    tela = np.zeros((lado, lado), dtype=np.uint8)
+    origem = (
+        round(lado / 2 + centro[0] * lado - largura_px / 2),
+        round(lado / 2 + centro[1] * lado + altura_px / 2),
+    )
+    cv2.putText(tela, letra, origem, fonte, escala, 255, espessura, cv2.LINE_AA)
+    cobertura = torch.from_numpy(tela.astype(np.float32) / 255.0).unsqueeze(0).unsqueeze(0)
+    alfa = F.avg_pool2d(cobertura, _SUPERAMOSTRA).squeeze(0).squeeze(0).to(dtype=x.dtype, device=x.device)
+    return x * (1.0 - alfa) + tinta * alfa
+
+
+def _letra_sorteada(x: torch.Tensor) -> torch.Tensor:
+    letra = LETRAS_DA_CASA[int(torch.randint(len(LETRAS_DA_CASA), ()).item())]
+    return desenhar_letra(
+        x,
+        letra,
+        altura=_faixa(0.25, 0.6),
+        centro=(_faixa(-0.2, 0.2), _faixa(-0.2, 0.2)),
+        fonte=_FONTES[int(torch.randint(len(_FONTES), ()).item())],
+        tinta=_faixa(0.0, 0.35),
+    )
+
+
+def _bolinha_preta_sorteada(x: torch.Tensor) -> torch.Tensor:
+    """A bolinha preta de `BOLINHA_MINIMA` a 50% da casa, centrada como as do aumento."""
+    return desenhar_marca(
+        x,
+        "ponto",
+        largura=_faixa(BOLINHA_MINIMA, 0.50),
+        centro=(_faixa(-0.05, 0.05), _faixa(-0.05, 0.05)),
+        tinta=_faixa(0.0, 0.15),
+        papel=_faixa(0.85, 1.0),
+    )
+
+
 class SorteioDeMarca:
     """Sorteia o que vai na casa vazia: uma marca de casa, um traço de distração ou nada.
 
@@ -235,7 +328,7 @@ class SorteioDeMarca:
     bolinha oca cobre a linha.
     """
 
-    def __init__(self, p_marca: float = 0.5, p_traco: float = 0.25, p_traco_na_marca: float = 0.0) -> None:
+    def __init__(self, p_marca: float = 0.5, p_traco: float = 0.3, p_traco_na_marca: float = 0.0) -> None:
         if p_marca < 0 or p_traco < 0 or p_marca + p_traco > 1 or not 0 <= p_traco_na_marca <= 1:
             raise ValueError(
                 f"Probabilidades inválidas: marca {p_marca}, traço {p_traco}, traço na marca {p_traco_na_marca}"
@@ -246,9 +339,13 @@ class SorteioDeMarca:
         self._desenho = MarcaEmVazia(1.0)
         self._tipos = tuple(DO_AUMENTO)
 
-    def _traco(self, x: torch.Tensor) -> torch.Tensor:
-        tracos = (*TRACOS_DE_DISTRACAO, *QUEBRAS_DE_TRACO)
+    def _traco(self, x: torch.Tensor, *, com_sujeira: bool = True) -> torch.Tensor:
+        tracos = (*TRACOS_DE_DISTRACAO, *QUEBRAS_DE_TRACO, *(SUJEIRAS if com_sujeira else ()))
         tipo = tracos[int(torch.randint(len(tracos), ()).item())]
+        if tipo == "sujeira":
+            return _sujeira_sorteada(x)
+        if tipo == "letra":
+            return _letra_sorteada(x)
         if tipo in QUEBRAS_DE_TRACO:
             return _quebra_sorteada(x, tipo)
         return self._desenho.desenhar(x, tipo)
@@ -258,7 +355,9 @@ class SorteioDeMarca:
         if sorte < self.p_marca:
             tipo = self._tipos[int(torch.randint(len(self._tipos), ()).item())]
             if float(torch.rand(())) < self.p_traco_na_marca:
-                x = self._traco(x)
+                x = self._traco(x, com_sujeira=False)
+            if tipo == "ponto":
+                return _bolinha_preta_sorteada(x), _classe(DO_AUMENTO[tipo])
             return self._desenho.desenhar(x, tipo), _classe(DO_AUMENTO[tipo])
         if sorte < self.p_marca + self.p_traco:
             return self._traco(x), SEM_MARCA
@@ -387,7 +486,7 @@ def treinar(
     device: str | None = None,
     regime: str = REGIME_PADRAO,
     p_marca: float = 0.5,
-    p_traco: float = 0.25,
+    p_traco: float = 0.3,
     p_traco_na_marca: float = 0.0,
     tabuleiros_treino: int | None = None,
     tabuleiros_val: int | None = 1500,
@@ -493,7 +592,8 @@ def treinar(
                     "p_marca": p_marca,
                     "p_traco": p_traco,
                     "p_traco_na_marca": p_traco_na_marca,
-                    "distracoes": [*TRACOS_DE_DISTRACAO, *QUEBRAS_DE_TRACO],
+                    "distracoes": [*TRACOS_DE_DISTRACAO, *QUEBRAS_DE_TRACO, *SUJEIRAS],
+                    "bolinha_minima": BOLINHA_MINIMA,
                     "semente": semente,
                     "epoca": epoca,
                     "f1_marcas_val": f1,

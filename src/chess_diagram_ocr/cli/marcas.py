@@ -76,7 +76,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--p-marca", type=float, default=0.5, help="Fração das casas vazias que recebe marca de casa.")
     parser.add_argument(
-        "--p-traco", type=float, default=0.25, help="Fração das casas vazias que recebe traço de distração."
+        "--p-traco", type=float, default=0.3, help="Fração das casas vazias que recebe traço de distração."
     )
     parser.add_argument(
         "--p-traco-na-marca", type=float, default=0.0, help="Fração das marcas desenhadas atravessadas por um traço. Desligado: ver SorteioDeMarca."
