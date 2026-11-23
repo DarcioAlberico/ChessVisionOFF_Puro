@@ -19,20 +19,16 @@ apontadas para essa conferência a olho.
 from __future__ import annotations
 
 import argparse
-import json
 import logging
-import random
-from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 
 from .. import marcas_de_casa as mc
+from .. import medicao_de_marcas as md
 from .. import teste_de_marcas as tm
-from ..atomic_io import atomic_write_json, read_image, write_image
-from ..config import DATA_DIR
+from ..atomic_io import atomic_write_json, write_image
 from ..logging_setup import configure_logging, default_log_file
 from ..opiniao_das_marcas import MODELO_DE_MARCAS
 from ..splits import load_splits
@@ -47,12 +43,9 @@ from . import (
     cli_errors,
 )
 
-if TYPE_CHECKING:
-    from ..modelo_de_marcas import ModeloDeMarcas
-
 logger = logging.getLogger(__name__)
 
-TESTE_PADRAO = DATA_DIR / "marcas" / "teste_congelado.json"
+TESTE_PADRAO = tm.ARQUIVO_DO_TESTE
 MODELO_PADRAO = MODELO_DE_MARCAS
 
 
@@ -115,8 +108,7 @@ def _treinar(args: argparse.Namespace) -> int:
             f"O teste congelado está vazio ({args.teste}). Rode `cvoff-marcas congelar` antes: sem ele o treino veria o teste."
         )
         return EXIT_BAD_INPUT
-    anotadas = {str(e.get("amostra")) for e in _entradas(args.anotacoes).values() if e.get("amostra")}
-    excluidas = {caso.amostra for caso in casos} | anotadas
+    excluidas = {caso.amostra for caso in casos} | md.anotadas_em(args.anotacoes)
     saida = args.saida or args.modelo
     resultado = treinar(
         csv_path=args.csv,
@@ -140,17 +132,6 @@ def _treinar(args: argparse.Namespace) -> int:
         f"{resultado.tabuleiros_treino} tabuleiros de treino, {resultado.excluidos} do teste tirados. Gravado em {saida}"
     )
     return EXIT_OK
-
-
-def _entradas(anotacoes: Path) -> dict[str, dict[str, object]]:
-    if not Path(anotacoes).exists():
-        return {}
-    return dict(json.loads(Path(anotacoes).read_text(encoding="utf-8")).get("imagens", {}))
-
-
-def _ler_rgb(caminho: Path) -> np.ndarray | None:
-    imagem = read_image(caminho)
-    return None if imagem is None else cv2.cvtColor(imagem, cv2.COLOR_BGR2RGB)
 
 
 def _gravar_mosaico(pasta: Path, nome: str, tabuleiro: np.ndarray, casas: dict[str, str]) -> None:
@@ -181,31 +162,36 @@ def _medir(args: argparse.Namespace) -> int:
 
     modelo = carregar(args.modelo, device=args.device or "cpu")
     limiar = args.limiar if args.limiar is not None else modelo.limiar
-    lidos_modelo: dict[str, dict[str, str]] = {}
-    lidos_detector: dict[str, dict[str, str]] = {}
-    for caso in casos:
-        tabuleiro = _ler_rgb(Path(args.samples) / caso.amostra)
-        if tabuleiro is None:
-            continue
-        lidos_modelo[caso.amostra] = dict(modelo.ler(tabuleiro, limiar).casas)
-        lidos_detector[caso.amostra] = dict(sugerir_marcas(tabuleiro).casas)
+    amostras: list[str] = []
+    if args.alarmes > 0:
+        fora = {caso.amostra for caso in casos} | md.anotadas_em(args.anotacoes)
+        amostras = md.amostras_sem_anotacao(load_splits(args.splits), fora, args.alarmes, args.semente)
+    comparacao = md.comparar(
+        {
+            "modelo": lambda tabuleiro: modelo.ler(tabuleiro, limiar).casas,
+            "detector": lambda tabuleiro: sugerir_marcas(tabuleiro).casas,
+        },
+        casos,
+        args.samples,
+        amostras,
+    )
 
     relatorio: dict[str, object] = {
         "modelo": str(args.modelo),
         "limiar": limiar,
         "teste": str(args.teste),
         "diagramas": len(casos),
-        "placar_modelo": tm.pontuar(casos, lidos_modelo).to_dict(),
-        "placar_detector": tm.pontuar(casos, lidos_detector).to_dict(),
+        "placar_modelo": comparacao.placar("modelo").to_dict(),
+        "placar_detector": comparacao.placar("detector").to_dict(),
     }
     print(f"Teste congelado: {len(casos)} diagramas, limiar {limiar}")
-    for rotulo, lidos in (("modelo", lidos_modelo), ("detector", lidos_detector)):
+    for rotulo in ("modelo", "detector"):
         print(f"{rotulo}:")
-        for linha in tm.pontuar(casos, lidos).linhas():
+        for linha in comparacao.placar(rotulo).linhas():
             print(f"  {linha}")
 
-    if args.alarmes > 0:
-        relatorio["alarmes"] = _alarmes(args, modelo, limiar, {caso.amostra for caso in casos}, sugerir_marcas)
+    if amostras:
+        relatorio["alarmes"] = _alarmes(args, comparacao)
 
     if args.json is not None:
         atomic_write_json(args.json, relatorio)
@@ -213,50 +199,31 @@ def _medir(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _alarmes(
-    args: argparse.Namespace,
-    modelo: ModeloDeMarcas,
-    limiar: float,
-    do_teste: set[str],
-    sugerir: Callable[[np.ndarray], mc.MarcasDoDiagrama],
-) -> dict[str, object]:
-    """Onde cada leitor dá marca em amostras de validação e teste que ninguém anotou."""
-    anotadas = {str(e.get("amostra")) for e in _entradas(args.anotacoes).values() if e.get("amostra")}
-    splits = load_splits(args.splits)
-    candidatas = sorted(
-        nome
-        for nome, particao in splits.items()
-        if str(particao) in ("val", "test") and nome not in do_teste and nome not in anotadas
-    )
-    amostras = random.Random(args.semente).sample(candidatas, min(args.alarmes, len(candidatas)))
-    contagem = {"modelo": 0, "detector": 0, "os_dois": 0}
+def _alarmes(args: argparse.Namespace, comparacao: md.Comparacao) -> dict[str, object]:
+    """Onde cada leitor deu marca nas amostras de validação e teste que ninguém anotou."""
+    modelo, detector = comparacao.leituras["modelo"].apontadas, comparacao.leituras["detector"].apontadas
+    contagem = {"modelo": len(modelo), "detector": len(detector), "os_dois": len(set(modelo) & set(detector))}
     por_tipo: dict[str, dict[str, int]] = {"modelo": {}, "detector": {}}
-    apontadas: list[dict[str, object]] = []
-    lidas = 0
-    for nome in amostras:
-        tabuleiro = _ler_rgb(Path(args.samples) / nome)
-        if tabuleiro is None:
-            continue
-        lidas += 1
-        do_modelo = dict(modelo.ler(tabuleiro, limiar).casas)
-        do_detector = dict(sugerir(tabuleiro).casas)
-        for rotulo, casas in (("modelo", do_modelo), ("detector", do_detector)):
-            if casas:
-                contagem[rotulo] += 1
-                for tipo in casas.values():
-                    por_tipo[rotulo][tipo] = por_tipo[rotulo].get(tipo, 0) + 1
-        if do_modelo and do_detector:
-            contagem["os_dois"] += 1
-        if do_modelo or do_detector:
-            apontadas.append({"amostra": nome, "modelo": do_modelo, "detector": do_detector})
-            if args.mosaico is not None:
-                _gravar_mosaico(Path(args.mosaico) / "modelo", nome, tabuleiro, do_modelo)
-                _gravar_mosaico(Path(args.mosaico) / "detector", nome, tabuleiro, do_detector)
+    for rotulo, apontadas in (("modelo", modelo), ("detector", detector)):
+        for casas in apontadas.values():
+            for tipo in casas.values():
+                por_tipo[rotulo][tipo] = por_tipo[rotulo].get(tipo, 0) + 1
+    apontadas_juntas = [
+        {"amostra": nome, "modelo": modelo.get(nome, {}), "detector": detector.get(nome, {})}
+        for nome in sorted(set(modelo) | set(detector))
+    ]
+    if args.mosaico is not None:
+        for nome in sorted(set(modelo) | set(detector)):
+            tabuleiro = md.ler_rgb(Path(args.samples) / nome)
+            if tabuleiro is None:
+                continue
+            _gravar_mosaico(Path(args.mosaico) / "modelo", nome, tabuleiro, modelo.get(nome, {}))
+            _gravar_mosaico(Path(args.mosaico) / "detector", nome, tabuleiro, detector.get(nome, {}))
     print(
-        f"Alarmes em {lidas} amostras sem anotação: modelo {contagem['modelo']} diagrama(s) {por_tipo['modelo']}, "
-        f"detector {contagem['detector']} {por_tipo['detector']}, os dois {contagem['os_dois']}"
+        f"Alarmes em {comparacao.amostras_lidas} amostras sem anotação: modelo {contagem['modelo']} diagrama(s) "
+        f"{por_tipo['modelo']}, detector {contagem['detector']} {por_tipo['detector']}, os dois {contagem['os_dois']}"
     )
-    return {"lidas": lidas, "diagramas": contagem, "por_tipo": por_tipo, "apontadas": apontadas}
+    return {"lidas": comparacao.amostras_lidas, "diagramas": contagem, "por_tipo": por_tipo, "apontadas": apontadas_juntas}
 
 
 @cli_errors

@@ -84,6 +84,12 @@ class LeitorDeMarcas(QObject):
                 logger.warning("Modelo de marcas não carregado (%s): %s", caminho, exc)
             return self._leitor
 
+    def esquecer(self) -> None:
+        """Esquece o modelo carregado: a próxima página relê o arquivo. É o que vem depois de instalar outro."""
+        with self._trava:
+            self._leitor = None
+            self._tentado = False
+
     def ler(self, livro: object, pagina: int, recortes: Sequence[np.ndarray]) -> threading.Thread | None:
         """Começa a leitura e devolve a thread (para o teste esperar). Página sem diagrama não lê nada."""
         if not recortes:

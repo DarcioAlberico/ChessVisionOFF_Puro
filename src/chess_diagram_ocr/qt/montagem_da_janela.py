@@ -40,6 +40,7 @@ from chess_diagram_ocr.qt.painel_de_revisao import PainelDeRevisao
 from chess_diagram_ocr.qt.painel_de_texto import PainelDeTexto
 from chess_diagram_ocr.qt.painel_do_dataset import PainelDoDataset
 from chess_diagram_ocr.qt.painel_do_pdf import PainelDoPdf
+from chess_diagram_ocr.qt.treino_de_marcas import JanelaDoModeloDeMarcas
 from chess_diagram_ocr.qt.trilho import TrilhoDoLivro
 from chess_diagram_ocr.review_queue import DEFAULT_QUEUE_PATH
 from chess_diagram_ocr.ui import abas, espaco
@@ -57,7 +58,7 @@ from chess_diagram_ocr.ui.texto_declarado import COMANDOS_DA_ABA as COMANDOS_DO_
 if TYPE_CHECKING:
     from chess_diagram_ocr.qt.janela import JanelaPrincipal
 
-__all__ = ["montar_paineis", "tabela_de_comandos"]
+__all__ = ["abrir_o_modelo_de_marcas", "esquecer_o_modelo_de_marcas", "montar_paineis", "tabela_de_comandos"]
 
 
 def montar_paineis(janela: JanelaPrincipal) -> None:
@@ -302,6 +303,7 @@ def tabela_de_comandos(janela: JanelaPrincipal) -> dict[str, Callable[[], object
         "exportar_docx": lambda: janela._exportar_livro("docx"),
         "cancelar_exportacao": janela.exportador.cancelar,
         "treinar": janela.treino.iniciar,
+        "treinar_marcas": lambda: abrir_o_modelo_de_marcas(janela),
         "configuracoes": lambda: dialogo_de_configuracoes.abrir(janela, dizer=janela._dizer),
         "recarregar_modelo": janela._recarregar_modelo,
         # --- a janela
@@ -320,3 +322,27 @@ def tabela_de_comandos(janela: JanelaPrincipal) -> dict[str, Callable[[], object
     tabela.update(abas_da_suite.donos(janela.rotulagem, janela.revisao_de_texto, dizer=janela._dizer))  # C8
     tabela.update(livro_com_pgn.donos(lambda: janela.pgn_do_livro))  # S-590
     return tabela
+
+
+def abrir_o_modelo_de_marcas(janela: JanelaPrincipal) -> JanelaDoModeloDeMarcas:
+    """A janela do modelo de marcas (`qt/treino_de_marcas.py`), criada no primeiro pedido e depois reaberta.
+
+    Filha da janela principal, e não atributo dela: o `qt/janela.py` está no teto de linhas (S-136), e
+    ninguém além deste comando a procura. Criada só quando pedida, não custa nada na abertura.
+    Instalado um modelo novo, quem tinha o anterior carregado -- a aba Texto e a conferência da
+    importação -- o esquece.
+    """
+    dialogo = janela.findChild(JanelaDoModeloDeMarcas)
+    if dialogo is None:
+        dialogo = JanelaDoModeloDeMarcas(janela, caminhos=janela._caminhos_do_dataset, busy=janela.busy)
+        dialogo.instalado.connect(lambda _caminho: esquecer_o_modelo_de_marcas(janela))
+    dialogo.abrir()
+    return dialogo
+
+
+def esquecer_o_modelo_de_marcas(janela: JanelaPrincipal) -> None:
+    """Depois de instalar outro `models/marcas.pt`: a próxima leitura o carrega de novo."""
+    janela.texto.leitor_de_marcas.esquecer()
+    importador = getattr(janela.dataset, "importador", None)
+    if importador is not None:
+        importador.esquecer_modelo_de_marcas()

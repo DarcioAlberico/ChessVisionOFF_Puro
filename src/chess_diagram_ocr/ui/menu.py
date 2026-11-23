@@ -238,6 +238,7 @@ MENUS: tuple[Menu, ...] = (
             _sep(),
             Item("recarregar_modelo"),
             Item("treinar"),
+            Item("treinar_marcas"),
             _sep(),
             Item("configuracoes"),
         ),

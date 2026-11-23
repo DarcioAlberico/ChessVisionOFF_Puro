@@ -1188,6 +1188,7 @@ src/chess_diagram_ocr/
   livro_com_pgn.py      cada diagrama do PDF digital casado com o no do PGN do livro, e o estado dele (S-587)
   logging_setup.py      configuracao de logging
   marcas_de_casa.py     as marcas impressas no diagrama (bolinha, estrela, seta...) e o arquivo delas, fora da FEN
+  medicao_de_marcas.py  o teste congelado e os alarmes de cada leitor de marca, na mesma regua para o comando e a janela
   model.py              arquitetura do classificador, configuravel por ArchConfig
   modelo_de_marcas.py   o modelo que diz qual marca a casa vazia tem, treinado so com marca sintetica
   net_correction.py     cliente da correcao remota de FEN (opcional, opt-in)

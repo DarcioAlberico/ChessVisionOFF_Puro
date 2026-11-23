@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import csv
+import threading
 import unittest
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -165,6 +167,66 @@ class TreinoTests(unittest.TestCase):
         save_checkpoint(caminho, PieceClassifier().state_dict(), metadata={"arch_version": DEFAULT_ARCH.version})
         with self.assertRaises(ValueError):
             mm.carregar(caminho)
+
+    def treinar(
+        self,
+        saida: Path,
+        *,
+        epocas: int,
+        progresso: mm.Progresso | None = None,
+        cancelar: threading.Event | None = None,
+    ) -> mm.ResultadoDoTreino:
+        return mm.treinar(
+            csv_path=self.csv,
+            samples_dir=self.samples,
+            splits=self.splits,
+            saida=saida,
+            excluidas=["teste.png"],
+            lote=64,
+            workers=0,
+            device="cpu",
+            tabuleiros_val=None,
+            epocas=epocas,
+            progresso=progresso,
+            cancelar=cancelar,
+        )
+
+    def test_o_progresso_conta_a_epoca_e_traz_o_f1_no_fim_dela(self) -> None:
+        chamadas: list[tuple[int, int, float, float | None]] = []
+        self.treinar(self.pasta / "m.pt", epocas=2, progresso=lambda *a: chamadas.append(a))
+        fins = [c for c in chamadas if c[3] is not None]
+        self.assertEqual([(c[0], c[1], c[2]) for c in fins], [(1, 2, 1.0), (2, 2, 1.0)])
+        validando = [c for c in chamadas if c[2] == 1.0 and c[3] is None]
+        self.assertEqual([c[0] for c in validando], [1, 2], "cada época avisa quando a validação começa")
+        self.assertTrue(all(0 < c[2] <= 1 for c in chamadas))
+
+    def test_cancelado_antes_da_primeira_epoca_nao_grava(self) -> None:
+        parar = threading.Event()
+        parar.set()
+        saida = self.pasta / "m.pt"
+        resultado = self.treinar(saida, epocas=2, cancelar=parar)
+        self.assertTrue(resultado.cancelado)
+        self.assertFalse(saida.exists())
+
+    def test_instalar_guarda_o_anterior_e_recusa_o_modelo_de_pecas(self) -> None:
+        from chess_diagram_ocr.checkpoint import save_checkpoint
+        from chess_diagram_ocr.model import PieceClassifier
+
+        novo = self.pasta / "novo.pt"
+        self.treinar(novo, epocas=1)
+        destino = self.pasta / "models" / "marcas.pt"
+        self.assertIsNone(mm.instalar(novo, destino, quando="1"), "sem anterior, sem cópia")
+        self.assertEqual(destino.read_bytes(), novo.read_bytes())
+        destino.write_bytes(b"o anterior")
+        copia = mm.instalar(novo, destino, quando="2")
+        assert copia is not None
+        self.assertEqual((copia.name, copia.read_bytes()), ("marcas_antes_2.pt", b"o anterior"))
+
+        pecas = self.pasta / "pecas.pt"
+        save_checkpoint(pecas, PieceClassifier().state_dict(), metadata={"arch_version": DEFAULT_ARCH.version})
+        with self.assertRaises(ValueError):
+            mm.instalar(pecas, destino, quando="3")
+        self.assertEqual(destino.read_bytes(), novo.read_bytes(), "a recusa não tocou no instalado")
 
 
 if __name__ == "__main__":
