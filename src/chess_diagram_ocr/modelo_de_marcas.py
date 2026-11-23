@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import logging
 import random
+import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
@@ -53,6 +54,7 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
 from . import marcas_de_casa as mc
+from .atomic_io import atomic_write_bytes
 from .augment import AugmentConfig, MarcaEmVazia, desenhar_marca, from_letters
 from .checkpoint import load_checkpoint, save_checkpoint
 from .config import BOARD_SIZE
@@ -73,9 +75,11 @@ __all__ = [
     "TRACOS_DE_DISTRACAO",
     "CasasComMarca",
     "ModeloDeMarcas",
+    "Progresso",
     "ResultadoDoTreino",
     "SorteioDeMarca",
     "carregar",
+    "instalar",
     "leitor_de_marcas",
     "desenhar_letra",
     "desenhar_quebra",
@@ -438,6 +442,14 @@ class ResultadoDoTreino:
     tabuleiros_treino: int = 0
     tabuleiros_val: int = 0
     excluidos: int = 0
+    cancelado: bool = False
+    """Parou a pedido. O que está em `saida` é a melhor época **terminada**, ou nada se nenhuma terminou."""
+
+
+Progresso = Callable[[int, int, float, "float | None"], None]
+"""`(época, épocas, fração da época feita, F1 das marcas na validação)`. O F1 só vem com a época
+terminada; no meio dela, `None`. A fração 1,0 sem F1 quer dizer "os lotes acabaram e a validação
+começou". É o que a janela do modelo de marcas mostra na barra."""
 
 
 def _f1_das_marcas(confusao: np.ndarray) -> float:
@@ -492,11 +504,16 @@ def treinar(
     tabuleiros_treino: int | None = None,
     tabuleiros_val: int | None = 1500,
     arch: ArchConfig = DEFAULT_ARCH,
+    progresso: Progresso | None = None,
+    cancelar: threading.Event | None = None,
 ) -> ResultadoDoTreino:
     """Treina do zero e grava em `saida` a época de melhor F1 das marcas na validação sintética.
 
     `excluidas` são as amostras do teste congelado: saem do treino e da validação inteiras, com as casas
     sem marca. `tabuleiros_val` limita a validação, que é sintética e não precisa do split todo.
+
+    `progresso` recebe a fração da época a cada ~1% dos lotes e o F1 ao fim de cada época; `cancelar`
+    é conferido a cada lote, e o cancelado para sem validar a época pela metade (`cancelado`).
     """
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(semente)
@@ -543,12 +560,17 @@ def treinar(
         fora,
         device,
     )
+    lotes = max(1, len(carregador_treino))
+    passo = max(1, lotes // 100)
     for epoca in range(1, epocas + 1):
         inicio = time.monotonic()
         modelo.train()
         soma = 0.0
         vistos = 0
-        for x, y in carregador_treino:
+        for lote_feito, (x, y) in enumerate(carregador_treino, start=1):
+            if cancelar is not None and cancelar.is_set():
+                resultado.cancelado = True
+                return resultado
             x, y = x.to(device), y.to(device)
             otimizador.zero_grad(set_to_none=True)
             perda = F.cross_entropy(modelo(x), y)
@@ -556,6 +578,12 @@ def treinar(
             otimizador.step()
             soma += float(perda.detach()) * int(y.numel())
             vistos += int(y.numel())
+            if progresso is not None and lote_feito % passo == 0 and lote_feito < lotes:
+                progresso(epoca, epocas, lote_feito / lotes, None)
+        if progresso is not None:
+            # Os lotes acabaram e a validação começa: em CPU ela leva minutos, e quem olha a barra
+            # cheia precisa saber que a época ainda não terminou.
+            progresso(epoca, epocas, 1.0, None)
         agendador.step()
         perda_val, confusao = _avaliar(modelo, carregador_val, device)
         f1 = _f1_das_marcas(confusao)
@@ -567,6 +595,8 @@ def treinar(
             "segundos": time.monotonic() - inicio,
         }
         resultado.historico.append(linha)
+        if progresso is not None:
+            progresso(epoca, epocas, 1.0, f1)
         logger.info(
             "época %d: perda %.4f, val %.4f, F1 das marcas %.4f (%.0f s)",
             epoca,
@@ -652,6 +682,24 @@ def leitor_de_marcas(caminho: Path, device: str = "cpu") -> Callable[[np.ndarray
     """O modelo de `caminho` como a conferência o chama: recorte RGB -> `{"c6": "bolinha-branca"}`."""
     modelo = carregar(caminho, device)
     return lambda tabuleiro: dict(modelo.ler(tabuleiro).casas)
+
+
+def instalar(novo: Path, destino: Path, *, quando: str) -> Path | None:
+    """Põe o checkpoint `novo` em `destino` e devolve onde ficou a cópia do que estava lá, se havia.
+
+    A cópia é `marcas_antes_<quando>.pt`, ao lado do destino: o modelo trocado é o que as leituras
+    usavam, e voltar a ele não pode depender de treinar de novo. A escrita é atômica, porque uma
+    leitura aberta pode estar carregando o arquivo nesse instante. `novo` precisa ser um modelo de
+    marcas (`carregar` confere): instalar o `.pt` de peças aqui leria peça como marca.
+    """
+    carregar(novo)
+    destino = Path(destino)
+    copia: Path | None = None
+    if destino.exists():
+        copia = destino.with_name(f"{destino.stem}_antes_{quando}{destino.suffix}")
+        atomic_write_bytes(copia, destino.read_bytes())
+    atomic_write_bytes(destino, Path(novo).read_bytes())
+    return copia
 
 
 def carregar(caminho: Path, device: str = "cpu") -> ModeloDeMarcas:

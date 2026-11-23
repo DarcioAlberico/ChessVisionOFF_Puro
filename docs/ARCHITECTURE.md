@@ -251,6 +251,7 @@ divisão, não o toolkit, que este documento descreve.
 | `rolagem.py` | A aba que rola quando não cabe na tela (S-552). |
 | `rotulo.py` | O rótulo que encolhe em vez de empurrar a janela, e o separador de bloco (F9-C2). |
 | `tabuleiro_de_marcas.py` | O tabuleiro da conferência de importação: corrige peças e anota as marcas impressas. |
+| `treino_de_marcas.py` | *Treinar o modelo de marcas…*: congela as anotações novas no teste, treina um modelo novo numa thread, mede o novo, o instalado e o detector clássico na mesma régua (`medicao_de_marcas`), e só instala a pedido, com cópia do anterior. |
 | `trilho.py` | O trilho de páginas: uma miniatura por página, com estado, ao lado do visor (OCR_UI passo 17); o que cada uma diz é de `ui/trilho.py`. |
 | `vazio.py` | O estado vazio: título, frase e o botão que resolve, dentro do vazio (F9-C2). |
 | `correcao_no_livro.py` | A janela de «Corrigir em todas as folhas» (S-766): quem decide é `text/correcao_no_livro.py`, e aqui só se mostra a prévia. |
@@ -449,12 +450,17 @@ piorar um livro que já funciona:
 
 ## Threads
 
-**39** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
+**40** threads rodam fora da thread da interface, e todas voltam por **sinal** -- que é o
 `root.after` do lado que saiu: um `QThread` que tocasse widget direto derruba o processo sem
-exceção. Vinte e duas são operações longas e estão no `BusyRegistry`; as outras dezessete são declaradas
+exceção. Vinte e três são operações longas e estão no `BusyRegistry`; as outras dezessete são declaradas
 em `ui/busy.py::FORA_DO_REGISTRO`, com o motivo de cada uma (S-112).
 
-**A última é a das marcas dos diagramas (2026-11-22, `qt/marcas_da_leitura.py`).** Quando a leitura dos
+**A última é o treino do modelo de marcas (2026-11-22, `qt/treino_de_marcas.py`).** Congela as anotações
+novas no teste, treina um modelo novo, mede o novo, o instalado e o detector, e não grava nada no lugar do
+instalado: registra-se, com «Cancelar» entre lotes e `loses_work`, porque uma época em CPU passa de dez
+minutos e o que se perde é o progresso desde a última época terminada.
+
+**A anterior é a das marcas dos diagramas (2026-11-22, `qt/marcas_da_leitura.py`).** Quando a leitura dos
 diagramas da página chega à aba Texto, cada recorte passa pelo detector clássico e pelo modelo de marcas, e
 a folha guarda o que os dois disseram juntos, que vai com ela ao livro da suíte. São ~50 ms por diagrama e
 nada é gravado: fica declarada.

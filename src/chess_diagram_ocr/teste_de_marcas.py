@@ -42,6 +42,7 @@ from .fen_utils import square_name
 from .relogio import agora_iso
 
 __all__ = [
+    "ARQUIVO_DO_TESTE",
     "SEM_MARCA",
     "TIPOS_PONTUADOS",
     "VERSAO_DO_TESTE",
@@ -55,6 +56,9 @@ __all__ = [
 ]
 
 VERSAO_DO_TESTE = 1
+
+ARQUIVO_DO_TESTE = mc.ARQUIVO_DAS_MARCAS.parent / "teste_congelado.json"
+"""Onde o teste congelado mora: ao lado das anotações de que ele nasce."""
 
 SEM_MARCA = "-"
 """O rótulo da casa sem marca nas contas do placar."""
@@ -117,6 +121,9 @@ def casos_das_anotacoes(anotacoes: Path, labels_csv: Path, samples_dir: Path) ->
     Fica de fora a anotação sem amostra, a amostra que não está no `labels.csv` e a que não está no
     disco: sem a amostra não há o que ler, e sem o rótulo não se sabe se a casa marcada é vazia.
     """
+    if not Path(anotacoes).exists():
+        # Ninguém anotou ainda: não há caso, e isso não é erro -- é o teste vazio, que quem treina diz.
+        return [], []
     arquivo = mc.ArquivoDeMarcas(anotacoes)
     with Path(labels_csv).open(encoding="utf-8", newline="") as handle:
         fens = {linha["filename"]: linha.get("fen", "") for linha in csv.DictReader(handle)}

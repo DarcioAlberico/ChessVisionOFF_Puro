@@ -753,6 +753,9 @@ CATALOGO: tuple[Comando, ...] = (
     Comando("corrigir_agora", "Corrigir agora", ACERVO, estilos.NEUTRO),
     Comando("recarregar_modelo", "Recarregar o modelo", ACERVO, estilos.NEUTRO),
     Comando("treinar", "Treinar o modelo", ACERVO, estilos.NEUTRO),
+    # O modelo que diz qual marca a casa tem (estrela, X, bolinha): treina, mede contra o instalado
+    # e o detector clássico, e só instala a pedido. Ver `qt/treino_de_marcas.py`.
+    Comando("treinar_marcas", "Treinar o modelo de marcas…", ACERVO, estilos.NEUTRO),
     # A janela que grava `data/settings.json` (épocas do treino, DPI, motor de OCR, motor UCI,
     # segunda opinião). Até ela existir o arquivo só era lido, e as épocas eram uma constante
     # em `qt/janela.py`. Ver `ui/configuracoes.py`.

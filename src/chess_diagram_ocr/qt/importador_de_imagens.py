@@ -728,6 +728,12 @@ class JanelaDeImportacao(QDialog):
         self._leitura = threading.Thread(target=trabalho, name="importacao-leitura", daemon=True)
         self._leitura.start()
 
+    def esquecer_modelo_de_marcas(self) -> None:
+        """A próxima imagem relê `models/marcas.pt`: é o que vem depois de instalar outro modelo."""
+        if self._modelo_de_marcas is not None:
+            self._leitor_de_marcas = None
+            self._marcas_tentadas = False
+
     def _leitor_de_marcas_efetivo(self) -> Callable[[np.ndarray], dict[str, str]] | None:
         """O modelo de marcas, carregado na primeira imagem. Ausente ou estragado, fica o detector sozinho."""
         if self._marcas_tentadas or self._modelo_de_marcas is None:
